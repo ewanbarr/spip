@@ -48,6 +48,7 @@ class monThread (threading.Thread):
     self.poll = 5
 
   def run (self):
+    key = self.key
     
     try:
       spip.logMsg(1, DL, "["+key+"] monThread launching")
@@ -84,6 +85,7 @@ stream_id = 0
 cfg = spip.getConfig()
 
 control_thread = []
+mon_threads = []
 
 log_file  = cfg["SERVER_LOG_DIR"] + "/" + SCRIPT + ".log"
 pid_file  = cfg["SERVER_CONTROL_DIR"] + "/" + SCRIPT + ".pid"
@@ -127,8 +129,10 @@ try:
       cmd += " -p -l"
     rval, lines = spip.system (cmd, 2 <= DL)
 
-  # after creation, launch threads to monitor smrbs, maintaining state
-
+    # after creation, launch thread to monitor smrb, maintaining state
+    mon_thread = monThread(db_key, quit_file)
+    mon_thread.start()
+    mon_threads.append(mon_thread)
 
   while (not quit_event.isSet()):
     time.sleep(1)
@@ -149,6 +153,10 @@ except:
 spip.logMsg(2, DL, "main: joining control thread")
 if (control_thread):
   control_thread.join()
+
+spip.logMsg(2, DL, "main: joining " + str(len(db_ids)) + " mon threads")
+for i in range(len(db_ids)):
+  mon_threads[i].join()
 
 spip.logMsg(1, DL, "STOPPING SCRIPT")
 
