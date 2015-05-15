@@ -1,0 +1,3 @@
+
+SUBDIRS = scripts src 
+
