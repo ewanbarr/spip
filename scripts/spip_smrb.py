@@ -6,6 +6,11 @@
 #     Licensed under the Academic Free License version 2.1
 # 
 ###############################################################################
+#
+#   configured SMRBs initialized on launch
+#   monitoring of SMRBs in separate threads
+#   SMRBs destroyed upon exit
+#
 
 import os, threading, sys, time, socket, select, signal, traceback
 import spip
@@ -23,7 +28,51 @@ def getDBKey (inst_id, stream_id, num_stream, db_id):
   db_key = inst_id + "%03x" % (2 * index)
   return db_key
 
-#################################################################
+def getDBState (key):
+  cmd = "dada_dbmetric -k " + key
+  rval, lines = spip.system (cmd, 2 <= DL) 
+  if rval == 0:
+    a = lines[0].split(',')
+    hdr = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
+    dat = {'nbufs':a[5], 'full':a[6], 'clear':a[7], 'written':a[8],'read':a[9]}
+    return 0, hdr, dat
+  else:
+    return 1, {}, {}
+
+class monThread (threading.Thread):
+
+  def __init__ (self, key, quit_event):
+    threading.Thread.__init__(self)
+    self.key = key
+    self.quit_event = quit_event
+    self.poll = 5
+
+  def run (self):
+    
+    try:
+      spip.logMsg(1, DL, "["+key+"] monThread launching")
+
+      while (not quit_event.isSet()): 
+        
+        # read the current state of the data block
+        rval, hdr, data = getDBState(self.key)
+       
+        # TODO mechanism to expose this information to something that
+        # wants it? a separate comms thread perhaps 
+
+        remaining = self.poll
+        while (not quit_event.isSet() and remaining > 0):
+          time.sleep (1)
+          remaining -= 1
+
+    except:
+      spip.logMsg(1, DL, "monThread ["+key+"] exception caught: " +
+                  str(sys.exc_info()[0]))
+      print '-'*60
+      traceback.print_exc(file=sys.stdout)
+      print '-'*60
+
+######################################################################
 #
 # main
 #
@@ -77,6 +126,9 @@ try:
     if page:
       cmd += " -p -l"
     rval, lines = spip.system (cmd, 2 <= DL)
+
+  # after creation, launch threads to monitor smrbs, maintaining state
+
 
   while (not quit_event.isSet()):
     time.sleep(1)
