@@ -13,6 +13,7 @@
 #
 
 import os, threading, sys, time, socket, select, signal, traceback
+import json
 import spip
 
 SCRIPT = "spip_smrb"
@@ -28,6 +29,10 @@ def getDBKey (inst_id, stream_id, num_stream, db_id):
   db_key = inst_id + "%03x" % (2 * index)
   return db_key
 
+def getDBMonPort (stream_id):
+  start_port = 20000  
+  return start_port + stream_id
+
 def getDBState (key):
   cmd = "dada_dbmetric -k " + key
   rval, lines = spip.system (cmd, 2 <= DL) 
@@ -41,30 +46,77 @@ def getDBState (key):
 
 class monThread (threading.Thread):
 
-  def __init__ (self, key, quit_event):
+  def __init__ (self, keys, stream_id, quit_event):
     threading.Thread.__init__(self)
-    self.key = key
+    self.keys = keys
+    self.stream_id = stream
     self.quit_event = quit_event
     self.poll = 5
 
   def run (self):
     key = self.key
-    
+
     try:
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      port = getDBMonPort(self.stream_id)
+      Dada.logMsg(2, DL, "monThread: binding to localhost:" + port)
+      sock.bind(("localhost", int(port)))
+
+      sock.listen(2)
+
+      can_read = [sock]
+      can_write = []
+      can_error = []
+      timeout = 1
+
       spip.logMsg(1, DL, "["+key+"] monThread launching")
 
       while (not quit_event.isSet()): 
-        
-        # read the current state of the data block
-        rval, hdr, data = getDBState(self.key)
-       
-        # TODO mechanism to expose this information to something that
-        # wants it? a separate comms thread perhaps 
 
-        remaining = self.poll
-        while (not quit_event.isSet() and remaining > 0):
-          time.sleep (1)
-          remaining -= 1
+        smrb = {}
+
+        for key in keys:
+
+          # read the current state of the data block
+          rval, hdr, data = getDBState(self.key)
+          smrb[key] = {'hdr': hdr, 'data' : data}
+     
+        serialized = json.dumps(smrb)
+  
+        spip.logMsg(3, DL, "monThread: calling select len(can_read)=" + 
+                    str(len(can_read)))
+        timeout = self.poll
+        did_read, did_write, did_error = select.select(can_read, can_write, 
+                                                       can_error, timeout)
+        spip.logMsg(3, DL, "monThread: read="+str(len(did_read)) + 
+                    " write="+str(len(did_write))+" error="+str(len(did_error)))
+
+        if (len(did_read) > 0):
+          for handle in did_read:
+            if (handle == sock):
+              (new_conn, addr) = sock.accept()
+              Dada.logMsg(1, DL, "monThread: accept connection from " + 
+                          repr(addr))
+              can_read.append(new_conn)
+
+            else:
+              message = handle.recv(4096)
+              message = message.strip()
+              Dada.logMsg(3, DL, "monThread: message='" + message+"'")
+              if (len(message) == 0):
+                Dada.logMsg(1, DL, "monThread: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
+              else:
+                if message == "smrb_status":
+                  print serialized
+          
+      for i, x in enumerate(can_read):
+        x.close()
+        del can_read[i]
 
     except:
       spip.logMsg(1, DL, "monThread ["+key+"] exception caught: " +
@@ -72,6 +124,9 @@ class monThread (threading.Thread):
       print '-'*60
       traceback.print_exc(file=sys.stdout)
       print '-'*60
+      for i, x in enumerate(can_read):
+        x.close()
+        del can_read[i]
 
 ######################################################################
 # main
@@ -114,6 +169,7 @@ def main (argv):
     db_ids = cfg["DATA_BLOCK_IDS"].split(" ")
     db_prefix = cfg["DATA_BLOCK_PREFIX"]
     num_stream = cfg["NUM_STREAM"]
+    db_keys = []
 
     for db_id in db_ids:
       db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
@@ -129,10 +185,12 @@ def main (argv):
         cmd += " -p -l"
       rval, lines = spip.system (cmd, 2 <= DL)
 
-      # after creation, launch thread to monitor smrb, maintaining state
-      mon_thread = monThread(db_key, quit_file)
-      mon_thread.start()
-      mon_threads.append(mon_thread)
+      db_keys.append(db_key)
+
+    # after creation, launch thread to monitor smrb, maintaining state
+    mon_thread = monThread(db_keys, stream_id, quit_file)
+    mon_thread.start()
+    mon_threads.append(mon_thread)
 
     while (not quit_event.isSet()):
       time.sleep(1)
