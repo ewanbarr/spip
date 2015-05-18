@@ -74,91 +74,97 @@ class monThread (threading.Thread):
       print '-'*60
 
 ######################################################################
-#
 # main
-#
 
-# this should come from command line argument
-stream_id = 0
+def main (argv):
 
-# read configuration file
-cfg = spip.getConfig()
+  # this should come from command line argument
+  stream_id = argv[1]
 
-control_thread = []
-mon_threads = []
+  # read configuration file
+  cfg = spip.getConfig()
 
-log_file  = cfg["SERVER_LOG_DIR"] + "/" + SCRIPT + ".log"
-pid_file  = cfg["SERVER_CONTROL_DIR"] + "/" + SCRIPT + ".pid"
-quit_file = cfg["SERVER_CONTROL_DIR"] + "/"  + SCRIPT + ".quit"
+  control_thread = []
+  mon_threads = []
 
-if os.path.exists(quit_file):
-  sys.stderr.write("quit file existed at launch: " + quit_file)
-  sys.exit(1)
+  log_file  = cfg["SERVER_LOG_DIR"] + "/" + SCRIPT + ".log"
+  pid_file  = cfg["SERVER_CONTROL_DIR"] + "/" + SCRIPT + ".pid"
+  quit_file = cfg["SERVER_CONTROL_DIR"] + "/"  + SCRIPT + ".quit"
 
-# become a daemon
-# spip.daemonize(pid_file, log_file)
+  if os.path.exists(quit_file):
+    sys.stderr.write("quit file existed at launch: " + quit_file)
+    sys.exit(1)
 
-try:
+  # become a daemon
+  # spip.daemonize(pid_file, log_file)
 
-  spip.logMsg(1, DL, "STARTING SCRIPT")
+  try:
 
-  quit_event = threading.Event()
+    spip.logMsg(1, DL, "STARTING SCRIPT")
 
-  signal.signal(signal.SIGINT, signal_handler)
+    quit_event = threading.Event()
 
-  # start a control thread to handle quit requests
-  control_thread = spip.controlThread(quit_file, pid_file, quit_event, DL)
-  control_thread.start()
+    signal.signal(signal.SIGINT, signal_handler)
 
-  # get a list of data block ids
-  db_ids = cfg["DATA_BLOCK_IDS"].split(" ")
-  db_prefix = cfg["DATA_BLOCK_PREFIX"]
-  num_stream = cfg["NUM_STREAM"]
+    # start a control thread to handle quit requests
+    control_thread = spip.controlThread(quit_file, pid_file, quit_event, DL)
+    control_thread.start()
 
-  for db_id in db_ids:
-    db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
-    spip.logMsg(0, DL, "spip_smrb: db_key for " + db_id + " is " + db_key)
+    # get a list of data block ids
+    db_ids = cfg["DATA_BLOCK_IDS"].split(" ")
+    db_prefix = cfg["DATA_BLOCK_PREFIX"]
+    num_stream = cfg["NUM_STREAM"]
 
-    nbufs = cfg["BLOCK_NBUFS_" + db_id]
-    bufsz = cfg["BLOCK_BUFSZ_" + db_id]
-    nread = cfg["BLOCK_NREAD_" + db_id]
-    page  = cfg["BLOCK_PAGE_" + db_id]
+    for db_id in db_ids:
+      db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
+      spip.logMsg(0, DL, "spip_smrb: db_key for " + db_id + " is " + db_key)
 
-    cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
-    if page:
-      cmd += " -p -l"
-    rval, lines = spip.system (cmd, 2 <= DL)
+      nbufs = cfg["BLOCK_NBUFS_" + db_id]
+      bufsz = cfg["BLOCK_BUFSZ_" + db_id]
+      nread = cfg["BLOCK_NREAD_" + db_id]
+      page  = cfg["BLOCK_PAGE_" + db_id]
 
-    # after creation, launch thread to monitor smrb, maintaining state
-    mon_thread = monThread(db_key, quit_file)
-    mon_thread.start()
-    mon_threads.append(mon_thread)
+      cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
+      if page:
+        cmd += " -p -l"
+      rval, lines = spip.system (cmd, 2 <= DL)
 
-  while (not quit_event.isSet()):
-    time.sleep(1)
+      # after creation, launch thread to monitor smrb, maintaining state
+      mon_thread = monThread(db_key, quit_file)
+      mon_thread.start()
+      mon_threads.append(mon_thread)
 
-  for db_id in db_ids:
-    db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
-    cmd = "dada_db -k " + db_key + " -d"
-    rval, lines = spip.system (cmd, 2 <= DL)
+    while (not quit_event.isSet()):
+      time.sleep(1)
 
-except:
-  spip.logMsg(-2, DL, "main: exception caught: " + str(sys.exc_info()[0]))
-  print '-'*60
-  traceback.print_exc(file=sys.stdout)
-  print '-'*60
-  quit_event.set()
+    for db_id in db_ids:
+      db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
+      cmd = "dada_db -k " + db_key + " -d"
+      rval, lines = spip.system (cmd, 2 <= DL)
 
-# join threads
-spip.logMsg(2, DL, "main: joining control thread")
-if (control_thread):
-  control_thread.join()
+  except:
+    spip.logMsg(-2, DL, "main: exception caught: " + str(sys.exc_info()[0]))
+    print '-'*60
+    traceback.print_exc(file=sys.stdout)
+    print '-'*60
+    quit_event.set()
 
-spip.logMsg(2, DL, "main: joining " + str(len(db_ids)) + " mon threads")
-for i in range(len(db_ids)):
-  mon_threads[i].join()
+  # join threads
+  spip.logMsg(2, DL, "main: joining control thread")
+  if (control_thread):
+    control_thread.join()
 
-spip.logMsg(1, DL, "STOPPING SCRIPT")
+  spip.logMsg(2, DL, "main: joining " + str(len(db_ids)) + " mon threads")
+  for i in range(len(db_ids)):
+    mon_threads[i].join()
 
-sys.exit(0)
+  spip.logMsg(1, DL, "STOPPING SCRIPT")
+
+if __name__ == "__main__":
+  if len(sys.argv) != 2:
+    print "ERROR: 1 command line argument expected"
+    sys.exit(1)
+
+  main (sys.argv)
+  sys.exit(0)
 
