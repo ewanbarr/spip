@@ -174,6 +174,10 @@ def openSocket(dl, host, port, attempts=10):
     else:
       logMsg(3, dl, "openSocket: conncected")
       attempts = 0
+  
+  if attempts == 0:
+    sock.close()
+    sock = 0
 
   return sock
 

@@ -18,11 +18,6 @@ import spip
 SCRIPT = "spip_lmc"
 DL     = 2
 
-def signal_handler(signal, frame):
-  print 'You pressed Ctrl+C!'
-  global quit_event
-  quit_event.set()
-
 #################################################################
 # clientThread
 #
@@ -154,6 +149,9 @@ def main (argv):
     spip.logMsg(1, DL, "STARTING SCRIPT")
 
     quit_event = threading.Event()
+
+    def signal_handler(signal, frame):
+      quit_event.set()
 
     signal.signal(signal.SIGINT, signal_handler)
 

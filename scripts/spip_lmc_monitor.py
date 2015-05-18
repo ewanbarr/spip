@@ -12,8 +12,9 @@
 #
 
 
-import os, threading, sys, time, socket, select, signal, traceback
+import os, threading, sys, time, socket, select, signal, traceback, json
 import spip
+import spip_smrb
 
 #################################################################
 # host based monitoring thread
@@ -42,6 +43,24 @@ def getDiskCapacity (dirs, dl):
 
   return result, disks
 
+def getLoads (dl):
+
+  result = 0
+  loads = {}
+
+  cmd = "uptime"
+  rval, lines = spip.system (cmd, 2 <= dl)
+
+  if rval == 0 and len(lines) == 1:
+    parts = lines[0].split("load average: ") 
+    if len(parts) == 2:
+      load_parts = parts[1].split(', ')
+      if len(load_parts) == 3:
+        loads = {"1min" : load_parts[0], "5min": load_parts[1], "15min": load_parts[2]}
+
+  return result, loads
+
+
 # request SMRB state from SMRB monitoring points
 def getSMRBCapacity (stream_ids, dl):
 
@@ -50,11 +69,12 @@ def getSMRBCapacity (stream_ids, dl):
 
   for stream_id in stream_ids:
     port = spip_smrb.getDBMonPort (stream_id)
-    sock = spip.openSocket (dl, "localhost", port)
-    sock.send("smrb_status")
-    data = sock.recv(65536)
-    smrbs[stream_id] = json.loads(data) 
-    sock.close()
+    sock = spip.openSocket (dl, "localhost", port, 1)
+    if sock:
+      sock.send("smrb_status")
+      data = sock.recv(65536)
+      smrbs[stream_id] = json.loads(data) 
+      sock.close()
 
   return rval, smrbs 
 
@@ -78,7 +98,15 @@ if __name__ == "__main__":
   spip.logMsg(2, test_dl, "disks="+str(disks))
 
   spip.logMsg(2, test_dl, "reading SMRB info")
-  rval, smrbs = getSMRBCapacity (stream_ids, dl)
+  stream_ids = [0]
+  rval, smrbs = getSMRBCapacity (stream_ids, test_dl)
+  spip.logMsg(2, test_dl, "rval="+str(rval))
+  spip.logMsg(2, test_dl, "smrbs="+str(smrbs))
+
+  spip.logMsg(2, test_dl, "reading load info")
+  rval, loads = getLoads (test_dl)
+  spip.logMsg(2, test_dl, "rval="+str(rval))
+  spip.logMsg(2, test_dl, "loads="+str(loads))
 
   sys.exit(0)
     

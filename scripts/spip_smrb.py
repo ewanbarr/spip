@@ -19,11 +19,6 @@ import spip
 SCRIPT = "spip_smrb"
 DL     = 2
 
-def signal_handler(signal, frame):
-  spip.logMsg(0, DL, "spip_smrb: CTRL+C")
-  global quit_event
-  quit_event.set()
-
 def getDBKey (inst_id, stream_id, num_stream, db_id):
   index = (int(db_id) * int(num_stream)) + int(stream_id)
   db_key = inst_id + "%03x" % (2 * index)
@@ -31,7 +26,7 @@ def getDBKey (inst_id, stream_id, num_stream, db_id):
 
 def getDBMonPort (stream_id):
   start_port = 20000  
-  return start_port + stream_id
+  return start_port + int(stream_id)
 
 def getDBState (key):
   cmd = "dada_dbmetric -k " + key
@@ -49,37 +44,39 @@ class monThread (threading.Thread):
   def __init__ (self, keys, stream_id, quit_event):
     threading.Thread.__init__(self)
     self.keys = keys
-    self.stream_id = stream
+    self.stream_id = stream_id
     self.quit_event = quit_event
     self.poll = 5
 
   def run (self):
-    key = self.key
+
+    can_read = []
+    can_write = []
+    can_error = []
 
     try:
+      spip.logMsg(2, DL, "monThread: launching")
+
+      spip.logMsg(1, DL, "monThread: opening mon socket")
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
       port = getDBMonPort(self.stream_id)
-      Dada.logMsg(2, DL, "monThread: binding to localhost:" + port)
-      sock.bind(("localhost", int(port)))
+      spip.logMsg(2, DL, "monThread: binding to localhost:" + str(port))
+      sock.bind(("localhost", port))
 
       sock.listen(2)
 
-      can_read = [sock]
-      can_write = []
-      can_error = []
+      can_read.append(sock)
       timeout = 1
 
-      spip.logMsg(1, DL, "["+key+"] monThread launching")
-
-      while (not quit_event.isSet()): 
+      while (not self.quit_event.isSet()): 
 
         smrb = {}
 
-        for key in keys:
+        for key in self.keys:
 
           # read the current state of the data block
-          rval, hdr, data = getDBState(self.key)
+          rval, hdr, data = getDBState(key)
           smrb[key] = {'hdr': hdr, 'data' : data}
      
         serialized = json.dumps(smrb)
@@ -96,30 +93,32 @@ class monThread (threading.Thread):
           for handle in did_read:
             if (handle == sock):
               (new_conn, addr) = sock.accept()
-              Dada.logMsg(1, DL, "monThread: accept connection from " + 
+              spip.logMsg(1, DL, "monThread: accept connection from " + 
                           repr(addr))
               can_read.append(new_conn)
 
             else:
               message = handle.recv(4096)
               message = message.strip()
-              Dada.logMsg(3, DL, "monThread: message='" + message+"'")
+              spip.logMsg(3, DL, "monThread: message='" + message+"'")
               if (len(message) == 0):
-                Dada.logMsg(1, DL, "monThread: closing connection")
+                spip.logMsg(1, DL, "monThread: closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
                     del can_read[i]
               else:
                 if message == "smrb_status":
-                  print serialized
+                  print smrb
+                  handle.send(serialized)
           
       for i, x in enumerate(can_read):
         x.close()
         del can_read[i]
 
     except:
-      spip.logMsg(1, DL, "monThread ["+key+"] exception caught: " +
+      self.quit_event.set()
+      spip.logMsg(1, DL, "monThread: exception caught: " +
                   str(sys.exc_info()[0]))
       print '-'*60
       traceback.print_exc(file=sys.stdout)
@@ -159,6 +158,10 @@ def main (argv):
 
     quit_event = threading.Event()
 
+    def signal_handler(signal, frame):
+      spip.logMsg(0, DL, "spip_smrb: CTRL+C")
+      quit_event.set()
+
     signal.signal(signal.SIGINT, signal_handler)
 
     # start a control thread to handle quit requests
@@ -188,7 +191,7 @@ def main (argv):
       db_keys.append(db_key)
 
     # after creation, launch thread to monitor smrb, maintaining state
-    mon_thread = monThread(db_keys, stream_id, quit_file)
+    mon_thread = monThread(db_keys, stream_id, quit_event)
     mon_thread.start()
     mon_threads.append(mon_thread)
 
