@@ -86,7 +86,7 @@ def parseHeader(lines):
   for line in lines:
     parts = line.split()
     if len(parts) > 1:
-      header{parts[0]} = parts[1]
+      header[parts[0]] = parts[1]
   return header
 
 #
