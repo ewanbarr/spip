@@ -81,6 +81,14 @@ def getUTCSpipTime(toadd=0):
   now_str = now.strftime("%Y-%m-%d-%H:%M:%S")
   return now_str
 
+def parseHeader(lines):
+  header = {}
+  for line in lines:
+    parts = line.split()
+    if len(parts) > 1:
+      header{parts[0]} = parts[1]
+  return header
+
 #
 # Run a command with no stdin, and return STDOUT+STDERR interleaved
 #
