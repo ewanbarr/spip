@@ -11,8 +11,7 @@
 # spip_lmc_monitor - 
 #
 
-
-import os, threading, sys, time, socket, select, signal, traceback, json
+import os, threading, sys, time, socket, select, signal, traceback, json, re
 import spip
 import spip_smrb
 
@@ -62,21 +61,69 @@ def getLoads (dl):
 
 
 # request SMRB state from SMRB monitoring points
-def getSMRBCapacity (stream_ids, dl):
+def getSMRBCapacity (stream_ids, quit_event, dl):
 
   smrbs = {}
   rval = 0
 
   for stream_id in stream_ids:
+
+    if quit_event.isSet(): 
+      continue
     port = spip_smrb.getDBMonPort (stream_id)
     sock = spip.openSocket (dl, "localhost", port, 1)
     if sock:
-      sock.send("smrb_status")
+      sock.send ("smrb_status\n")
       data = sock.recv(65536)
       smrbs[stream_id] = json.loads(data) 
       sock.close()
 
   return rval, smrbs 
+
+def getIPMISensors (dl):
+
+  sensors = {}
+
+  cmd = "ipmitool sensor"
+  (rval, lines) = spip.system (cmd, 3 <= dl)
+
+  if rval == 0 and len(lines) > 0:
+    for line in lines:
+      data = line.split("|")
+      metric_name = data[0].strip().lower().replace("+", "").replace(" ", "_")
+      value = data[1].strip()
+
+      # Skip missing sensors
+      if re.search("(0x)", value ) or value == 'na':
+        continue
+
+      # Extract out a float value
+      vmatch = re.search("([0-9.]+)", value)
+      if not vmatch:
+        continue
+
+      metric_value = vmatch.group(1)
+      metric_units = data[2].strip().replace("degrees C", "C")
+
+      state = data[3]
+
+      #lnr = float(data[4].strip())
+      #lcr = float(data[5].strip())
+      #lnc = float(data[6].strip())
+      #unc = float(data[7].strip())
+      #ucr = float(data[8].strip())
+      #unr = float(data[9].strip())
+      #state = "ok"
+      #if value <= lnr or value >= unr:
+      #  state = "non recoverable"
+      #if value <= lcr or value >= ucr:
+      #  state = "critical"
+      #if value <= lnc or value >= unc:
+      #  state = "non critical"
+
+      sensors[metric_name] = { "value": metric_value, "units": metric_units, "state": state }
+
+  return rval, sensors
 
 class monThread (threading.Thread):
 
@@ -92,6 +139,8 @@ class monThread (threading.Thread):
 if __name__ == "__main__":
   test_dl = 2
 
+  quit_event = threading.Event()
+
   spip.logMsg(2, test_dl, "getting disk capcity for /")
   rval, disks = getDiskCapacity ("/", 3)
   spip.logMsg(2, test_dl, "rval="+str(rval))
@@ -99,7 +148,7 @@ if __name__ == "__main__":
 
   spip.logMsg(2, test_dl, "reading SMRB info")
   stream_ids = [0]
-  rval, smrbs = getSMRBCapacity (stream_ids, test_dl)
+  rval, smrbs = getSMRBCapacity (stream_ids, quit_event, test_dl)
   spip.logMsg(2, test_dl, "rval="+str(rval))
   spip.logMsg(2, test_dl, "smrbs="+str(smrbs))
 
@@ -107,6 +156,11 @@ if __name__ == "__main__":
   rval, loads = getLoads (test_dl)
   spip.logMsg(2, test_dl, "rval="+str(rval))
   spip.logMsg(2, test_dl, "loads="+str(loads))
+
+  spip.logMsg(2, test_dl, "reading IPMI sensor info")
+  rval, sensors = getIPMISensors (test_dl)
+  spip.logMsg(2, test_dl, "rval="+str(rval))
+  spip.logMsg(2, test_dl, "sensors="+str(sensors))
 
   sys.exit(0)
     

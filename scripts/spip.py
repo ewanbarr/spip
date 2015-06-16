@@ -89,6 +89,14 @@ def parseHeader(lines):
       header[parts[0]] = parts[1]
   return header
 
+def getStreamConfig (stream_id, cfg):
+  stream_config = cfg["STREAM_" + str(stream_id)]
+  (host, beam_id, subband_id) = stream_config.split(":")
+  return (host, beam_id, subband_id)
+
+def getHostNameShort ():
+  return socket.gethostname().split(".", 1)[0]
+
 #
 # Run a command with no stdin, and return STDOUT+STDERR interleaved
 #
@@ -156,8 +164,9 @@ def system_piped (command, pipe, log):
 def openSocket(dl, host, port, attempts=10):
 
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  connected = False
 
-  while (attempts > 0):
+  while (not connected and attempts > 0):
 
     logMsg(3, dl, "openSocket: attempt " + str(11-attempts))
 
@@ -168,18 +177,19 @@ def openSocket(dl, host, port, attempts=10):
       if e.errno == errno.ECONNREFUSED:
         logMsg(-1, dl, "openSocket: connection to " + host + ":" + str(port) + " refused")
         attempts -= 1
-        time.sleep(1)
+        if  attempts > 0:
+          time.sleep(1)
       else:
         raise
     else:
       logMsg(3, dl, "openSocket: conncected")
-      attempts = 0
+      connected = True
   
-  if attempts == 0:
+  if connected:
+    return sock
+  else:  
     sock.close()
-    sock = 0
-
-  return sock
+    return 0
 
 ###############################################################################
 #

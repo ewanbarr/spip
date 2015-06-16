@@ -1,5 +1,7 @@
 
 lib_LTLIBRARIES = libspip.la
 
-libspip_la_SOURCES = spip.c spip.h
+libspip_headers = spip.h
+
+libspip_la_SOURCES = spip.c
 

@@ -30,5 +30,7 @@ AM_PROG_CC_C_O
 AC_C_CONST
 AC_CONFIG_FILES([Makefile
   src/Makefile
+  src/Network/Makefile
+  src/Formats/SKA1/Makefile
   scripts/Makefile])
 AC_OUTPUT 

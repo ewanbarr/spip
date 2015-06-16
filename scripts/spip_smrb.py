@@ -15,9 +15,10 @@
 import os, threading, sys, time, socket, select, signal, traceback
 import json
 import spip
+from spip_scripts import StreamDaemon,LogSocket
 
-SCRIPT = "spip_smrb"
-DL     = 2
+DAEMONIZE = False
+DL        = 2
 
 def getDBKey (inst_id, stream_id, num_stream, db_id):
   index = (int(db_id) * int(num_stream)) + int(stream_id)
@@ -30,7 +31,7 @@ def getDBMonPort (stream_id):
 
 def getDBState (key):
   cmd = "dada_dbmetric -k " + key
-  rval, lines = spip.system (cmd, 2 <= DL) 
+  rval, lines = spip.system (cmd, False) 
   if rval == 0:
     a = lines[0].split(',')
     hdr = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
@@ -41,11 +42,12 @@ def getDBState (key):
 
 class monThread (threading.Thread):
 
-  def __init__ (self, keys, stream_id, quit_event):
+  def __init__ (self, keys, script):
     threading.Thread.__init__(self)
     self.keys = keys
-    self.stream_id = stream_id
-    self.quit_event = quit_event
+    self.id = script.id
+    self.quit_event = script.quit_event
+    self.script = script
     self.poll = 5
 
   def run (self):
@@ -53,15 +55,16 @@ class monThread (threading.Thread):
     can_read = []
     can_write = []
     can_error = []
+    script = self.script
 
     try:
-      spip.logMsg(2, DL, "monThread: launching")
+      script.log (2, "monThread: launching")
 
-      spip.logMsg(1, DL, "monThread: opening mon socket")
+      script.log(1, "monThread: opening mon socket")
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-      port = getDBMonPort(self.stream_id)
-      spip.logMsg(2, DL, "monThread: binding to localhost:" + str(port))
+      port = getDBMonPort(self.id)
+      script.log(2, "monThread: binding to localhost:" + str(port))
       sock.bind(("localhost", port))
 
       sock.listen(2)
@@ -81,28 +84,28 @@ class monThread (threading.Thread):
      
         serialized = json.dumps(smrb)
   
-        spip.logMsg(3, DL, "monThread: calling select len(can_read)=" + 
+        script.log(3, "monThread: calling select len(can_read)=" + 
                     str(len(can_read)))
         timeout = self.poll
         did_read, did_write, did_error = select.select(can_read, can_write, 
                                                        can_error, timeout)
-        spip.logMsg(3, DL, "monThread: read="+str(len(did_read)) + 
+        script.log(3, "monThread: read="+str(len(did_read)) + 
                     " write="+str(len(did_write))+" error="+str(len(did_error)))
 
         if (len(did_read) > 0):
           for handle in did_read:
             if (handle == sock):
               (new_conn, addr) = sock.accept()
-              spip.logMsg(1, DL, "monThread: accept connection from " + 
+              script.log(1, "monThread: accept connection from " + 
                           repr(addr))
               can_read.append(new_conn)
 
             else:
               message = handle.recv(4096)
               message = message.strip()
-              spip.logMsg(3, DL, "monThread: message='" + message+"'")
+              script.log(3, "monThread: message='" + message+"'")
               if (len(message) == 0):
-                spip.logMsg(1, DL, "monThread: closing connection")
+                script.log(1, "monThread: closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
@@ -118,7 +121,7 @@ class monThread (threading.Thread):
 
     except:
       self.quit_event.set()
-      spip.logMsg(1, DL, "monThread: exception caught: " +
+      script.log(1, "monThread: exception caught: " +
                   str(sys.exc_info()[0]))
       print '-'*60
       traceback.print_exc(file=sys.stdout)
@@ -130,102 +133,79 @@ class monThread (threading.Thread):
 ######################################################################
 # main
 
-def main (argv):
+def main (self, id):
 
-  # this should come from command line argument
-  stream_id = argv[1]
-
-  # read configuration file
-  cfg = spip.getConfig()
-
-  control_thread = []
   mon_threads = []
 
-  log_file  = cfg["SERVER_LOG_DIR"] + "/" + SCRIPT + ".log"
-  pid_file  = cfg["SERVER_CONTROL_DIR"] + "/" + SCRIPT + ".pid"
-  quit_file = cfg["SERVER_CONTROL_DIR"] + "/"  + SCRIPT + ".quit"
+  # get a list of data block ids
+  db_ids = self.cfg["DATA_BLOCK_IDS"].split(" ")
+  db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
+  num_stream = self.cfg["NUM_STREAM"]
+  db_keys = []
 
-  if os.path.exists(quit_file):
-    sys.stderr.write("quit file existed at launch: " + quit_file)
-    sys.exit(1)
+  for db_id in db_ids:
+    db_key = getDBKey (db_prefix, id, num_stream, db_id)
+    self.log (0, "spip_smrb: db_key for " + db_id + " is " + db_key)
 
-  # become a daemon
-  # spip.daemonize(pid_file, log_file)
+    nbufs = self.cfg["BLOCK_NBUFS_" + db_id]
+    bufsz = self.cfg["BLOCK_BUFSZ_" + db_id]
+    nread = self.cfg["BLOCK_NREAD_" + db_id]
+    page  = self.cfg["BLOCK_PAGE_" + db_id]
 
-  try:
+    cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
+    if page:
+      cmd += " -p -l"
+    rval, lines = self.system (cmd)
 
-    spip.logMsg(1, DL, "STARTING SCRIPT")
+    db_keys.append(db_key)
 
-    quit_event = threading.Event()
+  # after creation, launch thread to monitor smrb, maintaining state
+  mon_thread = monThread (db_keys, self)
+  mon_thread.start()
 
-    def signal_handler(signal, frame):
-      spip.logMsg(0, DL, "spip_smrb: CTRL+C")
-      quit_event.set()
+  while (not self.quit_event.isSet()):
+    time.sleep(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
+  for db_key in db_keys:
+    cmd = "dada_db -k " + db_key + " -d"
+    rval, lines = self.system (cmd)
 
-    # start a control thread to handle quit requests
-    control_thread = spip.controlThread(quit_file, pid_file, quit_event, DL)
-    control_thread.start()
-
-    # get a list of data block ids
-    db_ids = cfg["DATA_BLOCK_IDS"].split(" ")
-    db_prefix = cfg["DATA_BLOCK_PREFIX"]
-    num_stream = cfg["NUM_STREAM"]
-    db_keys = []
-
-    for db_id in db_ids:
-      db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
-      spip.logMsg(0, DL, "spip_smrb: db_key for " + db_id + " is " + db_key)
-
-      nbufs = cfg["BLOCK_NBUFS_" + db_id]
-      bufsz = cfg["BLOCK_BUFSZ_" + db_id]
-      nread = cfg["BLOCK_NREAD_" + db_id]
-      page  = cfg["BLOCK_PAGE_" + db_id]
-
-      cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
-      if page:
-        cmd += " -p -l"
-      rval, lines = spip.system (cmd, 2 <= DL)
-
-      db_keys.append(db_key)
-
-    # after creation, launch thread to monitor smrb, maintaining state
-    mon_thread = monThread(db_keys, stream_id, quit_event)
-    mon_thread.start()
-    mon_threads.append(mon_thread)
-
-    while (not quit_event.isSet()):
-      time.sleep(1)
-
-    for db_id in db_ids:
-      db_key = getDBKey (db_prefix, stream_id, num_stream, db_id)
-      cmd = "dada_db -k " + db_key + " -d"
-      rval, lines = spip.system (cmd, 2 <= DL)
-
-  except:
-    spip.logMsg(-2, DL, "main: exception caught: " + str(sys.exc_info()[0]))
-    print '-'*60
-    traceback.print_exc(file=sys.stdout)
-    print '-'*60
-    quit_event.set()
-
-  # join threads
-  spip.logMsg(2, DL, "main: joining control thread")
-  if (control_thread):
-    control_thread.join()
-
-  spip.logMsg(2, DL, "main: joining " + str(len(db_ids)) + " mon threads")
-  for i in range(len(db_ids)):
-    mon_threads[i].join()
-
-  spip.logMsg(1, DL, "STOPPING SCRIPT")
+  if mon_thread:
+    self.log(2, "joining mon thread")
+    mon_thread.join()
+#
+# main
+###############################################################################
 
 if __name__ == "__main__":
+
   if len(sys.argv) != 2:
     print "ERROR: 1 command line argument expected"
     sys.exit(1)
 
-  main (sys.argv)
+  # this should come from command line argument
+  stream_id = sys.argv[1]
+
+  script = StreamDaemon ("spip_smrb", stream_id)
+
+  script.configure (DAEMONIZE, DL, "smrb", "smrb")
+
+  script.log(1, "STARTING SCRIPT")
+
+  try:
+
+    main (script, stream_id)
+
+  except:
+
+    script.quit_event.set()
+
+    script.log(-2, "exception caught: " + str(sys.exc_info()[0]))
+    print '-'*60
+    traceback.print_exc(file=sys.stdout)
+    print '-'*60
+
+  script.log(1, "STOPPING SCRIPT")
+  script.conclude()
   sys.exit(0)
 
