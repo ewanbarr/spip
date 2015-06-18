@@ -40,18 +40,3 @@ void spip::CustomUDPGenerator::encode_header (void * buf, size_t bufsz, uint64_t
   b[6] = (uint8_t) (packet_number>>8);
   b[7] = (uint8_t) (packet_number);
 }
-
-void spip::CustomUDPGenerator::decode_header (void * buf, size_t bufsz, uint64_t * packet_number)
-{
-  char * b = (char *) buf;
-  uint64_t tmp = 0;
-  unsigned i = 0;
-  *packet_number = 0;
-  for (i = 0; i < 8; i++ )
-  {
-    tmp = 0;
-    tmp = b[8 - i - 1];
-    *packet_number |= (tmp << ((i & 7) << 3));
-  }
-}
-

@@ -1,11 +1,11 @@
 
 lib_LTLIBRARIES = libska1.la
 
-libska1_headers = spip/CustomUDPGenerator.h 
+libska1_headers = spip/CustomUDPGenerator.h spip/CustomUDPReceiver.h
 
-libska1_la_SOURCES = CustomUDPGenerator.C
+libska1_la_SOURCES = CustomUDPGenerator.C CustomUDPReceiver.C
 
-bin_PROGRAMS = ska1_udpgen
+bin_PROGRAMS = ska1_udpgen ska1_udprecv
 
 AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I/home/spip/linux_64/include
 

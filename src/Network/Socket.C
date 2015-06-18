@@ -14,6 +14,7 @@
 
 #include <stdexcept>
 #include <cstdlib>
+#include <iostream>
 
 using namespace std;
 
@@ -44,6 +45,7 @@ void spip::Socket::resize (size_t new_bufsz)
 {
   if (new_bufsz > bufsz)
   {
+    cerr << "spip::Socket::resize old=" << bufsz << " new=" << new_bufsz << endl;
     bufsz = new_bufsz;
     buf = realloc(buf, bufsz);
   }

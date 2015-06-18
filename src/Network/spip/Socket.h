@@ -32,6 +32,8 @@ namespace spip {
 
       char get_blocking () { return ! non_block; };
 
+      int get_fd () { return fd; };
+
       void * get_buf () { return buf; };
 
       size_t get_bufsz () { return bufsz; };

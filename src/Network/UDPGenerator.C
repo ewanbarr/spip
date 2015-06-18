@@ -77,12 +77,18 @@ void spip::UDPGenerator::prepare (std::string ip_address, int port)
   sock = new UDPSocketSend();
   sock->open (ip_address, port);
   sock->resize (packet_header_size + packet_data_size);
+
+  // initialize a stats class
+  stats = new UDPStats(packet_header_size, packet_data_size);
 }
 
 // transmit UDP packets for the specified time at the specified data rate
 void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 {
   uint64_t bytes_to_send = tobs * bytes_per_second;
+  if (data_rate > 0)
+    bytes_to_send = tobs * data_rate;
+
   uint64_t packets_to_send = bytes_to_send / packet_data_size;
   uint64_t packets_per_second = (uint64_t) (data_rate / (float) packet_data_size);
   double   sleep_time = (1.0 / packets_per_second) * 1000000.0;
@@ -109,6 +115,7 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   char wait = 1;
 
+  cerr << "spip::UDPGenerator::transmit bytes_per_second=" << bytes_per_second << endl;
   cerr << "spip::UDPGenerator::transmit bytes_to_send=" << bytes_to_send << endl;
   cerr << "spip::UDPGenerator::transmit packets_to_send=" << packets_to_send<< endl;
   cerr << "spip::UDPGenerator::transmit packets_per_second=" << packets_per_second<< endl;
@@ -117,8 +124,6 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   while (total_bytes_sent < bytes_to_send)
   {
-    //cerr << total_bytes_sent << " / " << bytes_to_send << endl;
-    // dervied classes implement this in their own way
     encode_header (buf, bufsz, packet_number);
 
     // optionally we can encode semi-realistic noise into the data
@@ -126,10 +131,12 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
     uint64_t bytes_sent = sock->send();
 
+    stats->increment();
+
     // determine the desired time to wait un
     micro_seconds += sleep_time;
     wait = 1;
-    
+   
     while (wait)
     {
       gettimeofday (&timestamp, 0);

@@ -10,21 +10,22 @@
 
 #include "spip/CustomUDPGenerator.h"
 
+#include <pthread.h>
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
 
 #include <iostream>
 
-#define SKA1_DEFAULT_UDP_PORT 4003
-
 void usage();
+void * stats_thread (void * arg);
+char quit_threads = 0;
 
 using namespace std;
 
 int main(int argc, char *argv[])
 {
-  spip::CustomUDPGenerator * custom = 0;
+  spip::UDPGenerator * gen = 0;
 
   char * header_file = 0;
 
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 
       case 'f':
         if (strcmp(optarg, "custom") == 0)
-          custom = new spip::CustomUDPGenerator;
+          gen = (spip::UDPGenerator *) new spip::CustomUDPGenerator;
         else
         {
           cerr << "ERROR: format " << optarg << " not supported" << endl;
@@ -116,7 +117,7 @@ int main(int argc, char *argv[])
   char * header = (char *) malloc (sizeof(char) * DADA_DEFAULT_HEADER_SIZE);
   if (header_file == NULL)
   {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
+    cerr << "ERROR: could not allocate memory for header buffer" << endl;
     return (EXIT_FAILURE);
   }
 
@@ -125,36 +126,51 @@ int main(int argc, char *argv[])
   if (fileread (header_file, header, DADA_DEFAULT_HEADER_SIZE) < 0)
   {
     free (header);
-    fprintf (stderr, "ERROR: could not read ASCII header from %s\n", header_file);
+    cerr << "ERROR: could not read ASCII header from " << header_file << endl;
     return (EXIT_FAILURE);
   }
 
-  if (custom)
+  if (verbose)
+    cerr << "ska1_udpgen: configuring based on header" << endl;
+  gen->configure (header);
+
+  if (verbose)
+    cerr << "ska1_udpgen: allocating signal" << endl;
+  gen->allocate_signal ();
+
+  if (verbose)
+    cerr << "ska1_udpgen: preparing for transmission to " << dest_host << ":" << dest_port << endl;
+  gen->prepare (std::string(dest_host), dest_port);
+
+  if (verbose)
+    cerr << "ska1_udpgen: starting stats thread" << endl;
+  pthread_t stats_thread_id;
+  int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) gen);
+  if (rval != 0)
   {
-    if (verbose)
-      cerr << "ska1_udpgen: configuring based on header" << endl;
-    custom->configure (header);
-    if (verbose)
-      cerr << "ska1_udpgen: allocating signal" << endl;
-    custom->allocate_signal ();
-    if (verbose)
-      cerr << "ska1_udpgen: preparing for transmission to " << dest_host << ":" << dest_port << endl;
-    custom->prepare (std::string(dest_host), dest_port);
-    if (verbose)
-      cerr << "ska1_udpgen: transmitting" << endl;
-    custom->transmit (transmission_time, data_rate_mbits * 1000000);
+    cerr << "ska1_udpgen: failed to start stats thread" << endl;
+    return (EXIT_FAILURE);
   }
 
-  cerr << "ska1_udpgen: deleting custom" << endl;
+  if (verbose)
+    cerr << "ska1_udpgen: transmitting for " << transmission_time << " secoonds at " << data_rate_mbits << " mb/s" << endl;
+  gen->transmit (transmission_time, data_rate_mbits * 1000000);
 
-  delete custom;
+  quit_threads = 1;
+
+  if (verbose)
+    cerr << "ska1_udpgen: joining stats_thread" << endl;
+  void * result;
+  pthread_join (stats_thread_id, &result);
+
+  delete gen;
 
   return 0;
 }
 
 void usage() 
 {
-  cout << "ska1_udpgen_custom [options] header host\n"
+  cout << "ska1_udpgen [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
     "  -f format   generate UDP data of format [custom spead vdif]\n"
@@ -165,5 +181,43 @@ void usage()
     "  -r rate     transmit at rate Mib/s [default 10]\n"
     "  -v          verbose output\n"
     << endl;
+}
+
+/* 
+ *  Thread to print simple capture statistics
+ */
+void * stats_thread (void * arg) 
+{
+  spip::UDPGenerator * gen = (spip::UDPGenerator *) arg;
+
+  uint64_t b_sent_total = 0;
+  uint64_t b_sent_1sec = 0;
+  uint64_t b_sent_curr = 0;
+
+  uint64_t s_sent_total = 0;
+  uint64_t s_sent_1sec = 0;
+
+  float gb_sent_ps = 0;
+  float mb_sent_ps = 0;
+
+  while (!quit_threads)
+  {
+    // get a snapshot of the data as quickly as possible
+    b_sent_curr = gen->get_stats()->get_data_transmitted();
+
+    // calc the values for the last second
+    b_sent_1sec = b_sent_curr - b_sent_total;
+
+    // update the totals
+    b_sent_total = b_sent_curr;
+
+    mb_sent_ps = (double) b_sent_1sec / 1000000;
+    gb_sent_ps = (mb_sent_ps * 8)/1000;
+
+    // determine how much memory is free in the receivers
+    fprintf (stderr,"Rate=%6.3f [Gb/s]\n", gb_sent_ps);
+
+    sleep(1);
+  }
 }
 
