@@ -21,6 +21,8 @@ namespace spip {
 
       void dropped ();
 
+      void sleeps (uint64_t nsleeps);
+
       void reset ();
 
       uint64_t get_data_transmitted () { return pkts_transmitted * data; };
@@ -35,6 +37,8 @@ namespace spip {
 
       uint64_t get_payload_dropped () { return pkts_dropped * payload; };
 
+      uint64_t get_nsleeps() { return nsleeps; };
+
     private:
 
       unsigned data;
@@ -44,6 +48,8 @@ namespace spip {
       uint64_t pkts_transmitted;
 
       uint64_t pkts_dropped;
+
+      uint64_t nsleeps;
 
   };
 
