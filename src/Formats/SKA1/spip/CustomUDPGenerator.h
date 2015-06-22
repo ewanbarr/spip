@@ -17,7 +17,7 @@ namespace spip {
 
       void generate_signal ();
 
-      void encode_header (void * buf, size_t bufsz, uint64_t packet_number);
+      inline void encode_header (void * buf, size_t bufsz, uint64_t packet_number);
 
     private:
 

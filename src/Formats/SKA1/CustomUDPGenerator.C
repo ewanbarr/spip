@@ -28,7 +28,7 @@ void spip::CustomUDPGenerator::generate_signal ()
 {
 }
 
-void spip::CustomUDPGenerator::encode_header (void * buf, size_t bufsz, uint64_t packet_number)
+inline void spip::CustomUDPGenerator::encode_header (void * buf, size_t bufsz, uint64_t packet_number)
 {
   char * b = (char *) buf;
   b[0] = (uint8_t) (packet_number>>56);
