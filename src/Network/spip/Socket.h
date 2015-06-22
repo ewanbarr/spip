@@ -5,8 +5,6 @@
 #include <cstddef>
 #include <string>
 
-#include "spip/Socket.h"
-
 namespace spip {
 
   class Socket {
