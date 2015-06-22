@@ -10,6 +10,7 @@
 #include "futils.h"
 
 #include "spip/CustomUDPGenerator.h"
+#include "spip/StandardUDPGenerator.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -65,6 +66,8 @@ int main(int argc, char *argv[])
       case 'f':
         if (strcmp(optarg, "custom") == 0)
           type = new string("custom");
+        else if (strcmp(optarg, "standard") == 0)
+          type = new string("standard");
         else
         {
           cerr << "ERROR: format " << optarg << " not supported" << endl;
@@ -182,7 +185,7 @@ void usage()
   cout << "ska1_udpgen [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
-    "  -f format   generate UDP data of format [custom spead vdif]\n"
+    "  -f format   generate UDP data of format [custom standard spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"
