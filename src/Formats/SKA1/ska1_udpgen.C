@@ -6,6 +6,7 @@
  ****************************************************************************/
 
 #include "dada_def.h"
+#include "dada_affinity.h"
 #include "futils.h"
 
 #include "spip/CustomUDPGenerator.h"
@@ -27,6 +28,8 @@ int main(int argc, char *argv[])
 {
   spip::UDPGenerator * gen = 0;
 
+  string * type;
+
   char * header_file = 0;
 
   char * src_host = 0;
@@ -41,7 +44,7 @@ int main(int argc, char *argv[])
   unsigned transmission_time = 5;   
 
   // data rate at which to transmit
-  float data_rate_mbits = 64;
+  float data_rate_gbits = 0.5;
 
   // core on which to bind thread operations
   int core = -1;
@@ -61,7 +64,7 @@ int main(int argc, char *argv[])
 
       case 'f':
         if (strcmp(optarg, "custom") == 0)
-          gen = (spip::UDPGenerator *) new spip::CustomUDPGenerator;
+          type = new string("custom");
         else
         {
           cerr << "ERROR: format " << optarg << " not supported" << endl;
@@ -83,7 +86,7 @@ int main(int argc, char *argv[])
         break;
 
       case 'r':
-        data_rate_mbits = atof(optarg);
+        data_rate_gbits = atof(optarg);
         break;
 
       case 'v':
@@ -96,6 +99,12 @@ int main(int argc, char *argv[])
         break;
     }
   }
+
+  if (core >= 0)
+    dada_bind_thread_to_core (core);
+
+  if (type->compare("custom") == 0)
+    gen = (spip::UDPGenerator *) new spip::CustomUDPGenerator;
 
   if (verbose)
     cerr << "ska1_udpgen: parsed command line options" << endl;
@@ -153,8 +162,8 @@ int main(int argc, char *argv[])
   }
 
   if (verbose)
-    cerr << "ska1_udpgen: transmitting for " << transmission_time << " secoonds at " << data_rate_mbits << " mb/s" << endl;
-  gen->transmit (transmission_time, data_rate_mbits * 1000000);
+    cerr << "ska1_udpgen: transmitting for " << transmission_time << " seconds at " << data_rate_gbits << " Gib/s" << endl;
+  gen->transmit (transmission_time, data_rate_gbits * 1e9);
 
   quit_threads = 1;
 
@@ -178,7 +187,7 @@ void usage()
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"
     "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
-    "  -r rate     transmit at rate Mib/s [default 10]\n"
+    "  -r rate     transmit at rate Gib/s [default 0.5]\n"
     "  -v          verbose output\n"
     << endl;
 }

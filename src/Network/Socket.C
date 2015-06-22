@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <numa.h>
 
 #include <stdexcept>
 #include <cstdlib>
@@ -23,7 +24,12 @@ spip::Socket::Socket ()
   fd = 0;
 
   bufsz = 1500;               // standard MTU on most networks
-  buf = malloc(bufsz);
+  buf = numa_alloc_local (bufsz);
+  if (!buf)
+  {
+    cerr << "spip::Socket::Socket numa_alloc_local failed" << endl;
+    buf = 0;
+  }
 }
 
 spip::Socket::~Socket ()
@@ -31,7 +37,7 @@ spip::Socket::~Socket ()
   close_me();
 
   if (buf)
-    free (buf);
+    numa_free (buf, bufsz);
 }
 
 void spip::Socket::close_me ()
@@ -46,8 +52,11 @@ void spip::Socket::resize (size_t new_bufsz)
   if (new_bufsz > bufsz)
   {
     cerr << "spip::Socket::resize old=" << bufsz << " new=" << new_bufsz << endl;
+    numa_free (buf, bufsz);
     bufsz = new_bufsz;
-    buf = realloc(buf, bufsz);
+    buf= numa_alloc_local (bufsz);
+    if (!buf)
+      cerr << "spip::Socket::resize numa_alloc_local failed" << endl;
   }
 }
 

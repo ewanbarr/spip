@@ -82,16 +82,28 @@ void spip::UDPGenerator::prepare (std::string ip_address, int port)
   stats = new UDPStats(packet_header_size, packet_data_size);
 }
 
-// transmit UDP packets for the specified time at the specified data rate
-void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
+// transmit UDP packets for the specified time at the specified data rate [b/s]
+void spip::UDPGenerator::transmit (unsigned tobs, float data_rate) 
 {
+  cerr << "spip::UDPGenerator::transmit tobs=" << tobs << " data_rate=" 
+       << data_rate << " bytes_per_second=" << bytes_per_second << endl;
   uint64_t bytes_to_send = tobs * bytes_per_second;
+
   if (data_rate > 0)
-    bytes_to_send = tobs * data_rate;
+    bytes_to_send = tobs * (data_rate/8);
+
+  cerr << "spip::UDPGenerator::transmit bytes_to_send=" << bytes_to_send << endl;
 
   uint64_t packets_to_send = bytes_to_send / packet_data_size;
-  uint64_t packets_per_second = (uint64_t) (data_rate / (float) packet_data_size);
-  double   sleep_time = (1.0 / packets_per_second) * 1000000.0;
+
+  uint64_t packets_per_second = 0;
+  double   sleep_time = 0;
+
+  if (data_rate > 0)
+  {
+    packets_per_second = (uint64_t) ((data_rate/8) / (float) packet_data_size);
+    sleep_time = (1.0 / packets_per_second) * 1000000.0;
+  }
 
   uint64_t packet_number = 0;
 
@@ -135,15 +147,19 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
     // determine the desired time to wait un
     micro_seconds += sleep_time;
-    wait = 1;
-   
-    while (wait)
-    {
-      gettimeofday (&timestamp, 0);
-      micro_seconds_elapsed = ((timestamp.tv_sec - start_second) * 1000000) + timestamp.tv_usec;
 
-      if (micro_seconds_elapsed > micro_seconds)
-        wait = 0;
+    if (data_rate)
+    {
+      wait = 1;
+   
+      while (wait)
+      {
+        gettimeofday (&timestamp, 0);
+        micro_seconds_elapsed = ((timestamp.tv_sec - start_second) * 1000000) + timestamp.tv_usec;
+
+        if (micro_seconds_elapsed > micro_seconds)
+          wait = 0;
+      }
     }
 
     total_bytes_sent += packet_data_size;
