@@ -20,7 +20,9 @@ namespace spip {
       void open (std::string, int);
 
       // send the contents of buf (bufsz bytes)
-      size_t send ();
+      inline size_t send () { sendto(fd, buf, bufsz, 0, sock_addr, sock_size); };
+
+      struct in_addr * atoaddr (const char *address) ;
 
     private:
 

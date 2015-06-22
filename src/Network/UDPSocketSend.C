@@ -8,6 +8,7 @@
 #include "spip/UDPSocketSend.h"
 
 #include <arpa/inet.h>
+#include <netdb.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -33,14 +34,30 @@ void spip::UDPSocketSend::open (string ip_address, int port)
   spip::UDPSocket::open (port);
 
   // transmitting sockets must have an IP specified
-  udp_sock.sin_addr.s_addr = inet_addr (ip_address.c_str());
+  struct in_addr *addr;
+  addr = atoaddr (ip_address.c_str());
+  udp_sock.sin_addr.s_addr = addr->s_addr;
 
-  resize (9000);
+  //resize (9000);
 }
 
-size_t spip::UDPSocketSend::send () 
+struct in_addr * spip::UDPSocketSend::atoaddr (const char *address) 
 {
-  size_t bytes_sent = sendto(fd, buf, bufsz, 0, sock_addr, sock_size);
-  return bytes_sent;
+  struct hostent *host;
+  static struct in_addr saddr;
+
+  /* First try it as aaa.bbb.ccc.ddd. */
+  saddr.s_addr = inet_addr(address);
+  if ((int) saddr.s_addr != -1)
+  {
+    return &saddr;
+  }
+  host = gethostbyname(address);
+  if (host != NULL) 
+  {
+    return (struct in_addr *) *host->h_addr_list;
+  }
+  return NULL;
 }
+
 
