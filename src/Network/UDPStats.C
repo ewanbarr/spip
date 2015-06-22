@@ -28,6 +28,7 @@ void spip::UDPStats::reset ()
 {
   pkts_transmitted = 0;
   pkts_dropped = 0;
+  nsleeps = 0;
 }
 
 void spip::UDPStats::increment ()
@@ -38,4 +39,9 @@ void spip::UDPStats::increment ()
 void spip::UDPStats::dropped ()
 {
   pkts_dropped ++;
+}
+
+void spip::UDPStats::sleeps (uint64_t to_add)
+{
+  nsleeps += to_add;
 }
