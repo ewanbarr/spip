@@ -54,8 +54,15 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
 {
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
+
   sock->open (ip_address, port);
+  
+  sock->set_block ();
+
   sock->resize (packet_header_size + packet_data_size);
+
+  // this should not be required when using VMA offloading
+  //sock->resize_kernel_buffer (4*1024*1024);
 
   stats = new UDPStats (packet_header_size, packet_data_size);
 }
@@ -64,31 +71,40 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
 void spip::UDPReceiver::receive ()
 {
   uint64_t packet_number = 0;
-  uint64_t prev_packet_number = 0;
+  int64_t prev_packet_number = -1;
 
   int fd = sock->get_fd();
   void * buf = sock->get_buf();
   size_t bufsz = sock->get_bufsz();
-
-  cerr << "spip::UDPReceiver::receive buf=" << buf << " bufsz=" << bufsz << endl;
 
   uint64_t total_bytes_recvd = 0;
 
   char have_packet;
   size_t got;
   char cont = 1;
-  uint64_t nsleeps = 0;
+  uint64_t nsleeps;
+
+  socklen_t size = sizeof(struct sockaddr);
+  struct sockaddr_in client_addr;
 
   while (cont)
   {
     have_packet = 0;
+    nsleeps = 0;
     while (!have_packet && cont)
     {
-      got = recvfrom (fd, buf, bufsz, 0, NULL, NULL);
+      got = recvfrom (fd, buf, bufsz, 0, (struct sockaddr *)&client_addr, &size);
       if (got == bufsz)
         have_packet = 1;
       else if (got == -1)
+      {
         nsleeps++;
+        if (nsleeps > 1000)
+        {
+          stats->sleeps(nsleeps);
+          nsleeps = 0;
+        }
+      }
       else
       {
         cerr << "spip::UDPReceiver::receive recvfrom failed got=" << got << endl;
@@ -98,19 +114,19 @@ void spip::UDPReceiver::receive ()
 
     decode_header (buf, bufsz, &packet_number);
 
-    if (packet_number && packet_number == prev_packet_number + 1)
+    if (packet_number == (1 + prev_packet_number))
       stats->increment();
     else
     {
-      //cerr << "expected " << prev_packet_number + 1 << " got " << packet_number << endl;
       stats->dropped();
     }
+
+    stats->sleeps(nsleeps);
+
     prev_packet_number = packet_number;
 
     total_bytes_recvd += packet_data_size;
     packet_number++;
   }
-
-  cerr << "spip::UDPReceiver::receive transmission done!" << endl;  
 }
 
