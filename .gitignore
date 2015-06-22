@@ -11,7 +11,7 @@ Makefile
 linux_64
 config/test-driver
 .dirstamp
-
+stamp-h1
 aclocal.m4
 autom4te.cache/
 config.h
@@ -34,6 +34,5 @@ config/missing
 config/py-compile
 configure
 libtool
-
 src/Formats/SKA1/ska1_udpgen
 src/Formats/SKA1/ska1_udprecv
