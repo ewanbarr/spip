@@ -7,8 +7,10 @@
 
 #include "dada_def.h"
 #include "futils.h"
+#include "dada_affinity.h"
 
 #include "spip/CustomUDPReceiver.h"
+#include "spip/StandardUDPReceiver.h"
 
 #include <unistd.h>
 #include <signal.h>
@@ -56,6 +58,8 @@ int main(int argc, char *argv[])
       case 'f':
         if (strcmp(optarg, "custom") == 0)
           recv = (spip::UDPReceiver *) new spip::CustomUDPReceiver();
+        else if (strcmp(optarg, "standard") == 0)
+          recv = (spip::UDPReceiver *) new spip::StandardUDPReceiver();
         else
         {
           cerr << "ERROR: format " << optarg << " not supported" << endl;
@@ -85,8 +89,12 @@ int main(int argc, char *argv[])
     }
   }
 
-  if (verbose)
-    cerr << "ska1_udprecv: parsed command line options" << endl;
+  if (!recv)
+  {
+    cerr << "ska1_udprecv: select one format [-f]" << endl;
+    return (EXIT_FAILURE);
+  }
+
 
   // Check arguments
   if ((argc - optind) != 2) 
@@ -95,8 +103,11 @@ int main(int argc, char *argv[])
     usage();
     return EXIT_FAILURE;
   }
-
+ 
   signal(SIGINT, signal_handler);
+ 
+  if (core >= 0)
+    dada_bind_thread_to_core (core);
 
   // header the this data stream
   header_file = strdup (argv[optind]);
@@ -159,7 +170,7 @@ void usage()
   cout << "ska1_udprecv [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
-    "  -f format   recverate UDP data of format [custom spead vdif]\n"
+    "  -f format   recverate UDP data of format [standard custom spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"
@@ -194,41 +205,38 @@ void * stats_thread (void * arg)
   spip::UDPReceiver * recv = (spip::UDPReceiver *) arg;
 
   uint64_t b_recv_total = 0;
-  uint64_t b_recv_1sec = 0;
   uint64_t b_recv_curr = 0;
+  uint64_t b_recv_1sec;
 
-  uint64_t b_drop_total = 0;
-  uint64_t b_drop_1sec = 0;
-  uint64_t b_drop_curr = 0;
+  uint64_t s_curr = 0;
+  uint64_t s_total = 0;
+  uint64_t s_1sec;
+
   uint64_t p_drop_curr = 0;
 
   float gb_recv_ps = 0;
   float mb_recv_ps = 0;
-  float gb_drop_ps = 0;
-  float mb_drop_ps = 0;
 
   while (!quit_threads)
   {
     // get a snapshot of the data as quickly as possible
     b_recv_curr = recv->get_stats()->get_data_transmitted();
     p_drop_curr = recv->get_stats()->get_packets_dropped();
-    b_drop_curr = recv->get_stats()->get_data_dropped();
+    s_curr = recv->get_stats()->get_nsleeps();
 
     // calc the values for the last second
     b_recv_1sec = b_recv_curr - b_recv_total;
-    b_drop_1sec = b_drop_curr - b_drop_total;
+    s_1sec = s_curr - s_total;
 
     // update the totals
     b_recv_total = b_recv_curr;
-    b_drop_total = b_drop_curr;
+    s_total = s_curr;
 
     mb_recv_ps = (double) b_recv_1sec / 1000000;
     gb_recv_ps = (mb_recv_ps * 8)/1000;
-    mb_drop_ps = (double) b_drop_1sec / 1000000;
-    gb_drop_ps = (mb_drop_ps * 8)/1000;
 
     // determine how much memory is free in the receivers
-    fprintf (stderr,"Recv %6.3f [Gb/s] Dropped %lu packets\n", gb_recv_ps, p_drop_curr);
+    fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu packets\n", gb_recv_ps, s_1sec, p_drop_curr);
 
     sleep(1);
   }
