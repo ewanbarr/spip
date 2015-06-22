@@ -1,9 +1,9 @@
 
 lib_LTLIBRARIES = libska1.la
 
-libska1_headers = spip/CustomUDPGenerator.h spip/CustomUDPReceiver.h
+libska1_headers = spip/CustomUDPGenerator.h spip/CustomUDPReceiver.h spip/StandardUDPReceiver.h spip/StandardUDPGenerator.h
 
-libska1_la_SOURCES = CustomUDPGenerator.C CustomUDPReceiver.C
+libska1_la_SOURCES = CustomUDPGenerator.C CustomUDPReceiver.C StandardUDPReceiver.C StandardUDPGenerator.C
 
 bin_PROGRAMS = ska1_udpgen ska1_udprecv
 
