@@ -32,5 +32,6 @@ AC_CONFIG_FILES([Makefile
   src/Makefile
   src/Network/Makefile
   src/Formats/SKA1/Makefile
+  src/Dada/Makefile
   scripts/Makefile])
 AC_OUTPUT 

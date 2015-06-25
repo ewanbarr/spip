@@ -9,8 +9,8 @@
 #include "dada_affinity.h"
 #include "futils.h"
 
-#include "spip/CustomUDPGenerator.h"
-#include "spip/StandardUDPGenerator.h"
+#include "spip/UDPGenerator.h"
+#include "spip/UDPFormatCustom.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -27,9 +27,7 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
-  spip::UDPGenerator * gen = 0;
-
-  string * type;
+  spip::UDPGenerator * gen = new spip::UDPGenerator();
 
   char * header_file = 0;
 
@@ -65,9 +63,7 @@ int main(int argc, char *argv[])
 
       case 'f':
         if (strcmp(optarg, "custom") == 0)
-          type = new string("custom");
-        else if (strcmp(optarg, "standard") == 0)
-          type = new string("standard");
+          gen->set_format (new spip::UDPFormatCustom());
         else
         {
           cerr << "ERROR: format " << optarg << " not supported" << endl;
@@ -105,9 +101,6 @@ int main(int argc, char *argv[])
 
   if (core >= 0)
     dada_bind_thread_to_core (core);
-
-  if (type->compare("custom") == 0)
-    gen = (spip::UDPGenerator *) new spip::CustomUDPGenerator;
 
   if (verbose)
     cerr << "ska1_udpgen: parsed command line options" << endl;

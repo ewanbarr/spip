@@ -21,6 +21,8 @@ namespace spip {
 
       void dropped ();
 
+      void dropped (uint64_t ndropped);
+
       void sleeps (uint64_t nsleeps);
 
       void reset ();

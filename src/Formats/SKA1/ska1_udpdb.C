@@ -9,7 +9,7 @@
 #include "futils.h"
 #include "dada_affinity.h"
 
-#include "spip/UDPReceiver.h"
+#include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatCustom.h"
 
 #include <unistd.h>
@@ -19,17 +19,22 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 
 void usage();
 void * stats_thread (void * arg);
 void signal_handler (int signal_value);
+
+spip::UDPReceiveDB * udpdb;
 char quit_threads = 0;
 
 using namespace std;
 
-int main(int argc, char *argv[])
+int main(int argc, char *argv[]) try
 {
-  spip::UDPReceiver * recv = new spip::UDPReceiver();
+  string key = "dada";
+
+  string format = "standard";
 
   char * header_file = 0;
 
@@ -47,7 +52,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hp:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:k:hp:v")) != EOF) 
   {
     switch(c) 
     {
@@ -56,13 +61,11 @@ int main(int argc, char *argv[])
         break;
 
       case 'f':
-        if (strcmp(optarg, "custom") == 0)
-          recv->set_format (new spip::UDPFormatCustom());
-        else
-        {
-          cerr << "ERROR: format " << optarg << " not supported" << endl;
-          return (EXIT_FAILURE);
-        }
+        format = optarg;
+        break;
+
+      case 'k':
+        key = optarg;
         break;
 
       case 'h':
@@ -87,12 +90,19 @@ int main(int argc, char *argv[])
     }
   }
 
-  if (!recv)
+  // create a UDP recevier that writes to a data block
+  udpdb = new spip::UDPReceiveDB (key.c_str());
+
+  if (format.compare("standard") == 0)
+    ;
+  else if (format.compare("custom") == 0)
+    udpdb->set_format (new spip::UDPFormatCustom());
+  else
   {
-    cerr << "ska1_udprecv: select one format [-f]" << endl;
+    cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
+    delete udpdb;
     return (EXIT_FAILURE);
   }
-
 
   // Check arguments
   if ((argc - optind) != 2) 
@@ -121,7 +131,7 @@ int main(int argc, char *argv[])
   }
 
   if (verbose)
-    cerr << "ska1_udprecv: reading header from " << header_file << endl;
+    cerr << "ska1_udpdb: reading header from " << header_file << endl;
   if (fileread (header_file, header, DADA_DEFAULT_HEADER_SIZE) < 0)
   {
     free (header);
@@ -130,49 +140,58 @@ int main(int argc, char *argv[])
   }
 
   if (verbose)
-    cerr << "ska1_udprecv: configuring based on header" << endl;
-  recv->configure (header);
+    cerr << "ska1_udpdb: configuring based on header" << endl;
+  udpdb->configure (header);
 
   if (verbose)
-    cerr << "ska1_udprecv: listening for packets on " << host << ":" << port << endl;
-  recv->prepare (std::string(host), port);
+    cerr << "ska1_udpdb: listening for packets on " << host << ":" << port << endl;
+  udpdb->prepare (std::string(host), port);
 
   if (verbose)
-    cerr << "ska1_udprecv: starting stats thread" << endl;
+    cerr << "ska1_udpdb: writing header to data block" << endl;
+  udpdb->open (header);
+
+  if (verbose)
+    cerr << "ska1_udpdb: starting stats thread" << endl;
   pthread_t stats_thread_id;
-  int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) recv);
+  int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) udpdb);
   if (rval != 0)
   {
-    cerr << "ska1_udprecv: failed to start stats thread" << endl;
+    cerr << "ska1_udpdb: failed to start stats thread" << endl;
     return (EXIT_FAILURE);
   }
 
   if (verbose)
-    cerr << "ska1_udprecv: receiving" << endl;
-  recv->receive ();
+    cerr << "ska1_udpdb: receiving" << endl;
+  udpdb->receive ();
 
-  quit_threads = 1;
+  udpdb->close();
 
   if (verbose)
-    cerr << "ska1_udprecv: joining stats_thread" << endl;
+    cerr << "ska1_udpdb: joining stats_thread" << endl;
   void * result;
   pthread_join (stats_thread_id, &result);
 
-  delete recv;
-
-  return 0;
+  delete udpdb;
 }
+  catch (std::exception& exc)
+  {
+    cerr << "ERROR: " << exc.what() << endl;
+    return -1;
+    return 0;
+  }
 
 void usage() 
 {
-  cout << "ska1_udprecv [options] header host\n"
+  cout << "ska1_udpdb [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
-    "  -f format   recverate UDP data of format [standard custom spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
+    "  -f format   UDP data format [standard custom]\n"
+    "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"
-    "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
+    "  -p port     destination udp port [default " << std::dec << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -r rate     transmit at rate Mib/s [default 10]\n"
     "  -v          verbose output\n"
     << endl;
@@ -191,8 +210,8 @@ void signal_handler(int signalValue)
   }
   quit_threads = 1;
 
+  udpdb->stop_capture();
 }
-
 
 
 /* 
@@ -200,7 +219,7 @@ void signal_handler(int signalValue)
  */
 void * stats_thread (void * arg)
 {
-  spip::UDPReceiver * recv = (spip::UDPReceiver *) arg;
+  spip::UDPReceiveDB * recv = (spip::UDPReceiveDB *) arg;
 
   uint64_t b_recv_total = 0;
   uint64_t b_recv_curr = 0;

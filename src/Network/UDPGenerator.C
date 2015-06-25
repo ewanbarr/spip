@@ -20,6 +20,8 @@ spip::UDPGenerator::UDPGenerator()
 {
   signal_buffer = 0;
   signal_buffer_size = 0;
+
+  format = new UDPFormat();
 }
 
 spip::UDPGenerator::~UDPGenerator()
@@ -27,6 +29,9 @@ spip::UDPGenerator::~UDPGenerator()
   if (signal_buffer)
     free (signal_buffer);
   signal_buffer = 0;
+
+  if (format)
+    delete (format);
 }
 
 int spip::UDPGenerator::configure (const char * header)
@@ -71,15 +76,26 @@ void spip::UDPGenerator::allocate_signal()
   }
 }
 
+void spip::UDPGenerator::set_format (UDPFormat * fmt)
+{
+  if (format)
+    delete format;
+  format = fmt;
+}
+
 void spip::UDPGenerator::prepare (std::string ip_address, int port)
 {
   // create and open a UDP sending socket
   sock = new UDPSocketSend();
   sock->open (ip_address, port);
-  sock->resize (packet_header_size + packet_data_size);
+  
+  unsigned header_size = format->get_header_size();
+  unsigned data_size   = format->get_data_size();
+
+  sock->resize (header_size + data_size);
 
   // initialize a stats class
-  stats = new UDPStats(packet_header_size, packet_data_size);
+  stats = new UDPStats(header_size, data_size);
 }
 
 // transmit UDP packets for the specified time at the specified data rate [b/s]
@@ -94,14 +110,14 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   cerr << "spip::UDPGenerator::transmit bytes_to_send=" << bytes_to_send << endl;
 
-  uint64_t packets_to_send = bytes_to_send / packet_data_size;
+  uint64_t packets_to_send = bytes_to_send / format->get_data_size();
 
   uint64_t packets_per_second = 0;
   double   sleep_time = 0;
 
   if (data_rate > 0)
   {
-    packets_per_second = (uint64_t) ((data_rate/8) / (float) packet_data_size);
+    packets_per_second = (uint64_t) ((data_rate/8) / (float) format->get_data_size());
     sleep_time = (1.0 / packets_per_second) * 1000000.0;
   }
 
@@ -136,7 +152,7 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   while (total_bytes_sent < bytes_to_send)
   {
-    encode_header (buf, bufsz, packet_number);
+    format->encode_header (buf, bufsz, packet_number);
 
     // optionally we can encode semi-realistic noise into the data
     //write_data (buf, bufsz, packet_number);
@@ -162,10 +178,15 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
       }
     }
 
-    total_bytes_sent += packet_data_size;
+    total_bytes_sent += format->get_data_size();
     packet_number++;
   }
 
   cerr << "spip::UDPGenerator::transmit transmission done!" << endl;  
+
+  cerr << "spip::UDPGenerator::transmit sending smaller packet!" << endl;
+  sock->resize (format->get_header_size() + format->get_data_size() - 1);
+  format->encode_header (buf, bufsz, packet_number);
+  sock->send();
 }
 

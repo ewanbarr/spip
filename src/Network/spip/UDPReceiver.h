@@ -3,6 +3,7 @@
 #define __UDPReceiver_h
 
 #include "spip/UDPSocketReceive.h"
+#include "spip/UDPFormat.h"
 #include "spip/UDPStats.h"
 
 #include <cstdlib>
@@ -19,10 +20,9 @@ namespace spip {
 
       int configure (const char * header);
 
-      // derived classes must implement this
-      virtual void decode_header (void * buf, size_t bufsz, uint64_t * packet_number) = 0;
-
       void prepare (std::string ip_address, int port);
+
+      void set_format (UDPFormat * fmt);
 
       // transmission thread
       void receive ();
@@ -33,11 +33,9 @@ namespace spip {
 
       UDPSocketReceive * sock;
 
+      UDPFormat * format;
+
       UDPStats * stats;
-
-      size_t packet_header_size;
-
-      size_t packet_data_size;
 
       unsigned nchan;
 

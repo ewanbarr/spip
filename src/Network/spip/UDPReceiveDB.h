@@ -1,43 +1,52 @@
 
-#ifndef __UDPGenerator_h
-#define __UDPGenerator_h
+#ifndef __UDPReceiveDB_h
+#define __UDPReceiveDB_h
 
-#include "spip/UDPSocketSend.h"
+#include "spip/UDPSocketReceive.h"
 #include "spip/UDPFormat.h"
 #include "spip/UDPStats.h"
+#include "spip/DataBlockWrite.h"
 
 #include <cstdlib>
 
 namespace spip {
 
-  class UDPGenerator {
+  class UDPReceiveDB {
 
     public:
 
-      UDPGenerator ();
+      UDPReceiveDB (const char * key_string);
 
-      ~UDPGenerator ();
+      ~UDPReceiveDB ();
 
       int configure (const char * header);
 
-      void allocate_signal ();
-
-      void set_format (UDPFormat * format);
-
       void prepare (std::string ip_address, int port);
 
+      void set_format (UDPFormat * fmt);
+
+      void open (const char * header);
+
+      void close ();
+
       // transmission thread
-      void transmit (unsigned tobs, float data_rate);
+      void receive ();
+
+      void stop_capture () { keep_receiving = false; };
 
       UDPStats * get_stats () { return stats; };
 
     protected:
 
-      UDPSocketSend * sock;
+      UDPSocketReceive * sock;
 
       UDPFormat * format;
 
       UDPStats * stats;
+
+      DataBlockWrite * db;
+
+      bool keep_receiving;
 
       unsigned nchan;
 
@@ -52,10 +61,6 @@ namespace spip {
       float channel_bw;
 
       float tsamp;
-
-      void * signal_buffer;
-
-      size_t signal_buffer_size;
 
       unsigned bits_per_second;
 

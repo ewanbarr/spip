@@ -18,10 +18,12 @@ using namespace std;
 
 spip::UDPReceiver::UDPReceiver()
 {
+  format = new spip::UDPFormat();
 }
 
 spip::UDPReceiver::~UDPReceiver()
 {
+  delete format;
 }
 
 int spip::UDPReceiver::configure (const char * header)
@@ -59,12 +61,19 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
   
   sock->set_block ();
 
-  sock->resize (packet_header_size + packet_data_size);
+  sock->resize (format->get_header_size() + format->get_data_size());
 
   // this should not be required when using VMA offloading
   //sock->resize_kernel_buffer (4*1024*1024);
 
-  stats = new UDPStats (packet_header_size, packet_data_size);
+  stats = new UDPStats (format->get_header_size(), format->get_data_size());
+}
+
+void spip::UDPReceiver::set_format (spip::UDPFormat * fmt)
+{
+  if (format)
+    delete format;
+  format = fmt;
 }
 
 // receive UDP packets for the specified time at the specified data rate
@@ -112,7 +121,7 @@ void spip::UDPReceiver::receive ()
       }
     }
 
-    decode_header (buf, bufsz, &packet_number);
+    format->decode_header (buf, bufsz, &packet_number);
 
     if (packet_number == (1 + prev_packet_number))
       stats->increment();
@@ -124,9 +133,7 @@ void spip::UDPReceiver::receive ()
     stats->sleeps(nsleeps);
 
     prev_packet_number = packet_number;
-
-    total_bytes_recvd += packet_data_size;
-    packet_number++;
+    total_bytes_recvd += format->get_data_size();
   }
 }
 

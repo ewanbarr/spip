@@ -1,13 +1,13 @@
 
 lib_LTLIBRARIES = libska1.la
 
-libska1_headers = spip/CustomUDPGenerator.h spip/CustomUDPReceiver.h spip/StandardUDPReceiver.h spip/StandardUDPGenerator.h
+libska1_headers = spip/UDPFormatCusom.h
 
-libska1_la_SOURCES = CustomUDPGenerator.C CustomUDPReceiver.C StandardUDPReceiver.C StandardUDPGenerator.C
+libska1_la_SOURCES = UDPFormatCustom.C
 
-bin_PROGRAMS = ska1_udpgen ska1_udprecv
+bin_PROGRAMS = ska1_udpgen ska1_udprecv ska1_udpdb
 
-AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I/home/spip/linux_64/include
+AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I$(top_builddir)/src/Dada -I/home/spip/linux_64/include
 
-LDADD = libska1.la -L/home/dada/linux_64/lib $(top_builddir)/src/Network/libspipnet.la -lpsrdada
+LDADD = libska1.la -L/home/dada/linux_64/lib $(top_builddir)/src/Network/libspipnet.la $(top_builddir)/src/Dada/libspipdada.la -lpsrdada
 

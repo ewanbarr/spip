@@ -41,6 +41,11 @@ void spip::UDPStats::dropped ()
   pkts_dropped ++;
 }
 
+void spip::UDPStats::dropped (uint64_t ndropped)
+{
+  pkts_dropped += ndropped;
+}
+
 void spip::UDPStats::sleeps (uint64_t to_add)
 {
   nsleeps += to_add;
