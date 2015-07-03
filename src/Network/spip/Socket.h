@@ -32,7 +32,7 @@ namespace spip {
 
       int get_fd () { return fd; };
 
-      void * get_buf () { return buf; };
+      char * get_buf () { return buf; };
 
       size_t get_bufsz () { return bufsz; };
 
@@ -42,7 +42,7 @@ namespace spip {
       int fd;
 
       // socket buffer
-      void * buf;
+      char * buf;
 
       // size of socket buffer
       size_t bufsz;

@@ -8,6 +8,7 @@
 #include "spip/UDPFormat.h"
 
 #include <iostream>
+#include <cstring>
 
 #ifdef __cplusplus
 #define __STDC_CONSTANT_MACROS
@@ -21,8 +22,9 @@ using namespace std;
 
 spip::UDPFormat::UDPFormat()
 {
+  ndim = 2;
   packet_header_size = 8;
-  packet_data_size   = 1464;
+  packet_data_size   = 1024;
 }
 
 spip::UDPFormat::~UDPFormat()
@@ -35,7 +37,22 @@ void spip::UDPFormat::generate_signal ()
 
 }
 
-void spip::UDPFormat::encode_header (void * buf, size_t bufsz, uint64_t packet_number)
+void spip::UDPFormat::set_channel_range (unsigned start, unsigned end)
+{
+  cerr << "spip::UDPFormat::set_channel_range (" << start << ", " << end << ")" << endl;
+  start_channel = start;
+  end_channel   = end;
+  nchan = (end - start) + 1;
+}
+
+void spip::UDPFormat::set_nsamp_per_block (unsigned nsamp)
+{
+  cerr << "spip::UDPFormat::set_nsamp_per_block (" << nsamp << ")" << endl;
+  nsamp_per_block = nsamp;
+  chanpol_stride = nsamp_per_block * ndim;
+}
+
+void spip::UDPFormat::encode_header (char * buf, size_t bufsz, uint64_t packet_number)
 {
   char * b = (char *) buf;
   b[0] = (uint8_t) (packet_number>>56);
@@ -48,7 +65,7 @@ void spip::UDPFormat::encode_header (void * buf, size_t bufsz, uint64_t packet_n
   b[7] = (uint8_t) (packet_number);
 }
 
-void spip::UDPFormat::decode_header (void * buf, size_t bufsz, uint64_t * packet_number)
+void spip::UDPFormat::decode_header (char * buf, size_t bufsz, uint64_t * packet_number)
 {
   unsigned char * b = (unsigned char *) buf;
   uint64_t tmp = 0;
@@ -61,5 +78,12 @@ void spip::UDPFormat::decode_header (void * buf, size_t bufsz, uint64_t * packet
     *packet_number |= (tmp << ((i & 7) << 3));
   }
 }
+
+void spip::UDPFormat::insert_packet (char * buf, uint64_t block_sample, char * pkt)
+{
+  memcpy (buf + block_sample, pkt, packet_data_size);
+}
+
+
 
 

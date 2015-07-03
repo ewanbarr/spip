@@ -18,7 +18,8 @@ using namespace std;
 
 spip::UDPReceiver::UDPReceiver()
 {
-  format = new spip::UDPFormat();
+  //format = new UDPFormat();
+  format = 0;
 }
 
 spip::UDPReceiver::~UDPReceiver()
@@ -83,7 +84,7 @@ void spip::UDPReceiver::receive ()
   int64_t prev_packet_number = -1;
 
   int fd = sock->get_fd();
-  void * buf = sock->get_buf();
+  char * buf = sock->get_buf();
   size_t bufsz = sock->get_bufsz();
 
   uint64_t total_bytes_recvd = 0;

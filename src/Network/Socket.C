@@ -24,7 +24,7 @@ spip::Socket::Socket ()
   fd = 0;
 
   bufsz = 1500;               // standard MTU on most networks
-  buf = numa_alloc_local (bufsz);
+  buf = (char *) numa_alloc_local (bufsz);
   if (!buf)
   {
     cerr << "spip::Socket::Socket numa_alloc_local failed" << endl;
@@ -54,7 +54,7 @@ void spip::Socket::resize (size_t new_bufsz)
     cerr << "spip::Socket::resize old=" << bufsz << " new=" << new_bufsz << endl;
     numa_free (buf, bufsz);
     bufsz = new_bufsz;
-    buf= numa_alloc_local (bufsz);
+    buf = (char *) numa_alloc_local (bufsz);
     if (!buf)
       cerr << "spip::Socket::resize numa_alloc_local failed" << endl;
   }

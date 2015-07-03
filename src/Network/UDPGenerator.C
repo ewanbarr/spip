@@ -21,7 +21,8 @@ spip::UDPGenerator::UDPGenerator()
   signal_buffer = 0;
   signal_buffer_size = 0;
 
-  format = new UDPFormat();
+  //format = new UDPFormat();
+  format = 0;
 }
 
 spip::UDPGenerator::~UDPGenerator()
@@ -55,6 +56,16 @@ int spip::UDPGenerator::configure (const char * header)
     throw invalid_argument ("BW did not exist in header");
 
   channel_bw = bw / nchan;
+
+  unsigned start_chan, end_chan;
+  if (ascii_header_get (header, "START_CHANNEL", "%u", &start_chan) != 1)
+    throw invalid_argument ("START_CHANNEL did not exist in header");
+  if (ascii_header_get (header, "END_CHANNEL", "%u", &end_chan) != 1)
+    throw invalid_argument ("EDN_CHANNEL did not exist in header");
+
+  if (!format)
+    throw runtime_error ("unable for prepare format");
+  format->set_channel_range (start_chan, end_chan);
 }
 
 // allocate memory for 1 second of data for use in packet generation
@@ -96,6 +107,7 @@ void spip::UDPGenerator::prepare (std::string ip_address, int port)
 
   // initialize a stats class
   stats = new UDPStats(header_size, data_size);
+
 }
 
 // transmit UDP packets for the specified time at the specified data rate [b/s]
@@ -123,7 +135,7 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   uint64_t packet_number = 0;
 
-  void * buf = sock->get_buf();
+  char * buf = sock->get_buf();
   size_t bufsz = sock->get_bufsz();
 
   uint64_t total_bytes_sent = 0;
@@ -152,7 +164,8 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   while (total_bytes_sent < bytes_to_send)
   {
-    format->encode_header (buf, bufsz, packet_number);
+    cerr << "spip::UDPGenerator::transmit format->gen_packet()" << endl;
+    format->gen_packet (buf, bufsz);
 
     // optionally we can encode semi-realistic noise into the data
     //write_data (buf, bufsz, packet_number);
@@ -179,7 +192,6 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
     }
 
     total_bytes_sent += format->get_data_size();
-    packet_number++;
   }
 
   cerr << "spip::UDPGenerator::transmit transmission done!" << endl;  

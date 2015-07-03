@@ -7,21 +7,24 @@
 
 #include "spip/UDPFormatCustom.h"
 
-#ifdef __cplusplus
-#define __STDC_CONSTANT_MACROS
-#ifdef _STDINT_H
-#undef _STDINT_H
-#endif
-#include <stdint.h>
-#endif
+#include <cstdlib>
 #include <iostream>
 
 using namespace std;
 
 spip::UDPFormatCustom::UDPFormatCustom()
 {
-  packet_header_size = 8;
-  packet_data_size   = 8192;
+  packet_header_size = sizeof(ska1_custom_udp_header_t);
+  packet_data_size   = 4096;
+
+  nsamp_offset = 0;
+
+  header.cbf_version = 1;
+  header.seq_number = 0;
+  header.weights = 1;
+  header.nsamp = spip::UDPFormatCustom::get_samples_per_packet();
+  header.channel_number = 0;
+  header.beam_number = 0;
 }
 
 spip::UDPFormatCustom::~UDPFormatCustom()
@@ -33,30 +36,56 @@ void spip::UDPFormatCustom::generate_signal ()
 {
 }
 
-inline void spip::UDPFormatCustom::encode_header (void * buf, size_t bufsz, uint64_t packet_number)
+inline void spip::UDPFormatCustom::encode_header_seq (char * buf, size_t bufsz, uint64_t seq)
 {
-  char * b = (char *) buf;
-  b[0] = (uint8_t) (packet_number>>56);
-  b[1] = (uint8_t) (packet_number>>48);
-  b[2] = (uint8_t) (packet_number>>40);
-  b[3] = (uint8_t) (packet_number>>32);
-  b[4] = (uint8_t) (packet_number>>24);
-  b[5] = (uint8_t) (packet_number>>16);
-  b[6] = (uint8_t) (packet_number>>8);
-  b[7] = (uint8_t) (packet_number);
+  header.seq_number = seq;
+  encode_header (buf, bufsz);
 }
 
-void spip::UDPFormatCustom::decode_header (void * buf, size_t bufsz, uint64_t * packet_number)
+inline void spip::UDPFormatCustom::encode_header (char * buf, size_t bufsz)
 {
-  unsigned char * b = (unsigned char *) buf;
-  uint64_t tmp = 0;
-  unsigned i = 0;
-  *packet_number = UINT64_C (0);
-  for (i = 0; i < 8; i++ )
+  memcpy (buf, (void *) &header, sizeof (ska1_custom_udp_header_t));
+}
+
+inline void spip::UDPFormatCustom::decode_header_seq (char * buf, size_t bufsz)
+{
+  memcpy ((void *) &header, buf, sizeof(uint64_t));
+}
+
+inline void spip::UDPFormatCustom::decode_header (char * buf, size_t bufsz)
+{
+  memcpy ((void *) &header, buf, bufsz);
+}
+
+inline void spip::UDPFormatCustom::insert_packet (char * buf, uint64_t block_sample, char * pkt)
+{
+  const unsigned ichan = header.channel_number - start_channel;
+  unsigned offset = ichan * chanpol_stride + block_sample;
+
+  buf += offset;
+
+  memcpy (buf, pkt, 2048);
+  memcpy (buf + chanpol_stride, pkt + 2048, 2048);
+}
+
+// generate the next packet in the cycle
+inline void spip::UDPFormatCustom::gen_packet (char * buf, size_t bufsz)
+{
+  // cycle through each of the channels to produce a packet with 1024 time samples
+  // and two polarisations
+
+  header.channel_number++;
+  if (header.channel_number > end_channel)
   {
-    tmp = UINT64_C (0);
-    tmp = b[8 - i - 1];
-    *packet_number |= (tmp << ((i & 7) << 3));
-  }
-}
+    header.channel_number = start_channel;
+    header.seq_number++;
 
+    nsamp_offset += header.nsamp;
+  }
+
+  cerr << "spip::UDPFormatCustom::gen_packet channel_number=" << header.channel_number << endl;
+  cerr << "spip::UDPFormatCustom::gen_packet seq_number=" << header.seq_number << endl;
+
+  // write the new header
+  encode_header (buf, bufsz);
+}

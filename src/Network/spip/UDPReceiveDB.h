@@ -9,6 +9,12 @@
 
 #include <cstdlib>
 
+#define USING_VMA_EXTRA_API
+
+#ifdef  USING_VMA_EXTRA_API
+#include <mellanox/vma_extra.h>
+#endif
+
 namespace spip {
 
   class UDPReceiveDB {
@@ -45,6 +51,14 @@ namespace spip {
       UDPStats * stats;
 
       DataBlockWrite * db;
+
+#ifdef USING_VMA_EXTRA_API
+      struct vma_api_t *vma_api;
+
+      struct vma_packets_t* pkts;
+#else
+      char vma_api;
+#endif
 
       bool keep_receiving;
 

@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
+#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -47,12 +48,15 @@ int main(int argc, char *argv[]) try
   // core on which to bind thread operations
   int core = -1;
 
+  char have_numa = (numa_available() != -1);
+  struct bitmask * node_mask = 0;
+
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:k:hp:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hk:n:p:v")) != EOF) 
   {
     switch(c) 
     {
@@ -74,6 +78,12 @@ int main(int argc, char *argv[]) try
         exit(EXIT_SUCCESS);
         break;
 
+      case 'n':
+        node_mask = numa_parse_nodestring (optarg);
+        if (!node_mask)
+          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
+        break;
+
       case 'p':
         port = atoi(optarg);
         break;
@@ -89,6 +99,14 @@ int main(int argc, char *argv[]) try
         break;
     }
   }
+
+  // bind CPU computation to specific core
+  if (core >= 0)
+    dada_bind_thread_to_core (core);
+  
+  // set memory allocation policy to NUMA node
+  if (have_numa && node_mask)
+    numa_set_membind (node_mask);
 
   // create a UDP recevier that writes to a data block
   udpdb = new spip::UDPReceiveDB (key.c_str());
@@ -113,9 +131,6 @@ int main(int argc, char *argv[]) try
   }
  
   signal(SIGINT, signal_handler);
- 
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
 
   // header the this data stream
   header_file = strdup (argv[optind]);
@@ -164,6 +179,7 @@ int main(int argc, char *argv[]) try
   if (verbose)
     cerr << "ska1_udpdb: receiving" << endl;
   udpdb->receive ();
+  quit_threads = 1;
 
   udpdb->close();
 
@@ -188,11 +204,10 @@ void usage()
     "  host        hostname/ip of UDP receiver\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -f format   UDP data format [standard custom]\n"
-    "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
     "  -h          print this help text\n"
-    "  -n secs     number of seconds to transmit [default 5]\n"
+    "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
+    "  -n node     allocate memory only on NUMA node\n"
     "  -p port     destination udp port [default " << std::dec << SKA1_DEFAULT_UDP_PORT << "]\n"
-    "  -r rate     transmit at rate Mib/s [default 10]\n"
     "  -v          verbose output\n"
     << endl;
 }

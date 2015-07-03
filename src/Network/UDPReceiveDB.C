@@ -15,6 +15,10 @@
 #include <stdexcept>
 #include <new>
 
+#ifdef  USING_VMA_EXTRA_API
+#include <mellanox/vma_extra.h>
+#endif
+
 using namespace std;
 
 spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
@@ -25,7 +29,17 @@ spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
   db->lock();
 
   keep_receiving = true;
-  format = new UDPFormat();
+  //format = new UDPFormat();
+  format = 0;
+
+#ifdef USING_VMA_EXTRA_API
+  vma_api = vma_get_api(); 
+  if (!vma_api)
+    cerr << "spip::UDPReceiveDB::UDPReceiveDB VMA support compiled, but VMA not available" << endl;
+  pkts = NULL;
+#else
+  vma_api = 0;
+#endif
 }
 
 spip::UDPReceiveDB::~UDPReceiveDB()
@@ -74,7 +88,7 @@ void spip::UDPReceiveDB::prepare (std::string ip_address, int port)
   sock->resize (format->get_header_size() + format->get_data_size());
 
   // this should not be required when using VMA offloading
-  //sock->resize_kernel_buffer (4*1024*1024);
+  sock->resize_kernel_buffer (32*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
 }
@@ -100,24 +114,19 @@ void spip::UDPReceiveDB::close ()
   }
 }
 
-
 // receive UDP packets for the specified time at the specified data rate
 void spip::UDPReceiveDB::receive ()
 {
   uint64_t packet_number = 0;
   int64_t prev_packet_number = -1;
-
-  int fd = sock->get_fd();
-  char * buf = (char *) sock->get_buf();
-  size_t bufsz = sock->get_bufsz();
-
   uint64_t total_bytes_recvd = 0;
 
   size_t got;
-  uint64_t nsleeps;
+  uint64_t nsleeps = 0;
 
-  socklen_t size = sizeof(struct sockaddr);
   struct sockaddr_in client_addr;
+  struct sockaddr * addr = (struct sockaddr *) &client_addr;
+  socklen_t addr_size = sizeof(struct sockaddr);
 
   bool have_packet = false;
 
@@ -127,6 +136,12 @@ void spip::UDPReceiveDB::receive ()
 
   const unsigned header_size = format->get_header_size();
   const unsigned data_size   = format->get_data_size();
+  unsigned samp_per_packet = format->get_samples_per_packet();
+
+  int fd = sock->get_fd();
+  char * buf = sock->get_buf();
+  char * payload = buf + header_size;
+  size_t bufsz = sock->get_bufsz();
 
   // block accounting 
   uint64_t packets_per_buf = db->get_data_bufsz() / data_size;
@@ -140,33 +155,72 @@ void spip::UDPReceiveDB::receive ()
   cerr << "spip::UDPReceiveDB::receive packets_per_buf=" << packets_per_buf << endl;
   cerr << "spip::UDPReceiveDB::receive [" << curr_block_start_packet << " - " << next_block_start_packet << "]" << endl;
 
+#ifdef USING_VMA_EXTRA_API
+  int flags;
+#endif
+
   while (keep_receiving)
   {
-    nsleeps = 0;
-    while (!have_packet && keep_receiving)
+    if (vma_api)
     {
-      got = recvfrom (fd, buf, bufsz, 0, (struct sockaddr *)&client_addr, &size);
-      if (got == bufsz)
-        have_packet = true;
-      else if (got == -1)
+#ifdef USING_VMA_EXTRA_API
+      if (pkts)
       {
-        nsleeps++;
-        if (nsleeps > 1000)
+        vma_api->free_packets(fd, pkts->pkts, pkts->n_packet_num);
+        pkts = NULL;
+      }
+      while (!have_packet && keep_receiving)
+      {
+        flags = 0;
+        got = vma_api->recvfrom_zcopy(fd, buf, bufsz, &flags, addr, &addr_size);
+        if (got == bufsz)
         {
-          stats->sleeps(nsleeps);
-          nsleeps = 0;
+          if (flags & MSG_VMA_ZCOPY) 
+          {
+            pkts = (struct vma_packets_t*) buf;
+            struct vma_packet_t *pkt = &pkts->pkts[0];
+            format->decode_header ((char *) pkt->iov[0].iov_base, 8, &packet_number);
+          }
+          else
+          {
+            format->decode_header (buf, bufsz, &packet_number);  
+          }
+          have_packet = true;
+        }
+        else if (got == -1)
+        {
+          nsleeps++;
+          if (nsleeps > 1000)
+          {
+            stats->sleeps(1000);
+            nsleeps -= 1000;
+          }
+        }
+        else
+        {
+          cerr << "spip::UDPReceiveDB::receive error expected " << bufsz  
+               << " B, received " << got << " B" <<  endl;
+          keep_receiving = false;
         }
       }
+#endif
+    }
+    else
+    {
+      got = recvfrom (fd, buf, bufsz, 0, addr, &addr_size);
+      if (got == bufsz)
+        have_packet = true;
       else
       {
         cerr << "spip::UDPReceiveDB::receive error expected " << bufsz  
-             << " B, received " << got << "B" <<  endl;
+             << " B, received " << got << " B" <<  endl;
         keep_receiving = false;
       }
+      format->decode_header (buf, bufsz, &packet_number);
     }
 
     stats->sleeps(nsleeps);
-    format->decode_header (buf, bufsz, &packet_number);
+    nsleeps = 0;
 
     // open a new data block buffer if necessary
     if (!db->is_block_open())
@@ -183,11 +237,10 @@ void spip::UDPReceiveDB::receive ()
     // if the packet belongs in the currently open block
     if (packet_number >= curr_block_start_packet && packet_number < next_block_start_packet)
     {
-      // determine offset into the block
-      offset = (packet_number - curr_block_start_packet) * data_size;
+      unsigned block_sample = (packet_number - curr_block_start_packet) * samp_per_packet;
 
-      // copy the current UDP packet into the open block
-      memcpy (block + offset, buf + header_size, data_size);
+      // insert the packet into the correct position
+      format->insert_packet (block, block_sample, payload);
 
       // mark the packet as consumed
       have_packet = false;
@@ -206,7 +259,7 @@ void spip::UDPReceiveDB::receive ()
     }
     else
     {
-      cerr << "packet drop else case" << endl;
+      cerr << "packet_number[" << packet_number << "] < curr_block_start_packet[" << curr_block_start_packet << "]" << endl;
       have_packet = false;
       stats->dropped();
     }
@@ -215,8 +268,7 @@ void spip::UDPReceiveDB::receive ()
     if (packets_this_buf == packets_per_buf || need_next_block)
     {
       db->close_block(db->get_data_bufsz());
-      block = 0;
     }
   }
+  cerr << "spip::UDPReceiveDB::receive done!" << endl;
 }
-
