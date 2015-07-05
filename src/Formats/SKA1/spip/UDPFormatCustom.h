@@ -52,6 +52,8 @@ namespace spip {
 
       void generate_signal ();
 
+      uint64_t get_samples_for_bytes (uint64_t nbytes);
+
       static void encode_seq (char * buf, size_t bufsz, uint64_t seq)
       {
         memcpy (buf, (void *) &seq, sizeof(uint64_t));
@@ -65,10 +67,12 @@ namespace spip {
       inline void encode_header_seq (char * buf, size_t bufsz, uint64_t packet_number);
       inline void encode_header (char * buf, size_t bufsz);
 
-      inline void decode_header_seq (char * buf, size_t bufsz);
+      inline uint64_t decode_header_seq (char * buf, size_t bufsz);
       inline void decode_header (char * buf, size_t bufsz);
 
-      inline void insert_packet (char * buf, uint64_t block_sample, char * pkt);
+      inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
+
+      void print_packet_header ();
 
       inline void gen_packet (char * buf, size_t bufsz);
 
