@@ -42,7 +42,8 @@ void spip::UDPFormat::set_nsamp_per_block (unsigned nsamp)
 {
   cerr << "spip::UDPFormat::set_nsamp_per_block (" << nsamp << ")" << endl;
   nsamp_per_block = nsamp;
-  channel_stride = nsamp_per_block * ndim * npol;
+  chanpol_stride = nsamp_per_block * ndim;
+  channel_stride = chanpol_stride * npol;
 }
 
 /*

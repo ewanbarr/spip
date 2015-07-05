@@ -65,6 +65,8 @@ namespace spip {
 
       unsigned channel_stride;
 
+      unsigned chanpol_stride;
+
     private:
 
   };
