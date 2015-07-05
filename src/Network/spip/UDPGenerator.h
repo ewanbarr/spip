@@ -31,6 +31,8 @@ namespace spip {
 
       UDPStats * get_stats () { return stats; };
 
+      void stop_transmit () { keep_transmitting = false; };
+
     protected:
 
       UDPSocketSend * sock;
@@ -60,6 +62,8 @@ namespace spip {
       unsigned bits_per_second;
 
       unsigned bytes_per_second;
+
+      bool keep_transmitting;
   };
 
 }

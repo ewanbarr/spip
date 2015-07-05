@@ -12,8 +12,10 @@
 #include "spip/UDPGenerator.h"
 #include "spip/UDPFormatCustom.h"
 
+#include <numa.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <signal.h> 
 #include <cstdio>
 #include <cstring>
 
@@ -21,13 +23,16 @@
 
 void usage();
 void * stats_thread (void * arg);
+void signal_handler (int signal_value);
+
+spip::UDPGenerator * gen = 0;
 char quit_threads = 0;
 
 using namespace std;
 
 int main(int argc, char *argv[])
 {
-  spip::UDPGenerator * gen = new spip::UDPGenerator();
+  string format = "standard";
 
   char * header_file = 0;
 
@@ -45,6 +50,9 @@ int main(int argc, char *argv[])
   // data rate at which to transmit
   float data_rate_gbits = 0.5;
 
+  char have_numa = (numa_available() != -1);
+  struct bitmask * node_mask = 0;
+
   // core on which to bind thread operations
   int core = -1;
 
@@ -53,7 +61,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hn:p:r:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hn:p:r:t:v")) != EOF) 
   {
     switch(c) 
     {
@@ -62,13 +70,7 @@ int main(int argc, char *argv[])
         break;
 
       case 'f':
-        if (strcmp(optarg, "custom") == 0)
-          gen->set_format (new spip::UDPFormatCustom());
-        else
-        {
-          cerr << "ERROR: format " << optarg << " not supported" << endl;
-          return (EXIT_FAILURE);
-        }
+        format = optarg;
         break;
 
       case 'h':
@@ -77,6 +79,12 @@ int main(int argc, char *argv[])
         break;
 
       case 'n':
+        node_mask = numa_parse_nodestring (optarg);
+        if (!node_mask)
+          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
+        break;
+
+      case 't':
         transmission_time = atoi(optarg);
         break;
 
@@ -100,10 +108,19 @@ int main(int argc, char *argv[])
   }
 
   if (core >= 0)
+  {
+    cerr << "Binding to CPU core " << core << endl;
     dada_bind_thread_to_core (core);
+  }
 
-  if (verbose)
-    cerr << "ska1_udpgen: parsed command line options" << endl;
+  // set memory allocation policy to NUMA node
+  if (have_numa && node_mask)
+  {
+    cerr << "Binding to numa with node_mask " << &node_mask << endl;
+    numa_set_membind (node_mask);
+  }
+  else
+    cerr << "NUMA not present or configured" << endl;
 
   // Check arguments
   if ((argc - optind) != 2) 
@@ -112,6 +129,21 @@ int main(int argc, char *argv[])
     usage();
     return EXIT_FAILURE;
   }
+
+  gen = new spip::UDPGenerator();
+
+  if (format.compare("standard") == 0)
+    ;
+  else if (format.compare("custom") == 0)
+    gen->set_format (new spip::UDPFormatCustom());
+  else
+  {
+    cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
+    delete gen;
+    return (EXIT_FAILURE);
+  }
+
+  signal(SIGINT, signal_handler);
 
   // header the this data stream
   header_file = strdup (argv[optind]);
@@ -170,6 +202,10 @@ int main(int argc, char *argv[])
 
   delete gen;
 
+  free (header);
+  free (header_file);
+  free (dest_host);
+
   return 0;
 }
 
@@ -181,12 +217,30 @@ void usage()
     "  -f format   generate UDP data of format [custom standard spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
-    "  -n secs     number of seconds to transmit [default 5]\n"
+    "  -n node     allocate memory only on NUMA node\n"
+    "  -t secs     number of seconds to transmit [default 5]\n"
     "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -r rate     transmit at rate Gib/s [default 0.5]\n"
     "  -v          verbose output\n"
     << endl;
 }
+
+/*
+ *  Simple signal handler to exit more gracefully
+ */
+void signal_handler(int signalValue)
+{
+  fprintf(stderr, "received signal %d\n", signalValue);
+  if (quit_threads)
+  {
+    fprintf(stderr, "received signal %d twice, hard exit\n", signalValue);
+    exit(EXIT_FAILURE);
+  }
+  quit_threads = 1;
+
+  gen->stop_transmit();
+}
+
 
 /* 
  *  Thread to print simple capture statistics
