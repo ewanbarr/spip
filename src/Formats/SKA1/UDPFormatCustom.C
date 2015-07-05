@@ -38,17 +38,21 @@ void spip::UDPFormatCustom::generate_signal ()
 
 uint64_t spip::UDPFormatCustom::get_samples_for_bytes (uint64_t nbytes)
 {
-  cerr << "npol=" << npol << " ndim=" << ndim << " nchan=" << nchan << endl;
+  cerr << "spip::UDPFormatCustom::get_samples_for_bytes npol=" << npol 
+       << " ndim=" << ndim << " nchan=" << nchan << endl;
   uint64_t nsamps = nbytes / (npol * ndim * nchan);
   return nsamps;
 }
 
 void spip::UDPFormatCustom::set_channel_range (unsigned start, unsigned end) 
 {
+  cerr << "spip::UDPFormatCustom::set_channel_range start=" << start 
+       << " end=" << end << endl;
   start_channel = start;
   end_channel   = end;
   nchan = (end - start) + 1;
   header.channel_number = start;
+  cerr << "spip::UDPFormatCustom::set_channel_range nchan=" <<  nchan << endl;
 }
 
 inline void spip::UDPFormatCustom::encode_header_seq (char * buf, size_t bufsz, uint64_t seq)
@@ -88,11 +92,11 @@ inline int spip::UDPFormatCustom::insert_packet (char * buf, char * pkt, uint64_
   }
  
   // determine the channel offset in bytes
-  const unsigned offset = (header.channel_number - start_channel) * channel_stride;
-  const unsigned sample_offset = header.seq_number - start_samp;
+  const unsigned channel_offset = (header.channel_number - start_channel) * channel_stride;
+  const unsigned sample_offset = (header.seq_number * header.nsamp) - start_samp;
 
   // incremement buf pointer to 
-  const unsigned pol0_offset = offset + sample_offset;
+  const unsigned pol0_offset = channel_offset + sample_offset;
   const unsigned pol1_offset = pol0_offset + chanpol_stride;
 
   memcpy (buf + pol0_offset, pkt, 2048);

@@ -73,6 +73,16 @@ int spip::UDPReceiveDB::configure (const char * header)
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
+
+  unsigned start_chan, end_chan;
+  if (ascii_header_get (header, "START_CHANNEL", "%u", &start_chan) != 1)
+    throw invalid_argument ("START_CHANNEL did not exist in header");
+  if (ascii_header_get (header, "END_CHANNEL", "%u", &end_chan) != 1)
+    throw invalid_argument ("END_CHANNEL did not exist in header");
+
+  if (!format)
+    throw runtime_error ("unable for prepare format");
+  format->set_channel_range (start_chan, end_chan);
 }
 
 void spip::UDPReceiveDB::prepare (std::string ip_address, int port)
@@ -248,7 +258,8 @@ void spip::UDPReceiveDB::receive ()
       curr_sample = next_sample;
       next_sample += samples_per_buf;
 
-      cerr << "spip::UDPReceiveDB::receive [" << curr_sample << " - " << next_sample << "]" << endl;
+      //cerr << "spip::UDPReceiveDB::receive [" << curr_sample << " - " 
+      //     << next_sample << "] (" << packets_this_buf << ")" << endl;
 
       if (packets_this_buf == 0)
         keep_receiving = false;
@@ -256,7 +267,9 @@ void spip::UDPReceiveDB::receive ()
       packets_this_buf = 0;
     }
 
+    // copy the current packet into the appropriate place in the buffer
     result = format->insert_packet (block, payload, curr_sample, next_sample);
+
     if (result == 0)
     {
       have_packet = false;
@@ -282,9 +295,10 @@ void spip::UDPReceiveDB::receive ()
     // close open data block buffer if is is now full
     if (packets_this_buf == packets_per_buf || need_next_block)
     {
-      //cerr << "close block: packets_this_buf=" << packets_this_buf << " packets_per_buf=" << packets_per_buf << " need_next_block=" << need_next_block << endl;
+      //cerr << "spip::UDPReceiveDB::receive close_block packets_this_buf=" 
+      //     << packets_this_buf << " packets_per_buf=" << packets_per_buf 
+      //     << " need_next_block=" << need_next_block << endl;
       //format->print_packet_header();
-      //cerr << "db->close_block()" << endl;
       db->close_block(db->get_data_bufsz());
     }
   }
