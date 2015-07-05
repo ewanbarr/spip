@@ -43,6 +43,14 @@ uint64_t spip::UDPFormatCustom::get_samples_for_bytes (uint64_t nbytes)
   return nsamps;
 }
 
+void spip::UDPFormatCustom::set_channel_range (unsigned start, unsigned end) 
+{
+  start_channel = start;
+  end_channel   = end;
+  nchan = (end - start) + 1;
+  header.channel_number = start;
+}
+
 inline void spip::UDPFormatCustom::encode_header_seq (char * buf, size_t bufsz, uint64_t seq)
 {
   header.seq_number = seq;
@@ -99,17 +107,18 @@ inline void spip::UDPFormatCustom::gen_packet (char * buf, size_t bufsz)
   // cycle through each of the channels to produce a packet with 1024 
   // time samples and two polarisations
 
+  // write the new header
+  encode_header (buf, bufsz);
+
+  // increment channel number
   header.channel_number++;
-  if (header.channel_number > end_channel)
+  if (header.channel_number >= end_channel)
   {
     header.channel_number = start_channel;
     header.seq_number++;
-
     nsamp_offset += header.nsamp;
   }
 
-  // write the new header
-  encode_header (buf, bufsz);
 }
 
 void spip::UDPFormatCustom::print_packet_header()

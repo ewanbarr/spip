@@ -10,6 +10,7 @@
 
 #include "ascii_header.h"
 
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <new>
@@ -21,8 +22,8 @@ spip::UDPGenerator::UDPGenerator()
   signal_buffer = 0;
   signal_buffer_size = 0;
 
-  //format = new UDPFormat();
   format = 0;
+  keep_transmitting = true;
 }
 
 spip::UDPGenerator::~UDPGenerator()
@@ -31,8 +32,14 @@ spip::UDPGenerator::~UDPGenerator()
     free (signal_buffer);
   signal_buffer = 0;
 
+  if (sock)
+    delete sock;
+
+  if (stats)
+    delete stats;
+
   if (format)
-    delete (format);
+    delete format;
 }
 
 int spip::UDPGenerator::configure (const char * header)
@@ -61,7 +68,7 @@ int spip::UDPGenerator::configure (const char * header)
   if (ascii_header_get (header, "START_CHANNEL", "%u", &start_chan) != 1)
     throw invalid_argument ("START_CHANNEL did not exist in header");
   if (ascii_header_get (header, "END_CHANNEL", "%u", &end_chan) != 1)
-    throw invalid_argument ("EDN_CHANNEL did not exist in header");
+    throw invalid_argument ("END_CHANNEL did not exist in header");
 
   if (!format)
     throw runtime_error ("unable for prepare format");
@@ -84,6 +91,8 @@ void spip::UDPGenerator::allocate_signal()
 
     if (!signal_buffer)
       throw invalid_argument ("unabled to allocate 1 second of data");
+
+    memset (signal_buffer, 0, signal_buffer_size);
   }
 }
 
@@ -107,7 +116,6 @@ void spip::UDPGenerator::prepare (std::string ip_address, int port)
 
   // initialize a stats class
   stats = new UDPStats(header_size, data_size);
-
 }
 
 // transmit UDP packets for the specified time at the specified data rate [b/s]
@@ -146,8 +154,8 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
   gettimeofday (&timestamp, 0);
   start_second = timestamp.tv_sec + 1;
 
-  uint64_t micro_seconds = 0;
-  uint64_t micro_seconds_elapsed = 0;
+  double micro_seconds = 0;
+  double micro_seconds_elapsed = 0;
 
   // busy sleep until next 1pps tick
   while (timestamp.tv_sec < start_second)
@@ -162,9 +170,10 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
   cerr << "spip::UDPGenerator::transmit sleep_time=" << sleep_time<< endl;
   cerr << "spip::UDPGenerator::transmit start_second=" << start_second<< endl;
 
-  while (total_bytes_sent < bytes_to_send)
+  keep_transmitting = true;
+
+  while (total_bytes_sent < bytes_to_send && keep_transmitting)
   {
-    cerr << "spip::UDPGenerator::transmit format->gen_packet()" << endl;
     format->gen_packet (buf, bufsz);
 
     // optionally we can encode semi-realistic noise into the data
@@ -181,10 +190,10 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
     {
       wait = 1;
    
-      while (wait)
+      while (wait && keep_transmitting)
       {
         gettimeofday (&timestamp, 0);
-        micro_seconds_elapsed = ((timestamp.tv_sec - start_second) * 1000000) + timestamp.tv_usec;
+        micro_seconds_elapsed = (double) (((timestamp.tv_sec - start_second) * 1000000) + timestamp.tv_usec);
 
         if (micro_seconds_elapsed > micro_seconds)
           wait = 0;
@@ -197,8 +206,7 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
   cerr << "spip::UDPGenerator::transmit transmission done!" << endl;  
 
   cerr << "spip::UDPGenerator::transmit sending smaller packet!" << endl;
-  sock->resize (format->get_header_size() + format->get_data_size() - 1);
-  format->encode_header (buf, bufsz, packet_number);
-  sock->send();
+  format->gen_packet (buf, bufsz);
+  sock->send (1024);
 }
 

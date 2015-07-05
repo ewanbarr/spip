@@ -54,6 +54,8 @@ namespace spip {
 
       uint64_t get_samples_for_bytes (uint64_t nbytes);
 
+      void set_channel_range (unsigned start, unsigned end);
+
       static void encode_seq (char * buf, size_t bufsz, uint64_t seq)
       {
         memcpy (buf, (void *) &seq, sizeof(uint64_t));
@@ -95,16 +97,6 @@ namespace spip {
       uint64_t nsamp_offset;
 
       uint64_t nsamp_per_sec;
-
-      unsigned nsamp_per_block;
-
-      unsigned start_channel;
-
-      unsigned end_channel;
-
-      unsigned nchan;
-
-      unsigned chanpol_stride;
 
   };
 

@@ -22,6 +22,8 @@ namespace spip {
       // send the contents of buf (bufsz bytes)
       inline size_t send () { sendto(fd, buf, bufsz, 0, sock_addr, sock_size); };
 
+      size_t send (size_t nbytes);
+
       struct in_addr * atoaddr (const char *address) ;
 
     private:
