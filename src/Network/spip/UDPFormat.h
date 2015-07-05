@@ -25,11 +25,19 @@ namespace spip {
 
       virtual void gen_packet (char * buf, size_t bufsz) = 0;
 
-      void encode_header (char * buf, size_t bufsz, uint64_t packet_number);
+      virtual uint64_t get_samples_for_bytes (uint64_t nbytes) = 0;
 
-      void decode_header (char * buf, size_t bufsz, uint64_t *packet_number);
+      virtual void encode_header_seq (char * buf, size_t bufsz, uint64_t packet_number) = 0;
 
-      void insert_packet (char * buf, uint64_t block_sample, char * pkt);
+      virtual void encode_header (char * buf, size_t bufsz) = 0;
+
+      virtual uint64_t decode_header_seq (char * buf, size_t bufsz) = 0;
+
+      virtual void decode_header (char * buf, size_t bufsz) = 0;
+
+      virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
+
+      virtual void print_packet_header () = 0;
 
       unsigned get_samples_per_packet () { return UDP_FORMAT_PACKET_NSAMP; };
 
@@ -45,6 +53,8 @@ namespace spip {
 
       unsigned ndim;
 
+      unsigned npol;
+
       unsigned nsamp_per_block;
 
       unsigned start_channel;
@@ -53,7 +63,7 @@ namespace spip {
 
       unsigned nchan;
 
-      unsigned chanpol_stride;
+      unsigned channel_stride;
 
     private:
 

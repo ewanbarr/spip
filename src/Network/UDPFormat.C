@@ -22,6 +22,7 @@ using namespace std;
 
 spip::UDPFormat::UDPFormat()
 {
+  npol = 2;
   ndim = 2;
   packet_header_size = 8;
   packet_data_size   = 1024;
@@ -49,9 +50,10 @@ void spip::UDPFormat::set_nsamp_per_block (unsigned nsamp)
 {
   cerr << "spip::UDPFormat::set_nsamp_per_block (" << nsamp << ")" << endl;
   nsamp_per_block = nsamp;
-  chanpol_stride = nsamp_per_block * ndim;
+  channel_stride = nsamp_per_block * ndim * npol;
 }
 
+/*
 void spip::UDPFormat::encode_header (char * buf, size_t bufsz, uint64_t packet_number)
 {
   char * b = (char *) buf;
@@ -83,7 +85,7 @@ void spip::UDPFormat::insert_packet (char * buf, uint64_t block_sample, char * p
 {
   memcpy (buf + block_sample, pkt, packet_data_size);
 }
-
+*/
 
 
 
