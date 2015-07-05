@@ -38,14 +38,6 @@ void spip::UDPFormat::generate_signal ()
 
 }
 
-void spip::UDPFormat::set_channel_range (unsigned start, unsigned end)
-{
-  cerr << "spip::UDPFormat::set_channel_range (" << start << ", " << end << ")" << endl;
-  start_channel = start;
-  end_channel   = end;
-  nchan = (end - start) + 1;
-}
-
 void spip::UDPFormat::set_nsamp_per_block (unsigned nsamp)
 {
   cerr << "spip::UDPFormat::set_nsamp_per_block (" << nsamp << ")" << endl;

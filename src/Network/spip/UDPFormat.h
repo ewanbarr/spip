@@ -19,7 +19,7 @@ namespace spip {
 
       void generate_signal ();
 
-      void set_channel_range (unsigned start, unsigned end);
+      virtual void set_channel_range (unsigned start, unsigned end) = 0;
 
       void set_nsamp_per_block (unsigned _nsamp);
 
