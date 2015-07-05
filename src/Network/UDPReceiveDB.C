@@ -29,7 +29,6 @@ spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
   db->lock();
 
   keep_receiving = true;
-  //format = new UDPFormat();
   format = 0;
 
 #ifdef USING_VMA_EXTRA_API
@@ -136,24 +135,27 @@ void spip::UDPReceiveDB::receive ()
 
   const unsigned header_size = format->get_header_size();
   const unsigned data_size   = format->get_data_size();
-  unsigned samp_per_packet = format->get_samples_per_packet();
+
+  const uint64_t samples_per_buf = format->get_samples_for_bytes (db->get_data_bufsz());
 
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
   char * payload = buf + header_size;
   size_t bufsz = sock->get_bufsz();
+  int result;
 
   // block accounting 
-  uint64_t packets_per_buf = db->get_data_bufsz() / data_size;
-  uint64_t curr_block_start_packet = 0;
-  uint64_t next_block_start_packet = packets_per_buf;
+  
+  const uint64_t packets_per_buf = db->get_data_bufsz() / data_size;
+  uint64_t curr_sample = 0;
+  uint64_t next_sample  = samples_per_buf;
   uint64_t packets_this_buf = 0;
   uint64_t offset;
 
   cerr << "spip::UDPReceiveDB::receive db->get_data_bufsz()=" << db->get_data_bufsz() << endl;
   cerr << "spip::UDPReceiveDB::receive data_size=" << data_size << endl;
   cerr << "spip::UDPReceiveDB::receive packets_per_buf=" << packets_per_buf << endl;
-  cerr << "spip::UDPReceiveDB::receive [" << curr_block_start_packet << " - " << next_block_start_packet << "]" << endl;
+  cerr << "spip::UDPReceiveDB::receive [" << curr_sample << " - " << next_sample << "]" << endl;
 
 #ifdef USING_VMA_EXTRA_API
   int flags;
@@ -179,11 +181,11 @@ void spip::UDPReceiveDB::receive ()
           {
             pkts = (struct vma_packets_t*) buf;
             struct vma_packet_t *pkt = &pkts->pkts[0];
-            format->decode_header ((char *) pkt->iov[0].iov_base, 8, &packet_number);
+            packet_number = format->decode_header_seq ((char *) pkt->iov[0].iov_base, 8);
           }
           else
           {
-            format->decode_header (buf, bufsz, &packet_number);  
+            packet_number = format->decode_header_seq (buf, bufsz);  
           }
           have_packet = true;
         }
@@ -207,17 +209,31 @@ void spip::UDPReceiveDB::receive ()
     }
     else
     {
-      got = recvfrom (fd, buf, bufsz, 0, addr, &addr_size);
-      if (got == bufsz)
-        have_packet = true;
-      else
+      while (!have_packet && keep_receiving)
       {
-        cerr << "spip::UDPReceiveDB::receive error expected " << bufsz  
-             << " B, received " << got << " B" <<  endl;
-        keep_receiving = false;
+        got = recvfrom (fd, buf, bufsz, 0, addr, &addr_size);
+        if (got == bufsz)
+          have_packet = true;
+        else if (got == -1)
+        {
+          nsleeps++;
+          if (nsleeps > 1000)
+          {
+            stats->sleeps(1000);
+            nsleeps -= 1000;
+          }
+        }
+        else
+        {
+          cerr << "spip::UDPReceiveDB::receive error expected " << bufsz  
+               << " B, received " << got << " B" <<  endl;
+          keep_receiving = false;
+        }
       }
-      format->decode_header (buf, bufsz, &packet_number);
+      format->decode_header (buf, bufsz);
     }
+
+    //cerr << "got=" << got << endl;
 
     stats->sleeps(nsleeps);
     nsleeps = 0;
@@ -229,44 +245,46 @@ void spip::UDPReceiveDB::receive ()
       need_next_block = false;
 
       // number is first packet due in block to first packet of next block
-      curr_block_start_packet = next_block_start_packet;
-      next_block_start_packet += packets_per_buf;
+      curr_sample = next_sample;
+      next_sample += samples_per_buf;
+
+      cerr << "spip::UDPReceiveDB::receive [" << curr_sample << " - " << next_sample << "]" << endl;
+
+      if (packets_this_buf == 0)
+        keep_receiving = false;
+
       packets_this_buf = 0;
     }
 
-    // if the packet belongs in the currently open block
-    if (packet_number >= curr_block_start_packet && packet_number < next_block_start_packet)
+    result = format->insert_packet (block, payload, curr_sample, next_sample);
+    if (result == 0)
     {
-      unsigned block_sample = (packet_number - curr_block_start_packet) * samp_per_packet;
-
-      // insert the packet into the correct position
-      format->insert_packet (block, block_sample, payload);
-
-      // mark the packet as consumed
       have_packet = false;
-      
-      // increment bytes written
       packets_this_buf++;
       stats->increment();
     }
-    else if (packet_number >= next_block_start_packet)
+    else if (result == 1)
     {
-      // this will cause the block to be closed this loop
-      // and a new block opened in the next loop, keeping the
-      // packet buffered
       need_next_block = true;
+      cerr << "1: dropped packet" << endl;
+      format->print_packet_header();
       stats->dropped (packets_per_buf - packets_this_buf);
     }
     else
     {
-      cerr << "packet_number[" << packet_number << "] < curr_block_start_packet[" << curr_block_start_packet << "]" << endl;
+      cerr << "2: dropped packet" << endl;
+      format->print_packet_header();
       have_packet = false;
+      keep_receiving = false;
       stats->dropped();
     }
-  
+
     // close open data block buffer if is is now full
     if (packets_this_buf == packets_per_buf || need_next_block)
     {
+      //cerr << "close block: packets_this_buf=" << packets_this_buf << " packets_per_buf=" << packets_per_buf << " need_next_block=" << need_next_block << endl;
+      //format->print_packet_header();
+      //cerr << "db->close_block()" << endl;
       db->close_block(db->get_data_bufsz());
     }
   }
