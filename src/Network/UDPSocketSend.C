@@ -37,8 +37,6 @@ void spip::UDPSocketSend::open (string ip_address, int port)
   struct in_addr *addr;
   addr = atoaddr (ip_address.c_str());
   udp_sock.sin_addr.s_addr = addr->s_addr;
-
-  //resize (9000);
 }
 
 struct in_addr * spip::UDPSocketSend::atoaddr (const char *address) 
@@ -60,4 +58,10 @@ struct in_addr * spip::UDPSocketSend::atoaddr (const char *address)
   return NULL;
 }
 
+size_t spip::UDPSocketSend::send (size_t nbytes)
+{
+  if (nbytes > bufsz)
+    throw runtime_error ("cannot send more bytes than socket size");
+  return sendto(fd, buf, nbytes, 0, sock_addr, sock_size); 
+}
 
