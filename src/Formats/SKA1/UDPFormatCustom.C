@@ -116,7 +116,7 @@ inline void spip::UDPFormatCustom::gen_packet (char * buf, size_t bufsz)
 
   // increment channel number
   header.channel_number++;
-  if (header.channel_number >= end_channel)
+  if (header.channel_number > end_channel)
   {
     header.channel_number = start_channel;
     header.seq_number++;
