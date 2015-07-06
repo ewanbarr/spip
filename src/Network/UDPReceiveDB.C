@@ -276,20 +276,22 @@ void spip::UDPReceiveDB::receive ()
       packets_this_buf++;
       stats->increment();
     }
-    else if (result == 1)
+    else if (result == UDP_PACKET_TOO_EARLY)
     {
       need_next_block = true;
-      cerr << "1: dropped packet" << endl;
-      format->print_packet_header();
       stats->dropped (packets_per_buf - packets_this_buf);
     }
-    else
+    else if (result == UDP_PACKET_TOO_LATE)
     {
-      cerr << "2: dropped packet" << endl;
+      cerr << "Received packet from the past?!" << endl;
       format->print_packet_header();
       have_packet = false;
       keep_receiving = false;
       stats->dropped();
+    }
+    else
+    {
+      ;
     }
 
     // close open data block buffer if is is now full
