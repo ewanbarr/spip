@@ -55,26 +55,26 @@ void spip::UDPFormatCustom::set_channel_range (unsigned start, unsigned end)
   cerr << "spip::UDPFormatCustom::set_channel_range nchan=" <<  nchan << endl;
 }
 
-inline void spip::UDPFormatCustom::encode_header_seq (char * buf, size_t bufsz, uint64_t seq)
+inline void spip::UDPFormatCustom::encode_header_seq (char * buf, uint64_t seq)
 {
   header.seq_number = seq;
-  encode_header (buf, bufsz);
+  encode_header (buf);
 }
 
-inline void spip::UDPFormatCustom::encode_header (char * buf, size_t bufsz)
+inline void spip::UDPFormatCustom::encode_header (char * buf)
 {
   memcpy (buf, (void *) &header, sizeof (ska1_custom_udp_header_t));
 }
 
-inline uint64_t spip::UDPFormatCustom::decode_header_seq (char * buf, size_t bufsz)
+inline uint64_t spip::UDPFormatCustom::decode_header_seq (char * buf)
 {
   memcpy ((void *) &header, buf, sizeof(uint64_t));
   return header.seq_number;
 }
 
-inline void spip::UDPFormatCustom::decode_header (char * buf, size_t bufsz)
+inline void spip::UDPFormatCustom::decode_header (char * buf)
 {
-  memcpy ((void *) &header, buf, bufsz);
+  memcpy ((void *) &header, buf, sizeof(header));
 }
 
 inline int spip::UDPFormatCustom::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
@@ -84,11 +84,11 @@ inline int spip::UDPFormatCustom::insert_packet (char * buf, char * pkt, uint64_
   {
     cerr << "header.seq_number=" << header.seq_number << " header.channel_number=" << header.channel_number << endl;
     cerr << "sample_number=" << sample_number << " start_samp=" << start_samp << endl;
-    return 2;
+    return UDP_PACKET_TOO_LATE;
   }
   if (sample_number >= next_start_samp)
   {
-    return 1;
+    return UDP_PACKET_TOO_EARLY;
   }
  
   // determine the channel offset in bytes
@@ -112,7 +112,7 @@ inline void spip::UDPFormatCustom::gen_packet (char * buf, size_t bufsz)
   // time samples and two polarisations
 
   // write the new header
-  encode_header (buf, bufsz);
+  encode_header (buf);
 
   // increment channel number
   header.channel_number++;
@@ -127,5 +127,8 @@ inline void spip::UDPFormatCustom::gen_packet (char * buf, size_t bufsz)
 
 void spip::UDPFormatCustom::print_packet_header()
 {
-  cerr << "seq=" << header.seq_number << " chan=" << header.channel_number << endl;
+  uint64_t pkt_num = (header.seq_number * nchan) + (header.channel_number - start_channel);
+  uint64_t last_sample = (header.seq_number * 1024) + 1023;
+  cerr << "pkt_num=" << pkt_num << " last_sample=" << last_sample 
+       << " seq=" << header.seq_number << " chan=" << header.channel_number << endl;
 }

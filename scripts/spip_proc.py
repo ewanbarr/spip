@@ -7,165 +7,203 @@
 # 
 ###############################################################################
 
-import os, threading, sys, time, socket, select, signal, traceback
-import spip
-import spip_smrb
-from spip_scripts import StreamDaemon,LogSocket
+import os, threading, sys, time, socket, select, traceback
+
+from spip.daemons.bases import StreamBased
+from spip.daemons.daemon import Daemon
+from spip.log_socket import LogSocket
+from spip import config
+from spip_smrb import SMRBDaemon
+from spip.utils.core import system_piped,system
+from spip.utils.sockets import getHostNameShort
+from spip.threads.reporting_thread import ReportingThread
 
 DAEMONIZE = False
-DL        = 2
+DL        = 1
 
 #################################################################
 # thread for executing processing commands
 class procThread (threading.Thread):
 
-  def __init__ (self, cmd, pipe, dl):
+  def __init__ (self, cmd, dir, pipe, dl):
     threading.Thread.__init__(self)
     self.cmd = cmd
     self.pipe = pipe
+    self.dir = dir  
     self.dl = dl
 
   def run (self):
-    rval = spip.system_piped (self.cmd, self.pipe, self.dl <= DL)
+    cmd = "cd " + self.dir + "; " + self.cmd
+    rval = system_piped (cmd, self.pipe, self.dl <= DL)
+    
+    if rval == 0:
+      rval2, lines = system ("touch " + self.dir + "/obs.finished")
+    else:
+      rval2, lines = system ("touch " + self.dir + "/obs.failed")
+
     return rval
 
-#################################################################
-# main
+###############################################################
+# thread for reporting state of spip_proc
+class ProcReportingThread (ReportingThread):
 
-def main (self, id):
+  def __init__ (self, script, id):
+    host = getHostNameShort()
+    port = int(script.cfg["STREAM_PROC_PORT"]) + int(id)
+    ReportingThread.__init__(self, script, host, port)
 
-  # get the data block keys
-  db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
-  db_id_in  = self.cfg["PROCESSING_DATA_BLOCK"]
-  db_id_out = self.cfg["SEND_DATA_BLOCK"]
-  num_stream = self.cfg["NUM_STREAM"]
-  db_key_in = spip_smrb.getDBKey (db_prefix, stream_id, num_stream, db_id_in)
-  db_key_out = spip_smrb.getDBKey (db_prefix, stream_id, num_stream, db_id_out)
+  def parse_message (self, xml):
+    self.script.log (0, "parse_message: " + str(xml))
+    return "ok"
 
-  self.log (0, "db_key_in=" + db_key_in + " db_key_out=" + db_key_out)
+###############################################################################
+# Proc Daemon Proper
+class ProcDaemon(Daemon,StreamBased):
 
-  # create dspsr input file for the data block
-  db_key_filename = "/tmp/spip_" + db_key_in + ".info"
-  db_key_file = open (db_key_filename, "w")
-  db_key_file.write("DADA INFO:\n")
-  db_key_file.write("INFO: " +  db_key_in + "\n")
-  db_key_file.close()
+  def __init__ (self, name, id):
+    Daemon.__init__(self, name, str(id))
+    StreamBased.__init__(self, id, self.cfg)
 
-  # create a pipe to the logging server
-  log_pipe = LogSocket ("proc_src", "proc_src", str(id), "stream",
-                        self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
-                        int(DL))
-  log_pipe.connect()
-  prev_utc_start = ""
+  def main (self):
 
-  while (not self.quit_event.isSet()):
+    # get the data block keys
+    db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
+    db_id_in  = self.cfg["PROCESSING_DATA_BLOCK"]
+    db_id_out = self.cfg["SEND_DATA_BLOCK"]
+    num_stream = self.cfg["NUM_STREAM"]
+    db_key_in = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_in)
+    db_key_out = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_out)
 
-    cmd = "dada_header -k " + db_key_in
-    self.binary_list.append (cmd)
-    rval, lines = self.system (cmd)
+    self.log (0, "db_key_in=" + db_key_in + " db_key_out=" + db_key_out)
 
-    # if the command returned ok and we have a header
-    if rval != 0:
-      self.log (-2, cmd + " failed")
-      self.quit_event.set()
+    # create dspsr input file for the data block
+    db_key_filename = "/tmp/spip_" + db_key_in + ".info"
+    db_key_file = open (db_key_filename, "w")
+    db_key_file.write("DADA INFO:\n")
+    db_key_file.write("key " +  db_key_in + "\n")
+    db_key_file.close()
 
-    elif len(lines) == 0:
-    
-      self.log (-2, "header was empty")
-      self.quit_event.set()
-    
-    else:
+    gpu_id = self.cfg["GPU_ID_" + str(self.id)]
+    prev_utc_start = ""
 
-      header = spip.parseHeader (lines)
+    while (not self.quit_event.isSet()):
 
-      utc_start = header["UTC_START"]
+      cmd = "dada_header -k " + db_key_in
+      self.binary_list.append (cmd)
+      self.log(0, cmd)
+      rval, lines = self.system (cmd)
 
-      # default processing commands
-      fold_cmd = "dada_dbnull -s -k " + db_key_in
-      trans_cmd = "dada_dbnull -s -k " + db_key_out
-      search_cmd = "dada_dbnull -s -k " + db_key_in
+      # if the command returned ok and we have a header
+      if rval != 0:
+        self.log (-2, cmd + " failed")
+        self.quit_event.set()
 
-      if prev_utc_start == utc_start:
-        self.log (-2, "UTC_START [" + utc_start + "] repeated, ignoring observation")
+      elif len(lines) == 0:
       
-      else: 
+        self.log (-2, "header was empty")
+        self.quit_event.set()
+      
+      else:
 
-        # output directories
-        observation_dir = self.cfg["CLIENT_RESULTS_DIR"] + "/" + utc_start
+        header = config.parseHeader (lines)
 
-        fold_dir = observation_dir + "/fold"
-        trans_dir = observation_dir + "/trans"
-        search_dir = observation_dir + "/search"
+        utc_start = header["UTC_START"]
 
-        # if we have multiple sub-bands, transient search will occur after
-        # a cornerturn on a different logical processing script
-        if int(cfg["NUM_SUBBAND"] ) > 1:
-          local_dirs = (observation_dir, fold_dir, search_dir)
-        else:
-          local_dirs = (observation_dir, fold_dir, trans_dir, search_dir)
+        # default processing commands
+        fold_cmd = "dada_dbnull -s -k " + db_key_in
+        trans_cmd = "dada_dbnull -s -k " + db_key_out
+        search_cmd = "dada_dbnull -s -k " + db_key_in
 
-        # create output directories
-        for dir in local_dirs:
-          if os.path.exists(dir):
-            self.log (0, "WARNING: directory existed: " + dir)
-          os.makedirs(dir)
+        if prev_utc_start == utc_start:
+          self.log (-2, "UTC_START [" + utc_start + "] repeated, ignoring observation")
         
-        if header["PERFORM_FOLD"] == 1:
-          fold_cmd = "dspsr " + db_key_filename + " -cuda 0"
+        else: 
+          beam = self.cfg["BEAM_" + str(self.beam_id)]
+          cfreq = header["FREQ"]
+          source = header["SOURCE"]
 
-        if header["PERFORM_SEARCH"] == 1 or header["PERFORM_TRANS"] == 1:
-          search_cmd = "digifil " + db_key_filename + " -c -B 10 -o " + utc_start + " .fil"
-          if header["PERFORM_TRANS"] == 1:
-            search_cmd += " -k " + db_key_out
-       
-        # if we need to cornerturn output of the search
-        if int(cfg["NUM_SUBBAND"] ) == 1:
-          trans_cmd = "heimdall -k " + db_key_out + " -gpu_id 1"
+          # output directories 
+          suffix     = "/processing/" + beam + "/" + utc_start + "/" + source + "/" + cfreq
+          fold_dir   = self.cfg["CLIENT_FOLD_DIR"]   + suffix
+          trans_dir  = self.cfg["CLIENT_TRANS_DIR"]  + suffix
+          search_dir = self.cfg["CLIENT_SEARCH_DIR"] + suffix
 
-        # since dspsr outputs to the cwd, set process CWD to dspsr's
-        os.chdir(fold_dir)
+          if header["PERFORM_FOLD"] == "1":
+            os.makedirs (fold_dir, 0755)
+            fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -minram 4000 -x 16384 -b 1024 -L 10 -no_dyn"
+            fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
-      # setup output pipes
-      fold_log_pipe   = spip.openSocket (DL, log_host, log_port, 3)
-      trans_log_pipe  = spip.openSocket (DL, log_host, log_port, 3)
-      search_log_pipe = spip.openSocket (DL, log_host, log_port, 3)
+          if header["PERFORM_SEARCH"] == "1" or header["PERFORM_TRANS"] == "1":
+            os.makedirs (search_dir, 0755)
+            search_cmd = "digifil " + db_key_filename + " -c -B 10 -o " + utc_start + " .fil"
+            if header["PERFORM_TRANS"] == "1":
+              search_cmd += " -k " + db_key_out
 
-      self.binary_list.append (fold_cmd)
-      self.binary_list.append (trans_cmd)
-      self.binary_list.append (search_cmd)
+          if header["PERFORM_TRANS"] == "1" and int(self.cfg["NUM_SUBBAND"] ) == "1":
+            os.makedirs (trans_dir, 0755)
+            trans_cmd = "heimdall -k " + db_key_out + " -gpu_id 1"
 
-      # create processing threads
-      fold_thread = procThread (fold_cmd, fold_log_pipe, 2)
-      trans_thread = procThread (trans_cmd, trans_log_pipe, 2)
-      search_thread = procThread (search_cmd, search_log_pipe, 2)
+          # since dspsr outputs to the cwd, set process CWD to dspsr's
+          os.chdir(fold_dir)
 
-      # start processing threads
-      fold_thread.run()
-      trans_thread.run()
-      search_thread.run()
+        log_host = self.cfg["SERVER_HOST"]
+        log_port = int(self.cfg["SERVER_LOG_PORT"])
 
-      # join processing threads
-      self.log (2, "joining fold thread")
-      rval = fold_thread.join() 
-      self.log (2, "fold thread joined")
-      if rval:
-        self.log (-2, "fold thread failed")
-        quit_event.set()
+        # setup output pipes
+        fold_log_pipe   = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
+                                     log_host, log_port, int(DL))
+        #trans_log_pipe  = LogSocket ("trans_src", "trans_src", str(self.id), "stream",
+        #                             log_host, log_port, int(DL))
+        #search_log_pipe = LogSocket ("search_src", "search_src", str(self.id), "stream",
+        #                             log_host, log_port, int(DL))
 
-      self.log (2, "joining trans thread")
-      rval = trans_thread.join() 
-      self.log (2, "trans thread joined")
-      if rval:
-        self.log (-2, "trans thread failed")
-        quit_event.set()
+        fold_log_pipe.connect()
 
-      self.log (2, "joining search thread")
-      rval = search_thread.join() 
-      self.log (2, "search thread joined")
-      if rval:
-        self.log (-2, "search thread failed")
-        quit_event.set()
-        
+        self.binary_list.append (fold_cmd)
+        #self.binary_list.append (trans_cmd)
+        #self.binary_list.append (search_cmd)
+
+        # create processing threads
+        self.log (1, "creating processing threads")      
+        fold_thread = procThread (fold_cmd, fold_dir, fold_log_pipe.sock, 1)
+
+        #trans_thread = procThread (trans_cmd, self.log_sock.sock, 2)
+        #search_thread = procThread (search_cmd, self.log_sock.sock, 2)
+
+        # start processing threads
+        self.log (1, "starting processing threads")      
+        fold_thread.start()
+        #trans_thread.start()
+        #search_thread.start()
+
+        # join processing threads
+        self.log (2, "waiting for fold thread to terminate")
+        rval = fold_thread.join() 
+        self.log (2, "fold thread joined")
+        if rval:
+          self.log (-2, "fold thread failed")
+          quit_event.set()
+
+        #self.log (2, "joining trans thread")
+        #rval = trans_thread.join() 
+        #self.log (2, "trans thread joined")
+        #if rval:
+        #  self.log (-2, "trans thread failed")
+        #  quit_event.set()
+
+        #self.log (2, "joining search thread")
+        #rval = search_thread.join() 
+        #self.log (2, "search thread joined")
+        #if rval:
+        #  self.log (-2, "search thread failed")
+        #  quit_event.set()
+
+        fold_log_pipe.close()
+        #trans_log_pipe.close()
+        #search_log_pipe.close()
+
+        self.log (1, "processing completed")
+
 ###############################################################################
 
 if __name__ == "__main__":
@@ -177,18 +215,22 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = StreamDaemon ("spip_proc", stream_id)
+  script = ProcDaemon ("spip_proc", stream_id)
 
-  rval = script.configure (DAEMONIZE, DL, "proc", "proc") 
-  if rval:
-    print "ERROR: failed to start"
-    sys.exit(1)
+  state = script.configure (DAEMONIZE, DL, "proc", "proc") 
+  if state != 0:
+    sys.exit(state)
 
   script.log(1, "STARTING SCRIPT")
 
   try:
 
-    main (script, stream_id)
+    reporting_thread = ProcReportingThread (script, stream_id)
+    reporting_thread.start()
+
+    script.main ()
+
+    reporting_thread.join()
 
   except:
 

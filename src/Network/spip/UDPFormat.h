@@ -30,13 +30,13 @@ namespace spip {
 
       virtual uint64_t get_samples_for_bytes (uint64_t nbytes) = 0;
 
-      virtual void encode_header_seq (char * buf, size_t bufsz, uint64_t packet_number) = 0;
+      virtual void encode_header_seq (char * buf, uint64_t packet_number) = 0;
 
-      virtual void encode_header (char * buf, size_t bufsz) = 0;
+      virtual void encode_header (char * buf) = 0;
 
-      virtual uint64_t decode_header_seq (char * buf, size_t bufsz) = 0;
+      virtual uint64_t decode_header_seq (char * buf) = 0;
 
-      virtual void decode_header (char * buf, size_t bufsz) = 0;
+      virtual void decode_header (char * buf) = 0;
 
       virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
 
@@ -47,6 +47,12 @@ namespace spip {
       unsigned get_header_size () { return packet_header_size; } ;
 
       unsigned get_data_size () { return packet_data_size; } ;
+
+      double rand_normal (double mean, double stddev);
+
+      void generate_noise_buffer (int nbits);
+
+      void fill_noise (char * buf, size_t nbytes);
 
     protected:
 
@@ -69,6 +75,14 @@ namespace spip {
       unsigned channel_stride;
 
       unsigned chanpol_stride;
+
+      double n2;
+      
+      double n2_cached;
+        
+      void * noise_buffer;
+
+      size_t noise_buffer_size;
 
     private:
 

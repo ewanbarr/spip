@@ -1,7 +1,7 @@
 
 lib_LTLIBRARIES = libska1.la
 
-libska1_headers = spip/UDPFormatCusom.h
+libska1_headers = spip/UDPFormatCustom.h
 
 libska1_la_SOURCES = UDPFormatCustom.C
 

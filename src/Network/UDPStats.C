@@ -9,6 +9,7 @@
 
 #include <stdexcept>
 #include <cstdlib>
+#include <iostream>
 
 using namespace std;
 
@@ -16,6 +17,8 @@ spip::UDPStats::UDPStats (unsigned _hdr, unsigned _data)
 {
   data = _data;
   payload = _hdr + _data;
+
+  cerr << "spip::UDPStats::UDPStats data=" << data << " payload=" << payload << endl; 
   
   reset ();
 }

@@ -14,7 +14,11 @@ namespace spip {
 
       ~DataBlockWrite ();
 
+      void open ();
+
       void lock ();
+
+      void close();
 
       void unlock ();
 

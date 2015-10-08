@@ -33,7 +33,7 @@ def getDiskCapacity (dirs, dl):
   for dir in dirs:
 
     cmd = "df " + dir + " -B 1048576 -P | tail -n 1 | awk '{print $2,$3,$4}'"
-    rval, lines = spip.system (cmd, 2 <= dl)
+    rval, lines = spip.system (cmd, 3 <= dl)
     result += rval
 
     if rval == 0 and len(lines) == 1:
@@ -48,7 +48,7 @@ def getLoads (dl):
   loads = {}
 
   cmd = "uptime"
-  rval, lines = spip.system (cmd, 2 <= dl)
+  rval, lines = spip.system (cmd, 3 <= dl)
 
   if rval == 0 and len(lines) == 1:
     parts = lines[0].split("load average: ") 
@@ -56,6 +56,13 @@ def getLoads (dl):
       load_parts = parts[1].split(', ')
       if len(load_parts) == 3:
         loads = {"1min" : load_parts[0], "5min": load_parts[1], "15min": load_parts[2]}
+
+  cmd = "nproc"
+  rval, lines = spip.system (cmd, 3 <= dl)
+  if rval == 0 and len(lines) == 1:
+    loads["ncore"] = lines[0]
+  else: 
+    loads["ncore"] = 0
 
   return result, loads
 

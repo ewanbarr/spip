@@ -32,6 +32,14 @@ AC_CONFIG_FILES([Makefile
   src/Makefile
   src/Network/Makefile
   src/Formats/SKA1/Makefile
+  src/Formats/MeerKAT/Makefile
   src/Dada/Makefile
-  scripts/Makefile])
+  scripts/Makefile
+  web/Makefile
+  web/controls/Makefile
+  web/images/Makefile
+  web/js/Makefile
+  web/status/Makefile
+  web/test/Makefile
+  web/timing/Makefile])
 AC_OUTPUT 

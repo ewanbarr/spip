@@ -7,71 +7,97 @@
 # 
 ###############################################################################
 
-import os, threading, sys, time, socket, select, signal, traceback
-import spip
-from spip_scripts import StreamDaemon,LogSocket
-import spip_smrb
+import sys, traceback
+from time import sleep
+
+from spip.daemons.bases import StreamBased
+from spip.daemons.daemon import Daemon
+from spip.log_socket import LogSocket
+from spip import config
+from spip_smrb import SMRBDaemon
 
 DAEMONIZE = False
-DL = 2
+DL = 1
 
-###############################################################################
-# main
-#
-def main (self, id):
+class RecvDaemon(Daemon,StreamBased):
 
-  db_id = self.cfg["PROCESSING_DATA_BLOCK"]
-  db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
-  num_stream = self.cfg["NUM_STREAM"]
-  db_key = spip_smrb.getDBKey (db_prefix, id, num_stream, db_id)
+  def __init__ (self, name, id):
+    Daemon.__init__(self, name, str(id))
+    StreamBased.__init__(self, id, self.cfg)
 
-  self.log(0, "db_key="+db_key)
+  def main (self):
 
-  # wait up to 10s for the SMRB to be created
-  smrb_wait = 10
-  cmd = "dada_dbmetric -k " + db_key
-  self.binary_list.append (cmd)
+    db_id = self.cfg["PROCESSING_DATA_BLOCK"]
+    db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
+    num_stream = self.cfg["NUM_STREAM"]
+    db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
+    self.log(0, "db_key="+db_key)
 
-  rval = 1
-  while rval and smrb_wait > 0:
-    rval, lines = self.system (cmd)
-    if rval:
-      time.sleep(1)
-    smrb_wait -= 1
-
-  if rval:
-    self.log(-2, "spip_smrb["+str(id)+"] no valid SMRB with " +
-                "key=" + db_key)
-    self.quit_event.set()
-
-  else:
-    ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(id))
-    log_port  = str(int(script.cfg["STREAM_LOG_PORT"])  + int(id))
-    stream_core = self.cfg["STREAM_CORE_" + str(id)]  
-    (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(id)].split(":")
-
-    cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key + " -b " + stream_core \
-          + " -c " + ctrl_port + " -i " + stream_ip + " -l " + log_port \
-          + " -p " + stream_port
+    # wait up to 10s for the SMRB to be created
+    smrb_wait = 10
+    cmd = "dada_dbmetric -k " + db_key
     self.binary_list.append (cmd)
 
-    time.sleep(2)
+    rval = 1
+    while rval and smrb_wait > 0 and self.quit_event.isSet:
 
-    log_pipe = LogSocket ("recv_src", "recv_src", str(id), "stream",
-                          self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
-                          int(DL))
-    log_pipe.connect()
-
-    time.sleep(2)
-   
-    # this should be a persistent / blocking command 
-    rval = self.system_piped (cmd, log_pipe.sock)
+      rval, lines = self.system (cmd)
+      if rval:
+        sleep(1)
+      smrb_wait -= 1
 
     if rval:
-      self.log (-2, cmd + " failed with return value " + str(rval))
+      self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
+                  "key=" + db_key)
       self.quit_event.set()
 
-    log_pipe.close ()
+    else:
+
+      # get the site configuration, things the backend configuration
+      # does not affect
+      site = config.getSiteConfig()
+    
+      # generate the front-end configuration file for this stream
+      # the does not change from observation to observation
+      local_config = config.getStreamConfigFixed(site, self.cfg, self.id)
+
+      # write this config to file
+      config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
+      config.writeDictToCFGFile (local_config, config_file)
+
+      ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(self.id))
+      stream_core = self.cfg["STREAM_CORE_" + str(self.id)]  
+      (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(self.id)].split(":")
+
+      cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key \
+            + " -b " + stream_core \
+            + " -c " + ctrl_port \
+            + " -p " + stream_port \
+            + " " + config_file + " " + stream_ip
+      self.binary_list.append (cmd)
+
+      self.log(3, "main: sleep(1)")
+      sleep(1)
+
+      self.log(3, "main: log_pipe = LogSocket(recv_src))")
+      log_pipe = LogSocket ("recv_src", "recv_src", str(self.id), "stream",
+                            self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
+                            int(DL))
+
+      self.log(3, "main: log_pipe.connect()")
+      log_pipe.connect()
+
+      self.log(3, "main: sleep(1)")
+      sleep(1)
+     
+      # this should be a persistent / blocking command 
+      rval = self.system_piped (cmd, log_pipe.sock)
+
+      if rval:
+        self.log (-2, cmd + " failed with return value " + str(rval))
+      self.quit_event.set()
+
+      log_pipe.close ()
 #
 # main
 ###############################################################################
@@ -85,15 +111,16 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = StreamDaemon ("spip_recv", stream_id)
-
-  script.configure (DAEMONIZE, DL, "recv", "recv")
+  script = RecvDaemon ("recv", stream_id)
+  state = script.configure (DAEMONIZE, DL, "recv", "recv")
+  if state != 0:
+    sys.exit(state)
 
   script.log(1, "STARTING SCRIPT")
 
   try:
     
-    main (script, stream_id)
+    script.main ()
 
   except:
 

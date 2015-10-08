@@ -24,8 +24,6 @@ namespace spip {
 
       size_t send (size_t nbytes);
 
-      struct in_addr * atoaddr (const char *address) ;
-
     private:
 
       struct sockaddr * sock_addr;

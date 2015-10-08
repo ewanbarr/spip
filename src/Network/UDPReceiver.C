@@ -122,7 +122,7 @@ void spip::UDPReceiver::receive ()
       }
     }
 
-    packet_number = format->decode_header_seq (buf, bufsz);
+    packet_number = format->decode_header_seq (buf);
 
     if (packet_number == (1 + prev_packet_number))
       stats->increment();

@@ -56,21 +56,21 @@ namespace spip {
 
       void set_channel_range (unsigned start, unsigned end);
 
-      static void encode_seq (char * buf, size_t bufsz, uint64_t seq)
+      static void encode_seq (char * buf, uint64_t seq)
       {
         memcpy (buf, (void *) &seq, sizeof(uint64_t));
       };
 
-      static inline uint64_t decode_seq (char * buf, size_t bufsz)
+      static inline uint64_t decode_seq (char * buf)
       {
         return ((uint64_t *) buf)[0];  
       };
 
-      inline void encode_header_seq (char * buf, size_t bufsz, uint64_t packet_number);
-      inline void encode_header (char * buf, size_t bufsz);
+      inline void encode_header_seq (char * buf, uint64_t packet_number);
+      inline void encode_header (char * buf);
 
-      inline uint64_t decode_header_seq (char * buf, size_t bufsz);
-      inline void decode_header (char * buf, size_t bufsz);
+      inline uint64_t decode_header_seq (char * buf);
+      inline void decode_header (char * buf);
 
       inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
 

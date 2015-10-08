@@ -11,6 +11,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <numa.h>
 
 #include <stdexcept>
@@ -87,4 +89,24 @@ int spip::Socket::set_block ()
   else
     throw runtime_error ("socket was not open");
 }
+
+struct in_addr* spip::Socket::atoaddr (const char *address)
+{
+  struct hostent *host;
+  static struct in_addr saddr;
+
+  /* First try it as aaa.bbb.ccc.ddd. */
+  saddr.s_addr = inet_addr(address);
+  if ((int) saddr.s_addr != -1)
+  {
+    return &saddr;
+  }
+  host = gethostbyname(address);
+  if (host != NULL)
+  {
+    return (struct in_addr *) *host->h_addr_list;
+  }
+  return NULL;
+}
+
 

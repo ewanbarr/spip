@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <string>
 
+#include <netinet/in.h>
+
 namespace spip {
 
   class Socket {
@@ -28,6 +30,8 @@ namespace spip {
 
       int set_block();
 
+      struct in_addr * atoaddr (const char *address) ;
+
       char get_blocking () { return ! non_block; };
 
       int get_fd () { return fd; };
@@ -35,6 +39,7 @@ namespace spip {
       char * get_buf () { return buf; };
 
       size_t get_bufsz () { return bufsz; };
+
 
     protected:
 

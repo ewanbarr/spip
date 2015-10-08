@@ -190,12 +190,12 @@ int main(int argc, char *argv[]) try
 
   delete udpdb;
 }
-  catch (std::exception& exc)
-  {
-    cerr << "ERROR: " << exc.what() << endl;
-    return -1;
-    return 0;
-  }
+catch (std::exception& exc)
+{
+  cerr << "ERROR: " << exc.what() << endl;
+  return -1;
+  return 0;
+}
 
 void usage() 
 {

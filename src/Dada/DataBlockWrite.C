@@ -23,6 +23,18 @@ spip::DataBlockWrite::~DataBlockWrite ()
 {
 }
 
+void spip::DataBlockWrite::open ()
+{
+  if (!connected)
+    throw runtime_error ("not connected to data block");
+
+  if (!locked)
+    throw runtime_error ("data block not locked for writing");
+
+  if (ipcio_open (data_block, 'W') < 0)
+    throw runtime_error ("could not lock data block for writing");
+}
+
 void spip::DataBlockWrite::lock ()
 {
   if (!connected)
@@ -33,14 +45,11 @@ void spip::DataBlockWrite::lock ()
 
   if (ipcbuf_lock_write (header_block) < 0)
     throw runtime_error ("could not lock header block for writing");
-
-  if (ipcio_open (data_block, 'W') < 0)
-    throw runtime_error ("could not lock data block for writing");
-
   locked = true;
 }
 
-void spip::DataBlockWrite::unlock ()
+
+void spip::DataBlockWrite::close ()
 {
   if (!connected)
     throw runtime_error ("not connected to data block");
@@ -51,6 +60,18 @@ void spip::DataBlockWrite::unlock ()
   if (ipcio_is_open (data_block))
     if (ipcio_close (data_block) < 0)
       throw runtime_error ("could not unlock data block from writing");
+}
+
+void spip::DataBlockWrite::unlock ()
+{
+  if (!connected)
+    throw runtime_error ("not connected to data block");
+
+  if (!locked)
+    throw runtime_error ("not locked for writing on data block");
+
+  // if we are unlocking, we must close first
+  close();
 
   if (ipcbuf_unlock_write (header_block) < 0)
     throw runtime_error ("could not unlock header block from writing");

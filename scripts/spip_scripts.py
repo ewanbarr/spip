@@ -12,61 +12,11 @@ from sys import stderr
 from signal import signal, SIGINT
 from time import gmtime
 from calendar import timegm
-import time
+import time, select
 import threading, socket, subprocess
 
 import spip
-
-class LogSocket:
-
-  def __init__ (self, source, dest, id, type, host, port, dl):
-    self.source = source
-    self.dest = dest
-    self.id = id
-    self.host = host
-    self.port = port
-    self.type = type
-    self.dl = dl
-    self.last_conn_attempt = 0
-    self.sock = []
-
-  def connect (self):
-    now = timegm(gmtime())
-    if (now - self.last_conn_attempt) > 5:
-      header = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
-               "<log_stream>" + \
-               "<host>" + self.host + "</host>" + \
-               "<source>" + self.source + "</source>" + \
-               "<dest>" + self.dest + "</dest>" + \
-               "<id type='" + self.type + "'>" + self.id + "</id>" + \
-              "</log_stream>"
-
-      self.sock = spip.openSocket (self.dl, self.host, int(self.port), 1)
-      if self.sock:
-        self.sock.send (header)
-        junk = self.sock.recv(1)
-      self.last_conn_attempt = now
-
-  def log (self, level, message):
-    if level <= self.dl:
-      # if the socket is currently not connected and we didn't try to connect in the last 10 seconds
-      if not self.sock:
-        self.connect()
-      prefix = "[" + spip.getCurrentSpipTimeUS() + "] "
-      if level == -1:
-        prefix += "W "
-      if level == -2:
-        prefix += "E "
-      lines = message.split("\n")
-      for line in lines:
-        stderr.write (prefix + message + "\n")
-        if self.sock:
-          self.sock.send (prefix + message + "\n")
-
-  def close (self):
-    if self.sock:
-      self.sock.close()
-    self.sock = []
+from spip import LogSocket
 
 class controlThread(threading.Thread):
 
@@ -93,6 +43,72 @@ class controlThread(threading.Thread):
     self.script.log (2, "controlThread: exiting")
 
 
+class ReportingThread (threading.Thread):
+
+  def __init__ (self, script, host, port):
+    threading.Thread.__init__(self)
+    self.script = script
+    self.host = host
+    self.port = port
+
+  def run (self):
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    sock.bind((self.host, int(self.port)))
+    sock.listen(1)
+
+    can_read = [sock]
+    can_write = []
+    can_error = []
+
+    while not self.script.quit_event.isSet():
+
+      timeout = 1
+
+      # wait for some activity on the control socket
+      self.script.log (3, "reportingThread: select")
+      did_read, did_write, did_error = select.select(can_read, can_write, can_error, timeout)
+      self.script.log (3, "reportingThread: read="+str(len(did_read))+" write="+
+                  str(len(did_write))+" error="+str(len(did_error)))
+
+      if (len(did_read) > 0):
+        for handle in did_read:
+          if (handle == sock):
+            (new_conn, addr) = sock.accept()
+            self.script.log (1, "report: accept connection from "+repr(addr))
+
+            # add the accepted connection to can_read
+            can_read.append(new_conn)
+
+          # an accepted connection must have generated some data
+          else:
+            try:
+              raw = handle.recv(4096)
+              message = raw.strip()
+
+              self.script.log (1, "reportingThread: message='" + message+"'")
+              xml = xmltodict.parse(message)
+              spip.logMsg(3, DL, "<- " + str(xml))
+
+              reply = self.parse_message (xml)
+
+              handle.send (reply)
+
+            except socket.error as e:
+              if e.errno == errno.ECONNRESET:
+                self.script.log (1, "reportingThread: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
+              else:
+                raise
+
+  def parse_message(xml):
+    return "ok"
+
 # base class
 class Daemon:
 
@@ -113,6 +129,9 @@ class Daemon:
     self.log_sock = []
     self.binary_list = []
 
+    self.log_dir = self.cfg["SERVER_LOG_DIR"]
+    self.control_dir = self.cfg["SERVER_CONTROL_DIR"]
+
   def configure (self, daemonize, dl, source, dest):
 
     # set the script debug level
@@ -123,12 +142,12 @@ class Daemon:
       stderr.write ("ERROR: script launched on incorrect host")
       return 1
 
-    self.log_file  = self.cfg["SERVER_LOG_DIR"] + "/" + self.name + ".log"
-    self.pid_file  = self.cfg["SERVER_CONTROL_DIR"] + "/" + self.name + ".pid"
-    self.quit_file = self.cfg["SERVER_CONTROL_DIR"] + "/"  + self.name + ".quit"
+    self.log_file  = self.log_dir + "/" + self.name + ".log"
+    self.pid_file  = self.control_dir + "/" + self.name + ".pid"
+    self.quit_file = self.control_dir + "/"  + self.name + ".quit"
 
     if path.exists(self.quit_file):
-      stderr.write ("ERROR: quit file existed at launch: " + self.quit_file)
+      stderr.write ("ERROR: quit file existed at launch: " + self.quit_file + "\n")
       return 1
 
     # optionally daemonize script
@@ -150,6 +169,9 @@ class Daemon:
     # start a control thread to handle quit requests
     self.control_thread = controlThread(self)
     self.control_thread.start()
+
+    return 0
+
 
   def configureLogs (self, source, dest, type):
     host = self.cfg["SERVER_HOST"]
@@ -214,7 +236,7 @@ class Daemon:
                             shell=True,
                             stdin=None,
                             stdout=pipe,
-                            stderr=subprocess.STDOUT)
+                            stderr=pipe)
 
     # now wait for the process to complete
     proc.wait ()
@@ -227,13 +249,15 @@ class Daemon:
 
     return return_code
 
-
-
 class StreamDaemon (Daemon):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, id)
     (self.req_host, self.beam_id, self.subband_id) = self.getConfig(id)
+    self.name = self.name + "_" + str(id)
+    if id >= 0:
+      self.log_dir  = self.cfg["CLIENT_LOG_DIR"]
+      self.control_dir = self.cfg["CLIENT_CONTROL_DIR"]
 
   def getConfig (self, id):
     stream_config = self.cfg["STREAM_" + str(id)]
@@ -257,3 +281,36 @@ class RecvDaemon (Daemon):
 
   def getType (self):
     return "recv"
+
+class ServerDaemon (Daemon):
+
+  def __init__ (self, name):
+    Daemon.__init__(self, name, "-1")
+
+    # check that independent beams is off
+    if self.cfg["INDEPENDENT_BEAMS"] == "1":
+      raise Exception ("ServerDaemons incompatible with INDEPENDENT_BEAMS")  
+    self.req_host = self.cfg["SERVER_HOST"]
+    self.log_dir  = self.cfg["SERVER_LOG_DIR"]
+    self.control_dir = self.cfg["SERVER_CONTROL_DIR"]
+
+  def getType (self):
+    return "serv"
+
+class BeamDaemon (Daemon):
+
+  def __init__ (self, name, id):
+    Daemon.__init__(self, name, id)
+    (self.req_host, self.beam_id) = self.getConfig(id)
+    self.log_dir  = self.cfg["SERVER_LOG_DIR"]
+    self.control_dir = self.cfg["SERVER_CONTROL_DIR"]
+
+  def getConfig (self, id):
+    stream_config = self.cfg["STREAM_" + str(id)]
+    (host, beam_id) = stream_config.split(":")
+    return (host, beam_id)
+
+  def getType (self):
+    return "beam"
+
+

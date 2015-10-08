@@ -12,33 +12,20 @@
 #   SMRBs destroyed upon exit
 #
 
-import os, threading, sys, time, socket, select, signal, traceback
-import json
-import spip
-from spip_scripts import StreamDaemon,LogSocket
+#import os, threading, sys, time, socket, select, signal, traceback
+
+import threading, sys, traceback, socket, select
+from time import sleep
+
+from json import dumps
+
+from spip.daemons.bases import StreamBased
+from spip.daemons.daemon import Daemon
+from spip.log_socket import LogSocket
+from spip.utils.core import system
 
 DAEMONIZE = False
-DL        = 2
-
-def getDBKey (inst_id, stream_id, num_stream, db_id):
-  index = (int(db_id) * int(num_stream)) + int(stream_id)
-  db_key = inst_id + "%03x" % (2 * index)
-  return db_key
-
-def getDBMonPort (stream_id):
-  start_port = 20000  
-  return start_port + int(stream_id)
-
-def getDBState (key):
-  cmd = "dada_dbmetric -k " + key
-  rval, lines = spip.system (cmd, False) 
-  if rval == 0:
-    a = lines[0].split(',')
-    hdr = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
-    dat = {'nbufs':a[5], 'full':a[6], 'clear':a[7], 'written':a[8],'read':a[9]}
-    return 0, hdr, dat
-  else:
-    return 1, {}, {}
+DL        = 1
 
 class monThread (threading.Thread):
 
@@ -63,7 +50,7 @@ class monThread (threading.Thread):
       script.log(1, "monThread: opening mon socket")
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-      port = getDBMonPort(self.id)
+      port = self.getDBMonPort(self.id)
       script.log(2, "monThread: binding to localhost:" + str(port))
       sock.bind(("localhost", port))
 
@@ -79,10 +66,11 @@ class monThread (threading.Thread):
         for key in self.keys:
 
           # read the current state of the data block
-          rval, hdr, data = getDBState(key)
+          rval, hdr, data = self.getDBState(key)
           smrb[key] = {'hdr': hdr, 'data' : data}
      
-        serialized = json.dumps(smrb)
+        # from json
+        serialized = dumps(smrb)
   
         script.log(3, "monThread: calling select len(can_read)=" + 
                     str(len(can_read)))
@@ -112,7 +100,7 @@ class monThread (threading.Thread):
                     del can_read[i]
               else:
                 if message == "smrb_status":
-                  print smrb
+                  script.log (3, "monThread: " + str(smrb))
                   handle.send(serialized)
           
       for i, x in enumerate(can_read):
@@ -130,52 +118,76 @@ class monThread (threading.Thread):
         x.close()
         del can_read[i]
 
-######################################################################
-# main
+  def getDBMonPort (self, stream_id):
+    start_port = 20000
+    return start_port + int(stream_id)
 
-def main (self, id):
+  def getDBState (self, key):
+    cmd = "dada_dbmetric -k " + key
+    rval, lines = system (cmd, False)
+    if rval == 0:
+      a = lines[0].split(',')
+      hdr = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
+      dat = {'nbufs':a[5], 'full':a[6], 'clear':a[7], 'written':a[8],'read':a[9]}
+      return 0, hdr, dat
+    else:
+      return 1, {}, {}
 
-  mon_threads = []
 
-  # get a list of data block ids
-  db_ids = self.cfg["DATA_BLOCK_IDS"].split(" ")
-  db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
-  num_stream = self.cfg["NUM_STREAM"]
-  db_keys = []
 
-  for db_id in db_ids:
-    db_key = getDBKey (db_prefix, id, num_stream, db_id)
-    self.log (0, "spip_smrb: db_key for " + db_id + " is " + db_key)
-
-    nbufs = self.cfg["BLOCK_NBUFS_" + db_id]
-    bufsz = self.cfg["BLOCK_BUFSZ_" + db_id]
-    nread = self.cfg["BLOCK_NREAD_" + db_id]
-    page  = self.cfg["BLOCK_PAGE_" + db_id]
-
-    cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
-    if page:
-      cmd += " -p -l"
-    rval, lines = self.system (cmd)
-
-    db_keys.append(db_key)
-
-  # after creation, launch thread to monitor smrb, maintaining state
-  mon_thread = monThread (db_keys, self)
-  mon_thread.start()
-
-  while (not self.quit_event.isSet()):
-    time.sleep(1)
-
-  for db_key in db_keys:
-    cmd = "dada_db -k " + db_key + " -d"
-    rval, lines = self.system (cmd)
-
-  if mon_thread:
-    self.log(2, "joining mon thread")
-    mon_thread.join()
 #
-# main
-###############################################################################
+class SMRBDaemon(Daemon,StreamBased):
+
+  def __init__ (self, name, id):
+    Daemon.__init__(self, name, str(id))
+    StreamBased.__init__(self, id, self.cfg)
+
+  def main (self):
+
+    mon_threads = []
+
+    # get a list of data block ids
+    db_ids = self.cfg["DATA_BLOCK_IDS"].split(" ")
+    db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
+    num_stream = self.cfg["NUM_STREAM"]
+    db_keys = []
+
+    for db_id in db_ids:
+      db_key = self.getDBKey (db_prefix, self.id, num_stream, db_id)
+      self.log (0, "main: db_key for " + db_id + " is " + db_key)
+
+      nbufs = self.cfg["BLOCK_NBUFS_" + db_id]
+      bufsz = self.cfg["BLOCK_BUFSZ_" + db_id]
+      nread = self.cfg["BLOCK_NREAD_" + db_id]
+      page  = self.cfg["BLOCK_PAGE_" + db_id]
+
+      cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
+      if page:
+        cmd += " -p -l"
+      rval, lines = self.system (cmd)
+
+      db_keys.append(db_key)
+
+    # after creation, launch thread to monitor smrb, maintaining state
+    mon_thread = monThread (db_keys, self)
+    mon_thread.start()
+
+    while (not self.quit_event.isSet()):
+      sleep(1)
+
+    for db_key in db_keys:
+      cmd = "dada_db -k " + db_key + " -d"
+      rval, lines = self.system (cmd)
+
+    if mon_thread:
+      self.log(2, "joining mon thread")
+      mon_thread.join()
+
+  @classmethod
+  def getDBKey(self, inst_id, stream_id, num_stream, db_id):
+    index = (int(db_id) * int(num_stream)) + int(stream_id)
+    db_key = inst_id + "%03x" % (2 * index)
+    return db_key
 
 if __name__ == "__main__":
 
@@ -186,15 +198,16 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = StreamDaemon ("spip_smrb", stream_id)
-
-  script.configure (DAEMONIZE, DL, "smrb", "smrb")
+  script = SMRBDaemon ("smrb", stream_id)
+  state = script.configure (DAEMONIZE, DL, "smrb", "smrb")
+  if state != 0:
+    sys.exit(state)
 
   script.log(1, "STARTING SCRIPT")
 
   try:
 
-    main (script, stream_id)
+    script.main()
 
   except:
 
