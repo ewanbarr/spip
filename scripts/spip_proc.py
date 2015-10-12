@@ -131,7 +131,7 @@ class ProcDaemon(Daemon,StreamBased):
           if header["PERFORM_FOLD"] == "1":
             os.makedirs (fold_dir, 0755)
             fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -minram 4000 -x 16384 -b 1024 -L 10 -no_dyn"
-            fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
+            #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
           if header["PERFORM_SEARCH"] == "1" or header["PERFORM_TRANS"] == "1":
             os.makedirs (search_dir, 0755)

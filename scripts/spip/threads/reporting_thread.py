@@ -69,7 +69,7 @@ class ReportingThread (threading.Thread):
 
               self.script.log (1, "ReportingThread message='" + message+"'")
               xml = parse(message)
-              spip.logMsg(3, DL, "<- " + str(xml))
+              self.script.log(3, "<- " + str(xml))
 
               reply = self.parse_message (xml)
 

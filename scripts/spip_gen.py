@@ -132,7 +132,7 @@ class GenDaemon(Daemon,StreamBased):
     # rate in Gb/s
     transmit_rate = float(header["BYTES_PER_SECOND"]) * 8.0 / 1000000000.0
 
-    transmit_rate /= 10
+    transmit_rate /= 4
 
     self.log(3, "gen_obs: writing header to " + header_file)
     config.writeDictToCFGFile (header, header_file)
@@ -142,10 +142,14 @@ class GenDaemon(Daemon,StreamBased):
 
     stream_core = self.cfg["STREAM_GEN_CORE_" + str(self.id)]  
 
+    tobs = "60"
+    if header["TOBS"] != "":
+      tobs = header["TOBS"]
+
     cmd = self.cfg["STREAM_GEN_BINARY"] + " -b " + stream_core \
           + " -p " + stream_port \
           + " -r " + str(transmit_rate) \
-          + " -t 20 " \
+          + " -t " + tobs \
           + " " + header_file + " " + stream_ip 
     self.binary_list.append (cmd)
 

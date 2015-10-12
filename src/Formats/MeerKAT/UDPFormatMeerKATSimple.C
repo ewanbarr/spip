@@ -8,6 +8,7 @@
 #include "spip/UDPFormatMeerKATSimple.h"
 
 #include <cstdlib>
+#include <cstdio>
 #include <iostream>
 
 using namespace std;

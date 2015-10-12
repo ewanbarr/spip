@@ -99,6 +99,7 @@ void spip::UDPFormat::generate_noise_buffer (int nbits)
   int32_t * buffer32 = (int32_t *) noise_buffer;
 
   // seed the random number generator
+  cerr << "seeding random noise buffer with " << time(0) << endl;
   srand(time(0));
 
   for (unsigned i=0; i < size; i++)
@@ -119,7 +120,7 @@ void spip::UDPFormat::generate_noise_buffer (int nbits)
 void spip::UDPFormat::fill_noise (char * buf, size_t nbytes)
 {
   // choose a random starting point in the noise buffer
-  int start_byte = (int) floor(rand() / RAND_MAX) * noise_buffer_size;
+  int start_byte = (int) floor( ((double) rand() * noise_buffer_size) / RAND_MAX);
   if (start_byte + nbytes > noise_buffer_size)
     start_byte -= nbytes;
 

@@ -3,7 +3,9 @@
 error_reporting(E_ALL);
 ini_set("display_errors", 1);
 
+include_once("../spip.lib.php");
 include_once("../spip_webpage.lib.php");
+include_once("../spip_socket.lib.php");
 
 class timing extends spip_webpage
 {
@@ -15,6 +17,7 @@ class timing extends spip_webpage
     $this->title = "Pulsar Timing";
     $this->nav_item = "timing";
 
+    $this->config = spip::get_config();
     $this->beams = array();
 
     for ($ibeam=0; $ibeam<$this->config["NUM_BEAM"]; $ibeam++)
@@ -35,7 +38,7 @@ class timing extends spip_webpage
       }
 
       list ($host, $beam, $subband) = explode (":", $this->config["STREAM_".$primary_stream]);
-      $this->beams[$i] = array ("name" => $beam_name, "host" => $host);
+      $this->beams[$ibeam] = array ("name" => $beam_name, "host" => $host);
     }
   }
 
@@ -69,25 +72,24 @@ class timing extends spip_webpage
     $xml_req  = XML_DEFINITION;
     $xml_req .= "<repack_request>";
     $xml_req .= "<requestor>timing page</requestor>";
-    $xml_req .= "<request>state</request>";
+    $xml_req .= "<type>state</type>";
     $xml_req .= "</repack_request>";
 
     foreach ($this->beams as $ibeam => $beam)
     {
       $host = $beam["host"];
-      $port = $this->config["REPACK_PORT"] + $ibeam;
+      $port = $this->config["STREAM_REPACK_PORT"] + $ibeam;
 
       if ($repack_socket->open ($host, $port, 0) == 0)
       {
-        $xml .= "<state>Running</state>";
         $repack_socket->write ($xml_req."\r\n");
         list ($rval, $reply) = $repack_socket->read();
-        $xml .= $reply;
+        $xml .= rtrim($reply);
         $repack_socket->close();
       }
       else
       {
-        $xml .= "<state>Offline</state>";
+        $xml .= "<repack_state><beam id='".$beam["name"]."'></beam></repack_state>";
       }
     }
 
@@ -103,7 +105,7 @@ class timing extends spip_webpage
     $ibeam     = $this->beams[$get["ibeam"]];
     $beam_name = $this->beams[$ibeam];
     $host      = $get["host"];
-    $port      = $this->config["REPACK_PORT"];
+    $port      = $this->config["STREAM_REPACK_PORT"];
     if ($ibeam >= 0)
       $port += $ibeam;
 
@@ -127,7 +129,7 @@ class timing extends spip_webpage
     echo $reply;
   }
 }
-
-$_GET["single"] = "true";
+if (!isset($_GET["update"]))
+  $_GET["single"] = "true";
 handleDirect("timing");
 

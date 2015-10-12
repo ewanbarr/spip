@@ -22,7 +22,7 @@ class RepackReportingThread(ReportingThread):
 
   def __init__ (self, script, id):
     host = sockets.getHostNameShort()
-    port = int(script.cfg["REPACK_REPORT_PORT"])
+    port = int(script.cfg["STREAM_REPACK_PORT"])
     if id >= 0:
       port += int(id)
     ReportingThread.__init__(self, script, host, port)
@@ -35,37 +35,45 @@ class RepackReportingThread(ReportingThread):
 
     if req["type"] == "state":
 
+      self.script.log (0, "RepackReportingThread::parse_message: preparing state response")
       xml = "<repack_state>"
 
-      for beam in self.beams:
+      for beam in self.script.beams:
 
+        self.script.log (0, "RepackReportingThread::parse_message: preparing state for beam: " + str(beam))
         xml += "<beam id='" + str(beam) + "'>"
 
-        if self.beams[beam]["valid"]:
+        self.script.log (0, "RepackReportingThread::parse_message: keys="+str(self.script.results[beam].keys()))
 
+        if self.script.results[beam]["valid"]:
+
+          self.script.log (0, "RepackReportingThread::parse_message: beam " + str(beam) + " is valid!")
           xml += "<source>"
           xml += "<name epoch='J2000'></name>"
           xml += "</source>"
 
           xml += "<observation>"
-          xml += "<start units='datetime'>" + self.results[beam]["utc"] + "</start>"
-          xml += "<length units='seconds'>" + self.results[beam]["length"] + "</length>"
-          xml += "<snr>" + self.results[beam]["snr"] + "</snr>"
+          xml += "<start units='datetime'>" + self.script.results[beam]["utc_start"] + "</start>"
+          xml += "<length units='seconds'>" + self.script.results[beam]["length"] + "</length>"
+          xml += "<snr>" + self.script.results[beam]["snr"] + "</snr>"
+          xml += "</observation>"
 
           xml += "<plot type='freq_vs_phase'/>"
           xml += "<plot type='time_vs_phase'/>"
           xml += "<plot type='flux_vs_phase'/>"
+      
 
         xml += "</beam>"
 
       xml += "</repack_state>"
-
-      return xml
+      self.script.log (0, "RepackReportingThread::parse_message: returning " + str(xml))
+    
+      return xml + "\r\n"
 
     elif req["type"] == "plot":
      
-      if self.beams[req["beam"]]["valid"]:
-        return self.results[req["beam"]][req["plot"]]
+      if self.script.results[req["beam"]]["valid"]:
+        return self.script.results[req["beam"]][req["plot"]]
       else:
         # still return if the timestamp is recent
         # TODO
@@ -183,14 +191,18 @@ class RepackDaemon(Daemon):
 
           # if the proc has marked this observation as finished
           all_finished = True
+
+          # perhaps a file was produced whilst the previous list was being processed,
+          # do another pass
+          if len(files) > 0:
+            all_finished = False
+
           for subband in self.subbands:
             if not os.path.exists(obs_dir + "/" + subband["cfreq"] + "/obs.finished"):
               all_finished = False
           
           if all_finished: 
             self.log (2, "main: " + observation + " finished")
-            for subband in self.subbands: 
-              os.remove (obs_dir + "/" + subband["cfreq"] + "/obs.finished")
 
             fin_parent_dir = self.finished_dir + "/" + beam + "/" + utc
             if not os.path.exists(fin_parent_dir):
@@ -201,6 +213,10 @@ class RepackDaemon(Daemon):
             (rval, response) = self.finalise_observation (beam, obs_dir, fin_dir)
             if rval:
               self.log (-1, "failed to finalise observation: " + response)
+            else:
+              for subband in self.subbands: 
+                os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
+                os.removedirs (fin_dir + "/" + subband["cfreq"])
 
       self.log (2, "sleep(1)")
       sleep(1)
@@ -297,15 +313,21 @@ class RepackDaemon(Daemon):
       return (rval, "failed to create time plot")
 
     cmd = "psrplot -p flux -jF " + freq_file + " -D -/png"
-    rval, time_raw = self.system_raw (cmd)
+    rval, flux_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrstat -jFDp -c snr " + freq_file
+    cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{print $2}'"
     rval, lines = self.system (cmd)
     if rval < 0:
       return (rval, "failed to extract snr from freq.sum")
     snr = lines[0]
+
+    cmd = "psrstat -c length " + time_file + " | awk -F= '{print $2}'"
+    rval, lines = self.system (cmd)
+    if rval < 0:
+      return (rval, "failed to extract time from time.sum")
+    length = lines[0]
 
     self.results[beam]["utc_start"] = utc
     self.results[beam]["source"] = source
@@ -314,6 +336,8 @@ class RepackDaemon(Daemon):
     self.results[beam]["flux_plot"] = flux_raw
     self.results[beam]["timestamp"] = timestamp
     self.results[beam]["snr"] = snr
+    self.results[beam]["length"] = snr
+    self.results[beam]["valid"] = True
 
     return (0, "")
 
@@ -325,11 +349,11 @@ class RepackDaemon(Daemon):
     freq_plot = obs_dir + "/" + timestamp + ".freq.png"
     time_plot = obs_dir + "/" + timestamp + ".time.png"
 
-    fptr = open (freq_plot, "rb")
+    fptr = open (freq_plot, "wb")
     fptr.write(self.results[beam]["freq_plot"])
     fptr.close()
 
-    fptr = open (time_plot, "rb")
+    fptr = open (time_plot, "wb")
     fptr.write(self.results[beam]["time_plot"])
     fptr.close()
 
@@ -433,7 +457,12 @@ if __name__ == "__main__":
 
   try:
 
+    reporting_thread = RepackReportingThread(script, beam_id)
+    reporting_thread.start()
+
     script.main ()
+
+    reporting_thread.join()
 
   except:
 

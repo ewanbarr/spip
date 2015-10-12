@@ -195,6 +195,7 @@ class TCSDaemon(Daemon):
 
         obs["UTC_START"]  = xml['obs_cmd']['observation_parameters']['utc_start']
         obs["OBS_OFFSET"] = "0"
+        obs["TOBS"]       = xml['obs_cmd']['observation_parameters']['tobs']
 
       else:
         obs["COMMAND"]  = "STOP"
