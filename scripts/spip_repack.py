@@ -72,11 +72,17 @@ class RepackReportingThread(ReportingThread):
 
     elif req["type"] == "plot":
      
+      self.script.log (0, "RepackReportingThread::parse_message: beam=" + \
+                          req["beam"] + " plot=" + req["plot"]) 
+      self.script.log (0, "RepackReportingThread::parse_message: results[" + \
+                          req["beam"] + "][valid]=" + str(self.script.results[req["beam"]]["valid"]))
       if self.script.results[req["beam"]]["valid"]:
+        bin_data = self.script.results[req["beam"]][req["plot"]]
+        self.script.log (0, "RepackReportingThread::parse_message: len(bin_data)="+str(len(bin_data)))
         return self.script.results[req["beam"]][req["plot"]]
       else:
         # still return if the timestamp is recent
-        # TODO
+        # TODO return image with "no valid data" or similar
         return 0
 
     else:
@@ -317,13 +323,13 @@ class RepackDaemon(Daemon):
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{print $2}'"
+    cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{printf(\"%5.1f\",$2)}'"
     rval, lines = self.system (cmd)
     if rval < 0:
       return (rval, "failed to extract snr from freq.sum")
     snr = lines[0]
 
-    cmd = "psrstat -c length " + time_file + " | awk -F= '{print $2}'"
+    cmd = "psrstat -c length " + time_file + " | awk -F= '{printf(\"%5.1f\",$2)}'"
     rval, lines = self.system (cmd)
     if rval < 0:
       return (rval, "failed to extract time from time.sum")
@@ -345,21 +351,26 @@ class RepackDaemon(Daemon):
 
     # write the most recent images disk for long term storage
     timestamp = times.getCurrentTime()
+    
+    self.log (2, "finalise_observation: beam=" + beam + " timestamp=" + \
+              timestamp + " valid=" + str(self.results[beam]["valid"]))
 
-    freq_plot = obs_dir + "/" + timestamp + ".freq.png"
-    time_plot = obs_dir + "/" + timestamp + ".time.png"
+    if (self.results[beam]["valid"]):
+    
+      freq_plot = obs_dir + "/" + timestamp + ".freq.png"
+      time_plot = obs_dir + "/" + timestamp + ".time.png"
 
-    fptr = open (freq_plot, "wb")
-    fptr.write(self.results[beam]["freq_plot"])
-    fptr.close()
+      fptr = open (freq_plot, "wb")
+      fptr.write(self.results[beam]["freq_plot"])
+      fptr.close()
 
-    fptr = open (time_plot, "wb")
-    fptr.write(self.results[beam]["time_plot"])
-    fptr.close()
+      fptr = open (time_plot, "wb")
+      fptr.write(self.results[beam]["time_plot"])
+      fptr.close()
 
-    # indicate that the beam is no longer valid now that the 
-    # observation has finished
-    self.results[beam]["valid"] = False
+      # indicate that the beam is no longer valid now that the 
+      # observation has finished
+      self.results[beam]["valid"] = False
 
     # simply move the observation to the finished directory
     try:

@@ -65,6 +65,11 @@ class timing extends spip_webpage
 
   function printUpdateHTML($get)
   {
+    if (isset($get["plot"]))
+    {
+      $this->renderImage($get);
+      return;
+    }
     $xml = "<timing_update>";
 
     $repack_socket = new spip_socket();
@@ -102,9 +107,9 @@ class timing extends spip_webpage
   // will contact a repacker to request current image information
   function renderImage($get)
   {
-    $ibeam     = $this->beams[$get["ibeam"]];
-    $beam_name = $this->beams[$ibeam];
-    $host      = $get["host"];
+    $ibeam     = $get["ibeam"];
+    $beam_name = $this->beams[$ibeam]["name"];
+    $host      = $this->beams[$ibeam]["host"];
     $port      = $this->config["STREAM_REPACK_PORT"];
     if ($ibeam >= 0)
       $port += $ibeam;
@@ -112,16 +117,22 @@ class timing extends spip_webpage
     $xml_req  = XML_DEFINITION;
     $xml_req .= "<repack_request>";
     $xml_req .= "<requestor>timing page</requestor>";
-    $xml_req .= "<request>plot</request>";
+    $xml_req .= "<type>plot</type>";
     $xml_req .= "<beam>".$beam_name."</beam>";
     $xml_req .= "<plot>".$get["plot"]."</plot>";
     $xml_req .= "</repack_request>";
 
     $repack_socket = new spip_socket(); 
+    $reply = 0;
     if ($repack_socket->open ($host, $port, 0) == 0)
     {
       $repack_socket->write ($xml_req."\r\n");
       list ($rval, $reply) = $repack_socket->read();
+    }
+    else
+    {
+      // TODO generate PNG with error text
+      echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
     }
     $repack_socket->close();
 
