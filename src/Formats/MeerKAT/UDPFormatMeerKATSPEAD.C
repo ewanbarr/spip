@@ -5,82 +5,81 @@
  *
  ***************************************************************************/
 
-#include "spip/UDPFormatMeerKAT.h"
+#include "spip/UDPFormatMeerKATSPEAD.h"
 
 #include <cstdlib>
+#include <cstdio>
 #include <iostream>
+#include <bitset>
 
 using namespace std;
 
-spip::UDPFormatMeerKAT::UDPFormatMeerKAT()
+spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
 {
-  packet_header_size = sizeof(meerkat_udp_header_t);
-  packet_data_size   = 4096;
+  packet_header_size = sizeof(meerkat_spead_udp_hdr_t);
+  packet_data_size   = 2 * UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP;
 
-  nsamp_offset = 0;
-
-  header.cbf_version = 1;
-  header.seq_number = 0;
-  header.weights = 1;
-  header.nsamp = spip::UDPFormatMeerKAT::get_samples_per_packet();
-  header.channel_number = 0;
-  header.beam_number = 0;
+  //nsamp_offset = 0;
+  header.frequency_channel.item_address = 0;
+  header.beam_number.item_address = 0;
 }
 
-spip::UDPFormatMeerKAT::~UDPFormatMeerKAT()
+spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()
 {
-  cerr << "spip::UDPFormatMeerKAT::~UDPFormatMeerKAT()" << endl;
+  cerr << "spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()" << endl;
 }
 
-void spip::UDPFormatMeerKAT::generate_signal ()
+void spip::UDPFormatMeerKATSPEAD::generate_signal ()
 {
 }
 
-uint64_t spip::UDPFormatMeerKAT::get_samples_for_bytes (uint64_t nbytes)
+uint64_t spip::UDPFormatMeerKATSPEAD::get_samples_for_bytes (uint64_t nbytes)
 {
-  cerr << "spip::UDPFormatMeerKAT::get_samples_for_bytes npol=" << npol 
+  cerr << "spip::UDPFormatMeerKATSPEAD::get_samples_for_bytes npol=" << npol 
        << " ndim=" << ndim << " nchan=" << nchan << endl;
   uint64_t nsamps = nbytes / (npol * ndim * nchan);
   return nsamps;
 }
 
-void spip::UDPFormatMeerKAT::set_channel_range (unsigned start, unsigned end) 
+void spip::UDPFormatMeerKATSPEAD::set_channel_range (unsigned start, unsigned end) 
 {
-  cerr << "spip::UDPFormatMeerKAT::set_channel_range start=" << start 
+  cerr << "spip::UDPFormatMeerKATSPEAD::set_channel_range start=" << start 
        << " end=" << end << endl;
   start_channel = start;
   end_channel   = end;
   nchan = (end - start) + 1;
-  header.channel_number = start;
-  cerr << "spip::UDPFormatMeerKAT::set_channel_range nchan=" <<  nchan << endl;
+  header.frequency_channel.item_address = start;
+  cerr << "spip::UDPFormatMeerKATSPEAD::set_channel_range nchan=" <<  nchan << endl;
 }
 
-inline void spip::UDPFormatMeerKAT::encode_header_seq (char * buf, uint64_t seq)
+inline void spip::UDPFormatMeerKATSPEAD::encode_header_seq (char * buf, uint64_t seq)
 {
-  header.seq_number = seq;
+  header.heap_number.item_address = seq;
   encode_header (buf);
 }
 
-inline void spip::UDPFormatMeerKAT::encode_header (char * buf)
+inline void spip::UDPFormatMeerKATSPEAD::encode_header (char * buf)
 {
-  memcpy (buf, (void *) &header, sizeof (meerkat_udp_header_t));
+  memcpy (buf, (void *) &header, sizeof (meerkat_spead_udp_hdr_t));
 }
 
-inline uint64_t spip::UDPFormatMeerKAT::decode_header_seq (char * buf)
+inline uint64_t spip::UDPFormatMeerKATSPEAD::decode_header_seq (char * buf)
 {
-  memcpy ((void *) &header, buf, sizeof(uint64_t));
-  return header.seq_number;
+  meerkat_spead_udp_hdr_t * hdr = (meerkat_spead_udp_hdr_t *) buf;
+  return hdr->heap_number.item_address;
 }
 
-inline void spip::UDPFormatMeerKAT::decode_header (char * buf)
+inline void spip::UDPFormatMeerKATSPEAD::decode_header (char * buf)
 {
+  cerr << "spip::UDPFormatMeerKATSPEAD::decode_header copying " << sizeof (meerkat_spead_udp_hdr_t) << " bytes" << endl;
   // copy the spead pkt hdr to the 
-  memcpy ((void *) &(header.pkt_hdr), buf, sizeof (spead_pkt_hdr_t));
+  memcpy ((void *) &header, buf, sizeof (meerkat_spead_udp_hdr_t));
 
-  items = (spead_item_pointer_t *) (buf + sizeof (spead_pkt_hdr_t));
+#if 0
+  items = (spead_item_pointer_t *) (buf + sizeof (meerkat_spead_udp_hdr_t));
 
   // copy the item pointers as well
-  memcpy ((void *) &(header.items), buf + sizeof (spead_pkt_hdr_t), header.pkt_hdr.num_items * sizeof(spead_item_pointer_t));
+  memcpy ((void *) &(header.items), buf + sizeof (meerkat_spead_udp_hdr_t), header.pkt_hdr.num_items * sizeof(spead_item_pointer_t));
 
   for (unsigned i=0; i<header.pkt_hdr.num_items; i++)
     if (items[i].item_identifier == 0x0001)
@@ -90,18 +89,19 @@ inline void spip::UDPFormatMeerKAT::decode_header (char * buf)
     if (items[i].item_identifier == 0x0003)
       header.heap_offset = items[i].item_address;
     if (items[i].item_identifier == 0x0004)
-      header.payload_length = items[i].item_address;
+      header.payload_length.item_address = items[i].item_address;
+#endif
 }
 
 // assumes the packet has already been "decoded" by a call to decode header
-inline int spip::UDPFormatMeerKAT::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
+inline int spip::UDPFormatMeerKATSPEAD::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
 {
   // there are 256 samples per packet, 1 channel per packet
-  const uint64_t sample_number = header.heap_id * 256;
+  const uint64_t sample_number = header.heap_number.item_address * UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP;
 
   if (sample_number < start_samp)
   {
-    cerr << "header.seq_number=" << header.seq_number << " header.channel_number=" << header.channel_number << endl;
+    cerr << "header.heap_number.item_address=" << header.heap_number.item_address << " header.frequency_channel.item_address=" << header.frequency_channel.item_address << endl;
     cerr << "sample_number=" << sample_number << " start_samp=" << start_samp << endl;
     return UDP_PACKET_TOO_LATE;
   }
@@ -111,21 +111,17 @@ inline int spip::UDPFormatMeerKAT::insert_packet (char * buf, char * pkt, uint64
   }
  
   // determine the channel offset in bytes
-  const unsigned channel_offset = (header.channel_number - start_channel) * channel_stride;
-  const unsigned sample_offset = (header.seq_number * header.nsamp) - start_samp;
+  const unsigned channel_offset = (header.frequency_channel.item_address - start_channel) * channel_stride;
+  const unsigned sample_offset  = sample_number - start_samp;
 
-  // incremement buf pointer to 
-  const unsigned pol0_offset = channel_offset + sample_offset;
-  const unsigned pol1_offset = pol0_offset + chanpol_stride;
-
-  memcpy (buf + pol0_offset, pkt, 2048);
-  memcpy (buf + pol1_offset, pkt + 2048, 2048);
+  // copy the 512 bytes to the correct place in the output buffer
+  memcpy (buf + channel_offset + sample_offset, pkt, UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP * 2);
 
   return 0;
 }
 
 // generate the next packet in the cycle
-inline void spip::UDPFormatMeerKAT::gen_packet (char * buf, size_t bufsz)
+inline void spip::UDPFormatMeerKATSPEAD::gen_packet (char * buf, size_t bufsz)
 {
   // cycle through each of the channels to produce a packet with 1024 
   // time samples and two polarisations
@@ -134,20 +130,60 @@ inline void spip::UDPFormatMeerKAT::gen_packet (char * buf, size_t bufsz)
   encode_header (buf);
 
   // increment channel number
-  header.channel_number++;
-  if (header.channel_number > end_channel)
+  header.frequency_channel.item_address++;
+  if (header.frequency_channel.item_address > end_channel)
   {
-    header.channel_number = start_channel;
-    header.seq_number++;
-    nsamp_offset += header.nsamp;
+    header.frequency_channel.item_address = start_channel;
+    header.heap_number.item_address++;
+    //nsamp_offset += header.nsamp;
   }
 
 }
 
-void spip::UDPFormatMeerKAT::print_packet_header()
+void spip::UDPFormatMeerKATSPEAD::print_item_pointer (spead_item_pointer_t item)
 {
-  uint64_t pkt_num = (header.seq_number * nchan) + (header.channel_number - start_channel);
-  uint64_t last_sample = (header.seq_number * 1024) + 1023;
+  //fprintf (stderr, "  item_address_mode: %x\n", item.item_address_mode);
+  fprintf (stderr, "  item_identifier: %x\n", item.item_identifier);
+  cerr << "  item_address: " << std::dec << item.item_address << endl;
+}
+
+void spip::UDPFormatMeerKATSPEAD::print_packet_header()
+{
+  uint64_t pkt_num = (header.heap_number.item_address * nchan) + (header.frequency_channel.item_address - start_channel);
+
+  uint64_t last_sample = (header.heap_number.item_address * 1024) + 1023;
   cerr << "pkt_num=" << pkt_num << " last_sample=" << last_sample 
-       << " seq=" << header.seq_number << " chan=" << header.channel_number << endl;
+       << " seq=" << header.heap_number.item_address << " chan=" << header.frequency_channel.item_address << endl;
+
+  cerr << "SPEAD HDR: " << endl;
+  fprintf (stderr, "  magic_version: %x\n", header.spead_hdr.magic_version);
+  fprintf (stderr, "  item_pointer_width: %d\n", header.spead_hdr.item_pointer_width);
+  fprintf (stderr, "  heap_addr_width: %d\n", header.spead_hdr.heap_addr_width);
+  fprintf (stderr, "  num_items: %d\n", header.spead_hdr.num_items);
+
+  uint64_t * temp = (uint64_t *) &header;
+  uint64_t tmpval = *temp;
+  cerr << "temp=" << std::bitset<64>(tmpval) << endl;
+
+  spead_item_pointer_t * items = (spead_item_pointer_t *) (((char *) &header) + sizeof(spead_hdr_t));
+
+  for (unsigned i=0; i<16; i++)
+  {
+    cerr << "item[" << i << "]:" << endl;
+    print_item_pointer (items[i]);
+  }
+
+  cerr << "heap_number:" << endl;
+  print_item_pointer (header.heap_number);
+
+  cerr << "heap_length:" << header.heap_length.item_address << endl;
+  print_item_pointer (header.heap_length);
+
+  cerr << "payload_offset_in_heap=" << header.payload_offset_in_heap.item_address << endl;
+  cerr << "payload_length=" << header.payload_length.item_address << endl;
+  cerr << "timestamp=" << header.timestamp.item_address << endl;
+  cerr << "frequency_channel =" << header.frequency_channel.item_address << endl;
+  cerr << "f_engine_flags=" << header.f_engine_flags.item_address << endl;
+  cerr << "beam_number=" << header.beam_number.item_address << endl;
+
 }

@@ -39,3 +39,6 @@ src/Formats/SKA1/ska1_udprecv
 src/Formats/SKA1/ska1_udpdb
 src/Formats/MeerKAT/meerkat_udpdb
 src/Formats/MeerKAT/meerkat_udpgen
+src/Formats/MeerKAT/meerkat_dbstats
+src/Formats/MeerKAT/meerkat_udprecv
+

@@ -54,6 +54,8 @@ namespace spip {
       unsigned bits_per_second;
 
       unsigned bytes_per_second;
+
+      char verbose;
   };
 
 }

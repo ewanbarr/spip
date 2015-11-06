@@ -28,49 +28,49 @@ class TCSReportingThread (ReportingThread):
     host = sockets.getHostNameShort()
     port = int(script.cfg["TCS_REPORT_PORT"]) + int(id)
     ReportingThread.__init__(self, script, host, port)
+    self.beam_states = script.beam_states
+    self.script.log(0, "beam_states=" + str(self.beam_states))
+    self.beams = self.beam_states.keys()
+    self.script.log(0, "beams=" + str(self.beams))
 
   def parse_message (self, xml):
     self.script.log (0, "TCSReportingThread::parse_message: " + str(xml))
 
     xml  = "<tcs_state>"
     for beam in self.beams:
-      xml += "<beam id='" + str(beam) + "'>"
+
+      self.beam_states[beam]["lock"].acquire()
+
+      xml += "<beam name='" + str(beam) + "' state='" + self.beam_states[beam]["STATE"] + "'>"
 
       xml += "<source>"
-      xml += "<name epoch='J2000'></name>"
-      xml += "<ra units='hh:mm:ss'></ra>"
-      xml += "<dec units='hh:mm:ss'></dec>"
+      xml += "<name epoch='J2000'>" + self.beam_states[beam]["SOURCE"] + "</name>"
+      xml += "<ra units='hh:mm:ss'>" + self.beam_states[beam]["RA"] + "</ra>"
+      xml += "<dec units='hh:mm:ss'>" + self.beam_states[beam]["DEC"] + "</dec>"
       xml += "</source>"        
 
-      xml += "<observation>"
-      xml += "<length units='seconds'></length>"
-      xml += "<snr></snr>"
-      xml += "<expected_length units='seconds'></expected_length>"
-      xml += "</observation>"
+      xml += "<observation_parameters>"
+      xml += "<observer>" + self.beam_states[beam]["OBSERVER"] + "</observer>"
+      xml += "<pid>" + self.beam_states[beam]["PID"] + "</pid>"
+      xml += "<mode>" + self.beam_states[beam]["MODE"] + "</mode>"
+      xml += "<utc_start>" + self.beam_states[beam]["UTC_START"] + "</utc_start>"
 
-      xml += "<signal>"
-      xml += "<nbit></nbit>"
-      xml += "<npol></npol>"
-      xml += "<ndim></ndim>"
-      xml += "<nchan></nchan>"
-      xml += "<tsamp></tsamp>"
-      xml += "<cfreq></cfreq>"
-      xml += "<bw></bw>"
-      xml += "</signal>"
+      if self.beam_states[beam]["UTC_START"] != "":
+        elapsed_time = str(times.diffUTCTime(self.beam_states[beam]["UTC_START"]))
+      else:
+        elapsed_time = ""
 
-      xml += "<instrument>" 
-      xml += "<state></state>"
-      xml += "<hardware>"
-      xml += "<server hostname=''>"
-      xml += "</server>"
-      xml += "</hardware>"
-      xml += "</instrument>" 
+      xml += "<elapsed_time units='seconds'>" + elapsed_time + "</elapsed_time>"
+      xml += "<expected_length units='seconds'>" + self.beam_states[beam]["TOBS"] + "</expected_length>"
+      xml += "</observation_parameters>"
 
       xml += "</beam>"
+      
+      self.beam_states[beam]["lock"].release()
 
-    xml += "</tcs_state>"
+    xml += "</tcs_state>\r\n"
 
-    return "ok"
+    return True, xml
 
 ###############################################################
 # TCS daemon
@@ -78,6 +78,22 @@ class TCSDaemon(Daemon):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
+    self.beam_states = {}
+
+    # beam_states maintains info about last observation for beam
+    for i in range(int(self.cfg["NUM_BEAM"])):
+      b = self.cfg["BEAM_"+str(i)]
+      self.beam_states[b] = {}
+      self.beam_states[b]["SOURCE"] = ""
+      self.beam_states[b]["RA"] = ""
+      self.beam_states[b]["DEC"] = ""
+      self.beam_states[b]["PID"] = ""
+      self.beam_states[b]["OBSERVER"] = ""
+      self.beam_states[b]["UTC_START"] = ""
+      self.beam_states[b]["TOBS"] = ""
+      self.beam_states[b]["MODE"] = ""
+      self.beam_states[b]["STATE"] = "Idle"
+      self.beam_states[b]["lock"] = threading.Lock()
 
   def main (self, id):
 
@@ -165,8 +181,6 @@ class TCSDaemon(Daemon):
                   if (x == handle):
                     del can_read[i]
 
-              else:
-                raise
 
   ###############################################################################
   # parse an XML command for correctness
@@ -188,10 +202,10 @@ class TCSDaemon(Daemon):
         obs["RA"]     = xml['obs_cmd']['source_parameters']['ra']['#text']
         obs["DEC"]    = xml['obs_cmd']['source_parameters']['dec']['#text']
 
-        obs["OBSERVER"]  = xml['obs_cmd']['observation_parameters']['observer']
-        obs["PID"]       = xml['obs_cmd']['observation_parameters']['project_id']
+        obs["OBSERVER"]  = str(xml['obs_cmd']['observation_parameters']['observer'])
+        obs["PID"]       = str(xml['obs_cmd']['observation_parameters']['project_id'])
         obs["MODE"]      = xml['obs_cmd']['observation_parameters']['mode']
-        obs["PROC_FILE"] = xml['obs_cmd']['observation_parameters']['processing_file']
+        obs["PROC_FILE"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
 
         obs["UTC_START"]  = xml['obs_cmd']['observation_parameters']['utc_start']
         obs["OBS_OFFSET"] = "0"
@@ -213,17 +227,18 @@ class TCSDaemon(Daemon):
   # issue_cmd
   def issue_cmd (self, xml, command, obs):
 
-    self.beams = []
+    beams = []
 
     for ibeam in range(int(xml['obs_cmd']['beam_configuration']['nbeam'])):
       if xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)] == "on":
-        self.beams.append(ibeam)
+        beams.append(ibeam)
 
     # TODO work out how to determine UTC_START
-    self.log(1, "issue_cmd: UTC_START=" + str(obs["UTC_START"]))
-    if obs["UTC_START"] == None:
-      obs["UTC_START"] = times.getUTCTime()
-      self.log(1, "issue_cmd: setting UTC_START=" + obs["UTC_START"])
+    if command == "start":
+      self.log(1, "issue_cmd: UTC_START=" + str(obs["UTC_START"]))
+      if obs["UTC_START"] == None:
+        obs["UTC_START"] = times.getUTCTime()
+        self.log(1, "issue_cmd: setting UTC_START=" + obs["UTC_START"])
 
     obs["PERFORM_FOLD"] = "1"
     obs["PERFORM_SEARCH"] = "0"
@@ -232,14 +247,16 @@ class TCSDaemon(Daemon):
     # convert
     obs_header = config.writeDictToString (obs)
 
-    self.log(1, "issue_cmd: beams=" + str(self.beams) + " num_stream=" + self.cfg["NUM_STREAM"])
+    self.log(1, "issue_cmd: beams=" + str(beams) + " num_stream=" + self.cfg["NUM_STREAM"])
 
     # work out which streams correspond to these beams
     for istream in range(int(self.cfg["NUM_STREAM"])):
       (host, beam, subband) = self.cfg["STREAM_"+str(istream)].split(":")
       self.log(1, "issue_cmd: host="+host+"beam="+beam+"subband="+subband)
 
-      if int(beam) in self.beams:
+      if int(beam) in beams:
+
+        beam_name = self.cfg["BEAM_" + beam]
 
         # control port the this recv stream 
         ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
@@ -258,6 +275,27 @@ class TCSDaemon(Daemon):
         if sock:
           sock.send(obs_header)
           sock.close()
+
+        # update the dict of observing info for this beam
+        self.beam_states[beam_name]["lock"].acquire()
+
+        if command == "start":
+          self.beam_states[beam_name]["SOURCE"]    = obs["SOURCE"]
+          self.beam_states[beam_name]["RA"]        = obs["RA"]
+          self.beam_states[beam_name]["DEC"]       = obs["DEC"]
+          self.beam_states[beam_name]["TOBS"]      = obs["TOBS"]
+          self.beam_states[beam_name]["PID"]       = obs["PID"]
+          self.beam_states[beam_name]["OBSERVER"]  = obs["OBSERVER"]
+          self.beam_states[beam_name]["MODE"]      = obs["MODE"]
+          self.beam_states[beam_name]["UTC_START"] = obs["UTC_START"]
+          self.beam_states[beam_name]["UTC_STOP"]  = ""
+          self.beam_states[beam_name]["STATE"]     = "Recording"
+        elif command == "stop":
+          self.beam_states[beam_name]["UTC_STOP"]   = obs["UTC_STOP"]
+          self.beam_states[beam_name]["STATE"]      = "Idle"
+
+        self.beam_states[beam_name]["lock"].release()
+
       else:
         self.log(1, "issue_cmd: beam="+beam+" not valid")
 

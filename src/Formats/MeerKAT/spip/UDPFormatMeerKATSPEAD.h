@@ -1,67 +1,73 @@
 
-#ifndef __UDPFormatMeerKATSPEAD_h
-#define __UDPFormatMeerKATSPEAD_h
+#ifndef __UDPFormatMeerKATSPEADSPEAD_h
+#define __UDPFormatMeerKATSPEADSPEAD_h
 
 #include "spip/meerkat_def.h"
 #include "spip/UDPFormat.h"
 
-#define UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP 1024
+#define UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP 4550
 #define UDP_FORMAT_MEERKAT_SPEAD_NDIM 2
 #define UDP_FORMAT_MEERKAT_SPEAD_NPOL 2
 
 #include <cstring>
 
+static uint16_t magic_version = 0x5304;  // 0x53 is the magic, 4 is the version
+
 namespace spip {
 
   typedef struct {
 
-    uint8_t magic;
+    uint16_t magic_version : 16;
 
-    uint8_t version;
+    uint8_t item_pointer_width : 8;
 
-    uint8_t item_pointer_width;
+    uint8_t heap_addr_width : 8;
 
-    uint8_t heap_addr_width;
+    uint16_t reserved: 16;
 
-    uint16_t reserved;
+    int16_t num_items;
 
-    uint16_t num_items;
-
-  } spead_pkt_hdr_t;
+  } spead_hdr_t;
 
   typedef struct {
 
-    uint32_t item_address_mode : 1;
+    //char  item_address_mode : 1;
 
-    uint32_t item_identifier : 23;
+    uint16_t item_identifier : 16;
 
-    uint32_t item_address : 40;
+    uint64_t item_address : 48;
 
   } spead_item_pointer_t;
 
   typedef struct {
 
-    spead_pkt_hdr_t pkt_hdr;
+    spead_hdr_t spead_hdr;
 
-    uint32_t heap_id;
+    spead_item_pointer_t heap_number;
 
-    uint32_t heap_size;
+    spead_item_pointer_t heap_length;
 
-    uint32_t heap_offset;
+    spead_item_pointer_t payload_offset_in_heap;
 
-    uint32_t payload_length;
+    spead_item_pointer_t payload_length;
 
-    uint32_t fid;
+    spead_item_pointer_t timestamp;
 
-  } spead_heap_hdr_t;
+    spead_item_pointer_t frequency_channel;
 
-  class UDPFormatMeerKAT : public UDPFormat {
+    spead_item_pointer_t f_engine_flags;
+
+    spead_item_pointer_t beam_number;
+
+  } meerkat_spead_udp_hdr_t;
+
+  class UDPFormatMeerKATSPEAD : public UDPFormat {
 
     public:
 
-      UDPFormatMeerKAT ();
+      UDPFormatMeerKATSPEAD ();
 
-      ~UDPFormatMeerKAT ();
+      ~UDPFormatMeerKATSPEAD ();
 
       void generate_signal ();
 
@@ -87,27 +93,23 @@ namespace spip {
 
       inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
 
+      void print_item_pointer (spead_item_pointer_t item);
       void print_packet_header ();
 
       inline void gen_packet (char * buf, size_t bufsz);
 
       // accessor methods for header params
-      void set_seq_num (uint64_t seq_num) { header.seq_number = seq_num; };
-      void set_int_sec (uint32_t int_sec) { header.integer_seconds = int_sec; };
-      void set_fra_sec (uint32_t fra_sec) { header.fractional_seconds = fra_sec; };
-      void set_chan_no (uint16_t chan_no) { header.channel_number = chan_no; };
-      void set_beam_no (uint16_t beam_no) { header.beam_number = beam_no; };
-      void set_nsamp   (uint16_t nsamp)   { header.nsamp = nsamp; };
-      void set_weights (uint16_t weights) { header.weights = weights; };
-      void set_cbf_ver (uint8_t  cbf_ver) { header.cbf_version = cbf_ver; };
+      void set_heap_num (int64_t heap_num ) { header.heap_number.item_address = heap_num; };
+      void set_chan_no (int16_t chan_no)    { header.frequency_channel.item_address = chan_no; };
+      void set_beam_no (int16_t beam_no)    { header.beam_number.item_address = beam_no; };
 
       static unsigned get_samples_per_packet () { return UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP; };
 
     private:
 
-      spead_heap_hdr_t header;
+      meerkat_spead_udp_hdr_t header;
 
-      uint64_t nsamp_offset;
+      //uint64_t nsamp_offset;
 
       uint64_t nsamp_per_sec;
 

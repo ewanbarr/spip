@@ -12,8 +12,8 @@
 #
 
 import os, threading, sys, time, socket, select, signal, traceback, json, re
-import spip
-import spip_smrb
+from spip.utils import core, sockets
+from spip_smrb import SMRBDaemon
 
 #################################################################
 # host based monitoring thread
@@ -33,7 +33,7 @@ def getDiskCapacity (dirs, dl):
   for dir in dirs:
 
     cmd = "df " + dir + " -B 1048576 -P | tail -n 1 | awk '{print $2,$3,$4}'"
-    rval, lines = spip.system (cmd, 3 <= dl)
+    rval, lines = core.system (cmd, 3 <= dl)
     result += rval
 
     if rval == 0 and len(lines) == 1:
@@ -48,7 +48,7 @@ def getLoads (dl):
   loads = {}
 
   cmd = "uptime"
-  rval, lines = spip.system (cmd, 3 <= dl)
+  rval, lines = core.system (cmd, 3 <= dl)
 
   if rval == 0 and len(lines) == 1:
     parts = lines[0].split("load average: ") 
@@ -58,7 +58,7 @@ def getLoads (dl):
         loads = {"1min" : load_parts[0], "5min": load_parts[1], "15min": load_parts[2]}
 
   cmd = "nproc"
-  rval, lines = spip.system (cmd, 3 <= dl)
+  rval, lines = core.system (cmd, 3 <= dl)
   if rval == 0 and len(lines) == 1:
     loads["ncore"] = lines[0]
   else: 
@@ -77,8 +77,8 @@ def getSMRBCapacity (stream_ids, quit_event, dl):
 
     if quit_event.isSet(): 
       continue
-    port = spip_smrb.getDBMonPort (stream_id)
-    sock = spip.openSocket (dl, "localhost", port, 1)
+    port = SMRBDaemon.getDBMonPort (stream_id)
+    sock = sockets.openSocket (dl, "localhost", port, 1)
     if sock:
       sock.send ("smrb_status\n")
       data = sock.recv(65536)
@@ -92,7 +92,7 @@ def getIPMISensors (dl):
   sensors = {}
 
   cmd = "ipmitool sensor"
-  (rval, lines) = spip.system (cmd, 3 <= dl)
+  (rval, lines) = core.system (cmd, 3 <= dl)
 
   if rval == 0 and len(lines) > 0:
     for line in lines:

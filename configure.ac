@@ -35,11 +35,18 @@ AC_CONFIG_FILES([Makefile
   src/Formats/MeerKAT/Makefile
   src/Dada/Makefile
   scripts/Makefile
+  scripts/spip/Makefile
+  scripts/spip/threads/Makefile
+  scripts/spip/utils/Makefile
+  scripts/spip/daemons/Makefile
   web/Makefile
   web/controls/Makefile
   web/images/Makefile
   web/js/Makefile
+  web/logs/Makefile
   web/status/Makefile
+  web/search/Makefile
+  web/stats/Makefile
   web/test/Makefile
   web/timing/Makefile])
 AC_OUTPUT 

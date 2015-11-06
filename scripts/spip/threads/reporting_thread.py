@@ -67,17 +67,30 @@ class ReportingThread (threading.Thread):
               raw = handle.recv(4096)
               message = raw.strip()
 
-              self.script.log (1, "ReportingThread message='" + message+"'")
-              xml = parse(message)
+              self.script.log (2, "ReportingThread message='" + message+"'")
+              try:
+                xml = parse(message)
+              except ExpatError as e:
+                handle.send ("<xml>Malformed XML message</xml>\r\n")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
+
               self.script.log(3, "<- " + str(xml))
 
-              reply = self.parse_message (xml)
+              retain, reply = self.parse_message (xml)
 
               handle.send (reply)
+              if not retain:
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
 
             except socket.error as e:
               if e.errno == errno.ECONNRESET:
-                self.script.log (1, "ReportingThread closing connection")
+                self.script.log (2, "ReportingThread closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):

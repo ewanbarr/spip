@@ -18,7 +18,7 @@ from spip.log_socket import LogSocket
 from spip.utils.sockets import getHostNameShort
 from spip import config
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL = 1
 
 class GenDaemon(Daemon,StreamBased):
@@ -184,7 +184,7 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = GenDaemon ("gen", stream_id)
+  script = GenDaemon ("spip_gen", stream_id)
   state = script.configure (DAEMONIZE, DL, "gen", "gen")
   if state != 0:
     sys.exit(state)

@@ -1,0 +1,107 @@
+@import '/spip/colors.less';
+
+body {
+  background: white;
+  color: rgba(0,0,0,0.5);
+  }
+
+#topbg {
+  background: #f0f0f0;
+  }
+
+#header {
+  background: @col-pri-0;
+  #hdr-box1 { background: @col-pri-1 }
+  #hdr-box2 { background: @col-pri-2 }
+  #hdr-box3 { background: @col-pri-3 }
+  #hdr-box4 { background: @col-pri-4 }
+  #hdr-overlay {
+    /* background-image: url('/spip/images/spip_logo.png'); */
+    }
+  h2 {
+    color: rgba(0,0,0,0.5);
+    }
+  }
+
+#menu {
+  border-color: @col-sec1-lum-3;
+  a {
+    background: @col-sec1-lum-0;
+    color: @col-sec1-lum-4;
+    &:hover {
+      background: @col-sec1-lum-4;
+      color: @col-sec1-lum-0;
+      }
+    &.sel {
+      background: @col-sec1-lum-3;
+      color: @col-sec1-lum-0;
+      }
+    span {
+      background: @col-sec1-lum-2;
+      }
+    }
+  }
+
+#content {
+  color: rgba(0,0,0,0.5);
+  a {
+    color: @col-pri-lum-4;
+    background: transparent;
+    &:hover {
+      color: @col-compl-lum-0;
+      background: @col-compl-lum-3;
+      }
+    }
+  .ttl {    
+    color: @col-sec2-lum-4;
+    }
+  }
+
+#left {
+  border-color: @col-pri-lum-4;
+  #ico {
+    background: @col-pri-lum-3;
+    }
+  ul {
+    color: @col-sec2-lum-3;
+    }
+  }
+
+#right {
+  h3 span {
+    background: @col-sec2-lum-1;
+    border-color: @col-sec2-lum-2;
+    }
+  #rbox {
+    background: @col-sec2-lum-0;
+    color: @col-sec2-lum-4;
+    span {
+      background: @col-sec2-lum-2;
+      }
+    }
+  button {
+    color: @col-compl-lum-0;
+    background: @col-compl-lum-4;
+    border-color: @col-compl-lum-3;
+    &:hover {
+      color: @col-compl-lum-3;
+      background: @col-compl-lum-0;
+      }
+    }
+  }
+
+#footer {
+  color: @col-sec2-lum-4;
+  background: @col-sec2-lum-0;
+  border-color: @col-sec2-lum-3;
+  a {
+    color: @col-sec2-3;
+    background: transparent;
+    &:hover {
+      color: @col-compl-lum-0;
+      background: @col-compl-lum-3;
+      }
+    }
+  }
+
+

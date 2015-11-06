@@ -510,9 +510,9 @@ bool spip::UDPReceiveDB::receive ()
       }
       else if (result == UDP_PACKET_TOO_LATE)
       {
-#ifdef _DEBUG
+//#ifdef _DEBUG
         cerr << "result == UDP_PACKET_TOO_LATE" << endl;
-#endif
+//#endif
         format->print_packet_header();
         have_packet = false;
         keep_receiving = false;

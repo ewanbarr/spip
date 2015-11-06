@@ -1,3 +1,3 @@
 
-SUBDIRS = scripts src 
+SUBDIRS = scripts src web
 

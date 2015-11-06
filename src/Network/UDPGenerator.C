@@ -123,7 +123,8 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 {
   cerr << "spip::UDPGenerator::transmit tobs=" << tobs << " data_rate=" 
        << data_rate << " bytes_per_second=" << bytes_per_second << endl;
-  uint64_t bytes_to_send = tobs * bytes_per_second;
+
+  uint64_t bytes_to_send = tobs * 40e9;
 
   if (data_rate > 0)
     bytes_to_send = tobs * (data_rate/8);
@@ -172,6 +173,8 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   keep_transmitting = true;
 
+  const uint64_t payload_size = format->get_data_size();
+
   while (total_bytes_sent < bytes_to_send && keep_transmitting)
   {
     format->gen_packet (buf, bufsz);
@@ -200,7 +203,7 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
       }
     }
 
-    total_bytes_sent += format->get_data_size();
+    total_bytes_sent += payload_size;
   }
 
   cerr << "spip::UDPGenerator::transmit transmission done!" << endl;  

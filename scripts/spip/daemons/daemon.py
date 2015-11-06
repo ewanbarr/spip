@@ -9,7 +9,7 @@
 
 from signal import signal, SIGINT
 from time import gmtime
-from calendar import timegm
+#from calendar import timegm
 from atexit import register
 import time, select, errno, os, sys
 import threading, socket, subprocess
@@ -41,6 +41,10 @@ class Daemon(object):
 
     self.log_dir = self.cfg["SERVER_LOG_DIR"]
     self.control_dir = self.cfg["SERVER_CONTROL_DIR"]
+
+    # append the streamid/beamid/hostname
+    if self.id != -1:
+      self.name += "_" + str (self.id)
 
   def configure (self, become_daemon, dl, source, dest):
 
@@ -79,6 +83,10 @@ class Daemon(object):
     # start a control thread to handle quit requests
     self.control_thread = ControlThread(self)
     self.control_thread.start()
+
+    self.log (3, "configure: log_file=" + self.log_file)
+    self.log (3, "configure: pid_file=" + self.pid_file)
+    self.log (3, "configure: quit_file=" + self.quit_file)
 
     return 0
 
@@ -145,11 +153,12 @@ class Daemon(object):
       self.log_sock.log (level, message)
 
   def conclude (self):
+
     self.quit_event.set()
 
     for binary in self.binary_list:
       cmd = "pkill -f '^" + binary + "'"
-      rval, lines = self.system (cmd, 3)
+      rval, lines = self.system (cmd, 1)
 
     if self.control_thread:
       self.control_thread.join()

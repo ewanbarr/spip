@@ -7,16 +7,15 @@
 # 
 ###############################################################################
 
-import os, sys, socket, select, signal, traceback
-from time import sleep
+import os, sys, socket, select, signal, traceback, time, threading, copy
 
 from spip.daemons.bases import BeamBased,ServerBased
 from spip.daemons.daemon import Daemon
 from spip.threads.reporting_thread import ReportingThread
 from spip.utils import times,sockets
 
-DAEMONIZE = False
-DL        = 2
+DAEMONIZE = True
+DL        = 1
 
 class RepackReportingThread(ReportingThread):
 
@@ -27,77 +26,86 @@ class RepackReportingThread(ReportingThread):
       port += int(id)
     ReportingThread.__init__(self, script, host, port)
 
+    with open (script.cfg["WEB_DIR"] + "/spip/images/blankimage.gif", mode='rb') as file:
+      self.no_data = file.read()
+
   def parse_message (self, request):
-    self.script.log (0, "RepackReportingThread::parse_message: " + str(request))
+    self.script.log (2, "RepackReportingThread::parse_message: " + str(request))
 
     xml = ""
     req = request["repack_request"]
 
     if req["type"] == "state":
 
-      self.script.log (0, "RepackReportingThread::parse_message: preparing state response")
+      self.script.log (3, "RepackReportingThread::parse_message: preparing state response")
       xml = "<repack_state>"
 
       for beam in self.script.beams:
 
-        self.script.log (0, "RepackReportingThread::parse_message: preparing state for beam: " + str(beam))
-        xml += "<beam id='" + str(beam) + "'>"
+        self.script.log (3, "RepackReportingThread::parse_message: preparing state for beam: " + str(beam))
 
-        self.script.log (0, "RepackReportingThread::parse_message: keys="+str(self.script.results[beam].keys()))
+        self.script.results[beam]["lock"].acquire()
+        xml += "<beam name='" + str(beam) + "' active='" + str(self.script.results[beam]["valid"]) + "'>"
+
+        self.script.log (3, "RepackReportingThread::parse_message: keys="+str(self.script.results[beam].keys()))
 
         if self.script.results[beam]["valid"]:
 
-          self.script.log (0, "RepackReportingThread::parse_message: beam " + str(beam) + " is valid!")
+          self.script.log (3, "RepackReportingThread::parse_message: beam " + str(beam) + " is valid!")
           xml += "<source>"
-          xml += "<name epoch='J2000'></name>"
+          xml += "<name epoch='J2000'>" + self.script.results[beam]["source"] + "</name>"
           xml += "</source>"
 
           xml += "<observation>"
           xml += "<start units='datetime'>" + self.script.results[beam]["utc_start"] + "</start>"
-          xml += "<length units='seconds'>" + self.script.results[beam]["length"] + "</length>"
+          xml += "<integrated units='seconds'>" + self.script.results[beam]["length"] + "</integrated>"
           xml += "<snr>" + self.script.results[beam]["snr"] + "</snr>"
           xml += "</observation>"
 
-          xml += "<plot type='freq_vs_phase'/>"
-          xml += "<plot type='time_vs_phase'/>"
-          xml += "<plot type='flux_vs_phase'/>"
-      
+          xml += "<plot type='flux_vs_phase' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
+          xml += "<plot type='freq_vs_phase' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
+          xml += "<plot type='time_vs_phase' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
+          xml += "<plot type='bandpass' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
 
         xml += "</beam>"
 
+        self.script.results[beam]["lock"].release()
+
       xml += "</repack_state>"
-      self.script.log (0, "RepackReportingThread::parse_message: returning " + str(xml))
+      self.script.log (2, "RepackReportingThread::parse_message: returning " + str(xml))
     
-      return xml + "\r\n"
+      return True, xml + "\r\n"
 
     elif req["type"] == "plot":
      
-      self.script.log (0, "RepackReportingThread::parse_message: beam=" + \
-                          req["beam"] + " plot=" + req["plot"]) 
-      self.script.log (0, "RepackReportingThread::parse_message: results[" + \
-                          req["beam"] + "][valid]=" + str(self.script.results[req["beam"]]["valid"]))
-      if self.script.results[req["beam"]]["valid"]:
-        bin_data = self.script.results[req["beam"]][req["plot"]]
-        self.script.log (0, "RepackReportingThread::parse_message: len(bin_data)="+str(len(bin_data)))
-        return self.script.results[req["beam"]][req["plot"]]
-      else:
-        # still return if the timestamp is recent
-        # TODO return image with "no valid data" or similar
-        return 0
+      if req["plot"] in self.script.valid_plots:
 
-    else:
+        self.script.results[req["beam"]]["lock"].acquire()
+        self.script.log (2, "RepackReportingThread::parse_message: beam=" + \
+                          req["beam"] + " plot=" + req["plot"]) 
+
+        if self.script.results[req["beam"]]["valid"]:
+          bin_data = copy.deepcopy(self.script.results[req["beam"]][req["plot"]])
+          self.script.log (2, "RepackReportingThread::parse_message: beam=" + req["beam"] + " valid, image len=" + str(len(bin_data)))
+          self.script.results[req["beam"]]["lock"].release()
+          return False, bin_data
+        else:
+          self.script.results[req["beam"]]["lock"].release()
+          # still return if the timestamp is recent
+          return False, self.no_data
 
       xml += "<repack_state>"
       xml += "<error>Invalid request</error>"
-      xml += "</repack_state>"
+      xml += "</repack_state>\r\n"
 
-      return xml
+      return True, xml
 
 class RepackDaemon(Daemon):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
 
+    self.valid_plots = ["freq_vs_phase", "flux_vs_phase", "time_vs_phase", "bandpass"]
     self.beams = []
     self.subbands = []
     self.results = {}
@@ -119,6 +127,13 @@ class RepackDaemon(Daemon):
     #  beam / utc_start / source / freq.sum
     out_cfreq = 0
 
+    if not os.path.exists(self.processing_dir):
+      os.makedirs(self.processing_dir, 0755) 
+    if not os.path.exists(self.finished_dir):
+      os.makedirs(self.finished_dir, 0755) 
+    if not os.path.exists(self.archived_dir):
+      os.makedirs(self.archived_dir, 0755) 
+
     self.log (2, "main: stream_id=" + str(self.id))
 
     while (not self.quit_event.isSet()):
@@ -128,6 +143,9 @@ class RepackDaemon(Daemon):
 
         beam_dir = self.processing_dir + "/" + beam
         self.log (2, "main: beam=" + beam + " beam_dir=" + beam_dir)
+
+        if not os.path.exists(beam_dir):
+          os.makedirs(beam_dir, 0755)
 
         # get a list of all the recent observations
         cmd = "find " + beam_dir + " -mindepth 2 -maxdepth 2 -type d"
@@ -141,6 +159,9 @@ class RepackDaemon(Daemon):
           observation = observation[(len(beam_dir)+1):]
 
           (utc, source) = observation.split("/")
+
+          if source == "stats":
+            continue
 
           obs_dir = beam_dir + "/" + observation
           out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(out_cfreq)
@@ -159,7 +180,7 @@ class RepackDaemon(Daemon):
             
             self.log (2, "main: " + cmd)
             rval, files = self.system (cmd)
-            sleep(2)
+            time.sleep(2)
 
             for file in files:
               if not file in archives:
@@ -172,7 +193,7 @@ class RepackDaemon(Daemon):
 
           for file in files:
 
-            self.log (2, "main: processing file=" + file)
+            self.log (1, observation + ": processing " + file)
 
             if archives[file] == len(self.subbands):
               if len(self.subbands) > 1:
@@ -204,11 +225,15 @@ class RepackDaemon(Daemon):
             all_finished = False
 
           for subband in self.subbands:
-            if not os.path.exists(obs_dir + "/" + subband["cfreq"] + "/obs.finished"):
+            filename = obs_dir + "/" + subband["cfreq"] + "/obs.finished"
+            if os.path.exists(filename):
+              if os.path.getmtime(filename) + 10 > time.time():
+                all_finished = False
+            else:
               all_finished = False
-          
+         
           if all_finished: 
-            self.log (2, "main: " + observation + " finished")
+            self.log (1, observation + ": processing -> finished")
 
             fin_parent_dir = self.finished_dir + "/" + beam + "/" + utc
             if not os.path.exists(fin_parent_dir):
@@ -224,8 +249,8 @@ class RepackDaemon(Daemon):
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
 
-      self.log (2, "sleep(1)")
-      sleep(1)
+      self.log (2, "time.sleep(1)")
+      time.sleep(1)
 
   #
   # process and file in the directory, adding file to 
@@ -236,6 +261,7 @@ class RepackDaemon(Daemon):
 
     freq_file   = in_dir + "/freq.sum"
     time_file   = in_dir + "/time.sum"
+    band_file   = in_dir + "/band.last"
 
     # copy the input file to output dir
     cmd = "cp " + input_file + " " + output_file
@@ -252,6 +278,14 @@ class RepackDaemon(Daemon):
       rval, lines = self.system (cmd)
       if rval:
         return (rval, "failed add archive to freq.sum")
+
+    if os.path.exists (band_file):
+      os.remove (band_file)
+    cmd = "cp " + input_file + " " + band_file
+    rval, lines = self.system (cmd)
+    if rval:
+      return (rval, "failed to copy recent band file")
+
 
     cmd = "pam -m -F " + input_file
     rval, lines = self.system (cmd)
@@ -305,6 +339,7 @@ class RepackDaemon(Daemon):
 
     freq_file   = in_dir + "/freq.sum"
     time_file   = in_dir + "/time.sum"
+    band_file   = in_dir + "/band.last"
 
     timestamp = times.getCurrentTime() 
 
@@ -323,6 +358,11 @@ class RepackDaemon(Daemon):
     if rval < 0:
       return (rval, "failed to create time plot")
 
+    cmd = "psrplot -pb -x -lpol=0,1 -N2,1 -c above:c= " + band_file + " -D -/png"
+    rval, bandpass_raw = self.system_raw (cmd)
+    if rval < 0:
+      return (rval, "failed to create time plot")
+
     cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{printf(\"%5.1f\",$2)}'"
     rval, lines = self.system (cmd)
     if rval < 0:
@@ -335,15 +375,20 @@ class RepackDaemon(Daemon):
       return (rval, "failed to extract time from time.sum")
     length = lines[0]
 
+    self.results[beam]["lock"].acquire() 
+
     self.results[beam]["utc_start"] = utc
     self.results[beam]["source"] = source
-    self.results[beam]["freq_plot"] = freq_raw
-    self.results[beam]["time_plot"] = time_raw
-    self.results[beam]["flux_plot"] = flux_raw
+    self.results[beam]["freq_vs_phase"] = freq_raw
+    self.results[beam]["flux_vs_phase"] = flux_raw
+    self.results[beam]["time_vs_phase"] = time_raw
+    self.results[beam]["bandpass"] = bandpass_raw 
     self.results[beam]["timestamp"] = timestamp
     self.results[beam]["snr"] = snr
-    self.results[beam]["length"] = snr
+    self.results[beam]["length"] = length
     self.results[beam]["valid"] = True
+
+    self.results[beam]["lock"].release() 
 
     return (0, "")
 
@@ -352,25 +397,35 @@ class RepackDaemon(Daemon):
     # write the most recent images disk for long term storage
     timestamp = times.getCurrentTime()
     
+    self.results[beam]["lock"].acquire()
+
     self.log (2, "finalise_observation: beam=" + beam + " timestamp=" + \
               timestamp + " valid=" + str(self.results[beam]["valid"]))
 
     if (self.results[beam]["valid"]):
     
-      freq_plot = obs_dir + "/" + timestamp + ".freq.png"
-      time_plot = obs_dir + "/" + timestamp + ".time.png"
+      freq_vs_phase = obs_dir + "/" + timestamp + ".freq.png"
+      time_vs_phase = obs_dir + "/" + timestamp + ".time.png"
+      bandpass = obs_dir + "/" + timestamp + ".band.png"
 
-      fptr = open (freq_plot, "wb")
-      fptr.write(self.results[beam]["freq_plot"])
+      fptr = open (freq_vs_phase, "wb")
+      fptr.write(self.results[beam]["freq_vs_phase"])
       fptr.close()
 
-      fptr = open (time_plot, "wb")
-      fptr.write(self.results[beam]["time_plot"])
+      fptr = open (time_vs_phase, "wb")
+      fptr.write(self.results[beam]["time_vs_phase"])
       fptr.close()
+
+      fptr = open (bandpass, "wb")
+      fptr.write(self.results[beam]["bandpass"])
+      fptr.close()
+
 
       # indicate that the beam is no longer valid now that the 
       # observation has finished
       self.results[beam]["valid"] = False
+
+    self.results[beam]["lock"].release()
 
     # simply move the observation to the finished directory
     try:
@@ -399,6 +454,8 @@ class RepackServerDaemon (RepackDaemon, ServerBased):
       self.beams.append(bid)
       self.results[bid] = {}
       self.results[bid]["valid"] = False
+      self.results[bid]["lock"] = threading.Lock()
+      self.results[bid]["cond"] = threading.Condition(self.results[bid]["lock"])
 
     for i in range(int(self.cfg["NUM_SUBBAND"])):
       (cfreq , bw, nchan) = self.cfg["SUBBAND_CONFIG_" + str(i)].split(":")
@@ -409,6 +466,14 @@ class RepackServerDaemon (RepackDaemon, ServerBased):
     self.out_freq = freq_low + ((freq_high - freq_low) / 2.0)
 
     return 0
+
+  def conclude (self):
+    for i in range(int(self.cfg["NUM_BEAM"])):
+      bid = self.cfg["BEAM_" + str(i)]
+    self.results[bid]["lock"].release()
+
+    RepackDaemon.conclude()
+
 
 
 class RepackBeamDaemon (RepackDaemon, BeamBased):
@@ -431,6 +496,8 @@ class RepackBeamDaemon (RepackDaemon, BeamBased):
     self.beams.append(bid)
     self.results[bid] = {}
     self.results[bid]["valid"] = False
+    self.results[bid]["lock"] = threading.Lock()
+    self.results[bid]["cond"] = threading.Condition(self.results[bid]["lock"])
 
     # find the subbands for the specified beam that are processed by this script
     for isubband in range(int(self.cfg["NUM_SUBBAND"])):
@@ -455,9 +522,9 @@ if __name__ == "__main__":
 
   script = []
   if int(beam_id) == -1:
-    script = RepackServerDaemon ("repack")
+    script = RepackServerDaemon ("spip_repack")
   else:
-    script = RepackBeamDaemon ("repack", beam_id)
+    script = RepackBeamDaemon ("spip_repack", beam_id)
 
   state = script.configure (DAEMONIZE, DL, "repack", "repack") 
   if state != 0:
@@ -478,6 +545,12 @@ if __name__ == "__main__":
   except:
 
     script.log(-2, "exception caught: " + str(sys.exc_info()[0]))
+    formatted_lines = traceback.format_exc().splitlines()
+    script.log(0, '-'*60)
+    for line in formatted_lines:
+      script.log(0, line)
+    script.log(0, '-'*60)
+
     print '-'*60
     traceback.print_exc(file=sys.stdout)
     print '-'*60

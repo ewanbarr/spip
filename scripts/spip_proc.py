@@ -18,8 +18,8 @@ from spip.utils.core import system_piped,system
 from spip.utils.sockets import getHostNameShort
 from spip.threads.reporting_thread import ReportingThread
 
-DAEMONIZE = False
-DL        = 1
+DAEMONIZE = True
+DL        = 2
 
 #################################################################
 # thread for executing processing commands
@@ -54,11 +54,11 @@ class ProcReportingThread (ReportingThread):
 
   def parse_message (self, xml):
     self.script.log (0, "parse_message: " + str(xml))
-    return "ok"
+    return True, "ok\r\n"
 
 ###############################################################################
 # Proc Daemon Proper
-class ProcDaemon(Daemon,StreamBased):
+class ProcDaemon (Daemon, StreamBased):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
@@ -95,8 +95,11 @@ class ProcDaemon(Daemon,StreamBased):
 
       # if the command returned ok and we have a header
       if rval != 0:
-        self.log (-2, cmd + " failed")
-        self.quit_event.set()
+        if self.quit_event.isSet():
+          self.log (2, cmd + " failed, but quit_event true")
+        else:
+          self.log (-2, cmd + " failed")
+          self.quit_event.set()
 
       elif len(lines) == 0:
       
@@ -130,7 +133,7 @@ class ProcDaemon(Daemon,StreamBased):
 
           if header["PERFORM_FOLD"] == "1":
             os.makedirs (fold_dir, 0755)
-            fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -minram 4000 -x 16384 -b 1024 -L 10 -no_dyn"
+            fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -overlap -minram 4000 -x 16384 -b 1024 -L 5 -no_dyn"
             #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
           if header["PERFORM_SEARCH"] == "1" or header["PERFORM_TRANS"] == "1":
@@ -143,15 +146,13 @@ class ProcDaemon(Daemon,StreamBased):
             os.makedirs (trans_dir, 0755)
             trans_cmd = "heimdall -k " + db_key_out + " -gpu_id 1"
 
-          # since dspsr outputs to the cwd, set process CWD to dspsr's
-          os.chdir(fold_dir)
-
         log_host = self.cfg["SERVER_HOST"]
         log_port = int(self.cfg["SERVER_LOG_PORT"])
 
         # setup output pipes
         fold_log_pipe   = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
                                      log_host, log_port, int(DL))
+
         #trans_log_pipe  = LogSocket ("trans_src", "trans_src", str(self.id), "stream",
         #                             log_host, log_port, int(DL))
         #search_log_pipe = LogSocket ("search_src", "search_src", str(self.id), "stream",
@@ -221,8 +222,6 @@ if __name__ == "__main__":
   if state != 0:
     sys.exit(state)
 
-  script.log(1, "STARTING SCRIPT")
-
   try:
 
     reporting_thread = ProcReportingThread (script, stream_id)
@@ -241,7 +240,6 @@ if __name__ == "__main__":
     print '-'*60
     script.quit_event.set()
 
-  script.log(1, "STOPPING SCRIPT")
   script.conclude()
   sys.exit(0)
 

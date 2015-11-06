@@ -49,6 +49,7 @@ spip::DataBlock::DataBlock (const char * key_string)
   curr_buf = 0;
   curr_buf_bytes = 0;
   curr_buf_id = 0;
+  header = 0;
   header_bufsz = 0;
   data_bufsz = 0;
 }
@@ -74,6 +75,8 @@ void spip::DataBlock::connect ()
   header_bufsz = ipcbuf_get_bufsz (header_block);
   data_bufsz   = ipcbuf_get_bufsz ((ipcbuf_t *) data_block);
 
+  header = (char *) malloc (header_bufsz);
+
   connected = true;
 }
 
@@ -95,4 +98,7 @@ void spip::DataBlock::disconnect ()
   curr_buf = 0;
   curr_buf_bytes = 0;
   curr_buf_id = 0;
+  if (header)
+    free(header);
+  header = 0;
 }

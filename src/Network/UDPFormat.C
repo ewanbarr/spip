@@ -104,7 +104,7 @@ void spip::UDPFormat::generate_noise_buffer (int nbits)
 
   for (unsigned i=0; i < size; i++)
   {
-    double val = rand_normal (mean, stddev); 
+    double val = rint(rand_normal (mean, stddev)); 
 
     if (nbits == 8)
       buffer8[i] = (int8_t) val;

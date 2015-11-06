@@ -190,7 +190,7 @@ class controls extends spip_webpage
           echo "<td rowspan=".$host_rows.">".$host."</td>\n";
           # each host has a single LMC instance that manages all child daemons
           echo "<td rowspan=".$host_rows.">\n";
-            echo "<img border='0' id='".$host."_lmc_light' src='/images/grey_light.png' width='15px' height='15px'>\n";
+            echo "<img border='0' id='".$host."_lmc_light' src='/spip/images/grey_light.png' width='15px' height='15px'>\n";
             echo "<input type='button' value='Start' onClick='startLMC(\"".$host."\")'/>\n";
             echo "<input type='button' value='Stop' onClick='stopLMC(\"".$host."\")'/>\n";
           echo "</td>\n";
@@ -208,7 +208,7 @@ class controls extends spip_webpage
           {
             $id = $host."_".$d["daemon"]."_".$stream["stream_id"];
             echo "<span style='padding-right: 10px;'>\n";
-            echo "<img border='0' id='".$id."_light' src='/images/grey_light.png' width='15px' height='15px'>\n";
+            echo "<img border='0' id='".$id."_light' src='/spip/images/grey_light.png' width='15px' height='15px'>\n";
             echo $d["daemon"];
             echo "</span>\n";
           }
@@ -219,7 +219,7 @@ class controls extends spip_webpage
           {
             echo "<span style='padding-right: 10px;'>\n";
             $id = $host."_".$d["daemon"]."_".$stream["stream_id"];
-            echo "<img border='0' id='".$id."_light' src='/images/grey_light.png' width='15px' height='15px'>\n";
+            echo "<img border='0' id='".$id."_light' src='/spip/images/grey_light.png' width='15px' height='15px'>\n";
             echo $d["daemon"];
             echo "</span>\n";
           }

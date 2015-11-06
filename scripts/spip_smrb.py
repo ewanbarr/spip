@@ -12,8 +12,6 @@
 #   SMRBs destroyed upon exit
 #
 
-#import os, threading, sys, time, socket, select, signal, traceback
-
 import threading, sys, traceback, socket, select
 from time import sleep
 
@@ -24,7 +22,7 @@ from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils.core import system
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL        = 1
 
 class monThread (threading.Thread):
@@ -50,7 +48,7 @@ class monThread (threading.Thread):
       script.log(1, "monThread: opening mon socket")
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-      port = self.getDBMonPort(self.id)
+      port = SMRBDaemon.getDBMonPort(self.id)
       script.log(2, "monThread: binding to localhost:" + str(port))
       sock.bind(("localhost", port))
 
@@ -118,10 +116,6 @@ class monThread (threading.Thread):
         x.close()
         del can_read[i]
 
-  def getDBMonPort (self, stream_id):
-    start_port = 20000
-    return start_port + int(stream_id)
-
   def getDBState (self, key):
     cmd = "dada_dbmetric -k " + key
     rval, lines = system (cmd, False)
@@ -161,6 +155,16 @@ class SMRBDaemon(Daemon,StreamBased):
       nread = self.cfg["BLOCK_NREAD_" + db_id]
       page  = self.cfg["BLOCK_PAGE_" + db_id]
 
+      # check if the datablock already exists
+      cmd = "ipcs | grep 0x0000" + db_key + " | wc -l"
+      rval, lines = self.system (cmd)
+      if rval == 0 and len(lines) == 1 and lines[0] == "1":
+        self.log (-1, "Data block with key " + db_key + " existed at launch")
+        cmd = "dada_db -k " + db_key + " -d"
+        rval, lines = self.system (cmd)
+        if rval != 0:
+          self.log (-2, "Could not destroy existing datablock")
+
       cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
       if page:
         cmd += " -p -l"
@@ -189,6 +193,11 @@ class SMRBDaemon(Daemon,StreamBased):
     db_key = inst_id + "%03x" % (2 * index)
     return db_key
 
+  @classmethod
+  def getDBMonPort (self, stream_id):
+    start_port = 20000
+    return start_port + int(stream_id)
+
 if __name__ == "__main__":
 
   if len(sys.argv) != 2:
@@ -198,7 +207,7 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = SMRBDaemon ("smrb", stream_id)
+  script = SMRBDaemon ("spip_smrb", stream_id)
   state = script.configure (DAEMONIZE, DL, "smrb", "smrb")
   if state != 0:
     sys.exit(state)

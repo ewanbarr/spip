@@ -1,0 +1,288 @@
+<?PHP
+
+error_reporting(E_ALL);
+ini_set("display_errors", 1);
+
+include_once("../spip.lib.php");
+include_once("../spip_webpage.lib.php");
+include_once("../spip_socket.lib.php");
+
+class stat extends spip_webpage
+{
+
+  function stat()
+  {
+    spip_webpage::spip_webpage();
+
+    $this->title = "Input Statistics";
+    $this->nav_item = "stats";
+
+    $this->config = spip::get_config();
+    $this->streams = array();
+
+    $this->plot_width = 240;
+    $this->plot_height = 180;
+
+    for ($istream=0; $istream<$this->config["NUM_STREAM"]; $istream++)
+    {
+      list ($host, $ibeam, $subband) = explode (":", $this->config["STREAM_".$istream]);
+
+      $beam_name = $this->config["BEAM_".$ibeam];
+      $this->streams[$istream] = array("beam_name" => $beam_name, "host" => $host);
+    }
+  }
+
+  function javaScriptCallback()
+  {
+    return "stat_request();";
+  }
+
+  function printJavaScriptHead()
+  {
+?>
+    <script type='text/javascript'>
+
+      function handle_stat_request(t_xml_request)
+      {
+        if (t_xml_request.readyState == 4)
+        {
+          var xmlDoc = t_xml_request.responseXML;
+          var tcs_utcs = new Array();
+
+          if (xmlDoc != null)
+          {
+            var xmlObj = xmlDoc.documentElement;
+
+            // process the TCS state first
+            var stat_state = xmlObj.getElementsByTagName("stat_state")[0];
+            var streams = stat_state.getElementsByTagName("stream");
+
+            var i, j, k;      
+            for (i=0; i<streams.length; i++)
+            {
+              var stream = streams[i];
+
+              var stream_id = stream.getAttribute("id");
+              var beam_name = stream.getAttribute("beam_name");
+              var active    = stream.getAttribute("active");
+
+              var plots = Array();
+
+              if (active == "True")
+              {
+                var polarisations = stream.getElementsByTagName("polarisation");
+                for (j=0; j<polarisations.length; j++)
+                {
+                  polarisation = polarisations[j];
+                  pol_name = polarisation.getAttribute("name")
+
+                  hg_mean   = polarisation.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue;
+                  hg_stddev = polarisation.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue;
+
+                  plots = polarisation.getElementsByTagName("plot");
+    
+                  for (k=0; k<plots.length; k++)
+                  {
+                    var plot = plots[k]
+                    var plot_type = plot.getAttribute("type")  
+                    var plot_timestamp = plot.getAttribute("timestamp")  
+  
+                    var plot_id = stream_id + "_" + plot_type + "_" + pol_name
+                    var plot_ts = stream_id + "_" + plot_type + "_" + pol_name + "_ts"
+
+                    // if the image has been updated, reacquire it
+                    //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
+                    if (plot_timestamp != document.getElementById(plot_ts).value)
+                    {
+                      url = "/spip/stat/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
+                      document.getElementById(plot_id).src = url;
+                      document.getElementById(plot_ts).value = plot_timestamp;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      function stat_request() 
+      {
+        var url = "?update=true";
+
+        if (window.XMLHttpRequest)
+          t_xml_request = new XMLHttpRequest();
+        else
+          t_xml_request = new ActiveXObject("Microsoft.XMLHTTP");
+
+        t_xml_request.onreadystatechange = function()
+        {
+          handle_stat_request(t_xml_request)
+        };
+        t_xml_request.open("GET", url, true);
+        t_xml_request.send(null);
+      }
+
+
+    </script>
+
+    <style type='text/css'>
+      #obsTable table {
+        border: 1;
+      }
+
+      #obsTable th {
+        text-align: right;
+        padding-right: 5px;
+      }
+
+      #obsTable td {
+        text-align: left;
+      }
+
+      #plotTable table {
+        border: 0;
+      }
+
+      #plotTable td {
+        text-align: center;
+      }
+
+    </style>
+<?php
+  }
+
+  function printHTML()
+  {
+    foreach ($this->streams as $istream => $stream)
+    {
+      $this->renderObsTable($istream);
+      $this->renderPlotTable($istream);
+    }
+  }
+
+  function printUpdateHTML($get)
+  {
+    if (isset($get["plot"]))
+    {
+      $this->renderImage($get);
+      return;
+    }
+    $xml = "<stat_update>";
+
+    $stat_socket = new spip_socket();
+    
+    $xml_req  = XML_DEFINITION;
+    $xml_req .= "<stat_request>";
+    $xml_req .= "<requestor>stat page</requestor>";
+    $xml_req .= "<type>state</type>";
+    $xml_req .= "</stat_request>";
+
+    foreach ($this->streams as $istream => $stream)
+    {
+      $host = $stream["host"];
+      $port = $this->config["STREAM_STAT_PORT"] + $istream;
+
+      #echo "host=".$host." port=".$port."<br>\n";
+      if ($stat_socket->open ($host, $port, 0) == 0)
+      {
+        $stat_socket->write ($xml_req."\r\n");
+        list ($rval, $reply) = $stat_socket->read();
+        $xml .= rtrim($reply);
+        $stat_socket->close();
+      }
+      else
+      {
+        $xml .= "<stat_state><stream id='".$istream."' beam_name='".$stream["beam_name"]."' active='False'></stream></stat_state>";
+      }
+    }
+
+    $xml .= "</stat_update>";
+
+    header('Content-type: text/xml');
+    echo $xml;
+  }
+
+  // will contact stat to request current image information
+  function renderImage($get)
+  {
+    $istream = $get["istream"];
+    $host      = $this->streams[$istream]["host"];
+    $port      = $this->config["STREAM_STAT_PORT"] + $istream;
+
+    $xml_req  = XML_DEFINITION;
+    $xml_req .= "<stat_request>";
+    $xml_req .= "<requestor>stat page</requestor>";
+    $xml_req .= "<type>plot</type>";
+    $xml_req .= "<plot>".$get["plot"]."</plot>";
+    $xml_req .= "<pol>".$get["pol"]."</pol>";
+    $xml_req .= "</stat_request>";
+
+    $stat_socket = new spip_socket(); 
+    $rval = 0;
+    $reply = 0;
+    if ($stat_socket->open ($host, $port, 0) == 0)
+    {
+      $stat_socket->write ($xml_req."\r\n");
+      list ($rval, $reply) = $stat_socket->read_raw();
+    }
+    else
+    {
+      // TODO generate PNG with error text
+      echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
+      return;
+    }
+    $stat_socket->close();
+    
+    if ($rval == 0)
+    {
+      header('Content-type: image/png');
+      header('Content-Disposition: inline; filename="image.png"');
+      echo $reply;
+    }
+  }
+
+  function renderObsTable ($stream)
+  {
+    $cols = 4;
+    $fields = array( $stream."_histogram_mean_0" => "Mean [0]",
+                     $stream."_histogram_stddev_0" => "StdDev [0]",
+                     $stream."_histogram_mean_1" => "Mean [1]",
+                     $stream."_histogram_stddev_1" => "StdDev [1]" );
+
+    echo "<table id='obsTable' width='100%'>\n";
+
+    $keys = array_keys($fields);
+    for ($i=0; $i<count($keys); $i++)
+    {
+      if ($i % $cols == 0)
+        echo "  <tr>\n";
+      echo "    <th>".$fields[$keys[$i]]."</th>\n";
+      echo "    <td width='100px'><span id='".$keys[$i]."'>--</span></td>\n";
+      if (($i+1) % $cols == 0)
+        echo "  </tr>\n";
+    }
+    echo "</table>\n";
+  }
+
+  function renderPlotTable ($stream)
+  {
+    $img_params = "src='/spip/images/blankimage.gif' width='".$this->plot_width."px' height='".$this->plot_height."px'";
+
+    echo "<table  width='100%' id='plotTable'>\n";
+    echo "<tr>\n";
+    echo   "<td><img id='".$stream."_histogram_0' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_1' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_freq_vs_time_0' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_0_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_freq_vs_time_1' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_1_ts'/></td>\n";
+    echo "<tr><td>Input HG</td><td>Freq vs Time</td></tr>\n";
+    echo "</tr>\n";
+
+    echo "</table>\n";
+  }
+    
+}
+if (!isset($_GET["update"]))
+  $_GET["single"] = "true";
+handleDirect("stat");
+

@@ -16,7 +16,7 @@ from spip.log_socket import LogSocket
 from spip import config
 from spip_smrb import SMRBDaemon
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL = 1
 
 class RecvDaemon(Daemon,StreamBased):
@@ -70,7 +70,7 @@ class RecvDaemon(Daemon,StreamBased):
       (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(self.id)].split(":")
 
       cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key \
-            + " -b " + stream_core \
+            + " -v -b " + stream_core \
             + " -c " + ctrl_port \
             + " -p " + stream_port \
             + " " + config_file + " " + stream_ip
@@ -111,7 +111,7 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = RecvDaemon ("recv", stream_id)
+  script = RecvDaemon ("spip_recv", stream_id)
   state = script.configure (DAEMONIZE, DL, "recv", "recv")
   if state != 0:
     sys.exit(state)

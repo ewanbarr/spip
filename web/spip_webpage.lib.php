@@ -6,7 +6,7 @@ class spip_webpage
   var $ejs = array();
   var $title = "spip";
   var $callback_freq = 4000;
-  var $doc_type = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">";
+  var $doc_type = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\"\n \"http://www.w3.org/TR/html4/loose.dtd\">";
 
   var $nav_item = "";
   var $logo_text = "";
@@ -60,11 +60,11 @@ class spip_webpage
     $id = str_replace("-","",$id);
     echo $id." = new JS_BRAMUS.jsProgressBar($('".$id."_progress_bar'), 0, ";
     echo " { width : 40, showText : false, animate : false, ".
-         "boxImage: '/images/jsprogress/percentImage_40.png', ".
-         "barImage : Array( '/images/jsprogress/percentImage_back1_40.png', ".
-         "'/images/jsprogress/percentImage_back2_40.png', ".
-         "'/images/jsprogress/percentImage_back3_40.png', ".
-        "'/images/jsprogress/percentImage_back4_40.png') } );\n";
+         "boxImage: '/spip/images/jsprogress/percentImage_40.png', ".
+         "barImage : Array( '/spip/images/jsprogress/percentImage_back1_40.png', ".
+         "'/spip/images/jsprogress/percentImage_back2_40.png', ".
+         "'/spip/images/jsprogress/percentImage_back3_40.png', ".
+        "'/spip/images/jsprogress/percentImage_back4_40.png') } );\n";
   }
 
   static function renderProgressBar($id)
@@ -97,6 +97,7 @@ function handleDirect($child_class)
     // css and javascript includes
     for ($i=0; $i<count($obj->css); $i++)
       echo "    <link rel='stylesheet' type='text/css' href='".$obj->css[$i]."'>\n";
+
     for ($i=0; $i<count($obj->ejs); $i++)
       echo "    <script type='text/javascript' src='".$obj->ejs[$i]."'></script>\n";
 
@@ -126,41 +127,81 @@ function handleDirect($child_class)
 
     $obj->printJavaScriptBody();
 
+    echo "<div id='topbg'></div>\n";
+
+    echo "<div id='main'>\n";
+
+    echo "  <div id='header'>\n";
+    echo "    <div id='hdr-overlay'></div>\n";
+    echo "    <div id='hdr-box1' class='box'></div>\n";
+    echo "    <div id='hdr-box2' class='box'></div>\n";
+    echo "    <div id='hdr-box3' class='box'></div>\n";
+    echo "    <div id='hdr-box4' class='box'></div>\n";
+    echo "    <h1>Swinburne Pulsar Instrumentation Package</h1>\n";
+    echo "  </div>\n";
+
     // print the main navigation panel
     if ($obj->nav_item != "")
     {
-      echo "<table height='60px' width='100%' border=1>\n";
-      echo "<tr>\n";
-      echo "<td width='210px' height='60px'>";
-      echo "<img src='/spip/images/spip_logo.png' width='200px' height='60px'>";
-      echo "</td>\n";
-      echo "<td width='100px'><a href='/spip/timing/'>Timing</a></td>\n";
-      //echo "<td width='100px'><a href='/spip/transients/'>Transients</a></td>\n";
-      echo "<td width='100px'><a href='/spip/status/'>Status</a></td>\n";
-      echo "<td width='100px'><a href='/spip/controls/'>Controls</a></td>\n";
-      echo "<td width='100px'><a href='/spip/test/'>Test</a></td>\n";
-      echo "</tr>\n";
-      echo "</table>\n";
+      $nav_items = array ("/spip/timing/" => "Timing", 
+                          "/spip/stats/" => "Stats",
+                          "/spip/status/" => "Status",
+                          "/spip/controls/" => "Controls",
+                          "/spip/logs/" => "Logs");
+
+      #echo "<table height='60px' width='100%' id='nav'>\n";
+      #echo "<tr>\n";
+      #echo "<td width='200px' height='80px' style='text-align: left; padding-left: 10px;'>";
+      #echo "<img src='/spip/images/spip_logo.png' width='200px' height='60px'>";
+      #echo "</td>\n";
+
+      echo "  <ul id='menu'>\n";
+      foreach ($nav_items as $key => $val )
+      {
+        if (strpos($key, $obj->nav_item) !== FALSE)
+        {
+          echo "    <li><a class='sel' href='".$key."'><span></span>".$val."</a></li>\n";
+        }
+        else
+        {
+          echo "    <li><a href='".$key."'><span></span>".$val."</a></li>\n";
+        }
+      }
+      echo "  </ul>\n";
+
+      #echo "</tr>\n";
+      #echo "</table>\n";
     }
+
+    echo "  <div id='content'>\n";
 
     if (method_exists($obj, "printSideBarHTML"))
     {
-      echo "<table width='100%' cellpadding='10px' border=0>\n";
-      echo "  <tr>\n";
-      echo "    <td style='vertical-align: top; width: ".$obj->sidebar_width."px'>\n";
+      echo "    <div id='left'>\n";
       $obj->printSideBarHTML();
-      echo "    </td>\n";
-      echo "    <td style='vertical-align: top;'>\n";
+      echo "    </div>\n";
+
+      echo "    <div id='right'>\n";
       $obj->printHTML();
-      echo "    </td>\n";
-      echo "  </tr>\n";
-      echo "</table>\n";
+      echo "    </div>\n";
     }
     else
     {
+      echo "    <div id='centre'>\n";
       $obj->printHTML();
+      echo "    </div>\n";
     }
+  
+    echo "  </div>\n";  // content
 
+    echo "  <div class='cleaner'></div>\n";
+
+    echo "  <div id='footer'>\n";
+    echo "Copyright © Swinburne University of Technology | "; 
+    echo "<a href='/spip/test/'>Testing Interface</a>\n";
+    echo "  </div>\n";
+
+    echo "</div>\n";  // main
     echo "</body>\n";
     echo "</html>\n";
 

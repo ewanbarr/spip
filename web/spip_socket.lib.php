@@ -83,7 +83,7 @@ class spip_socket
         {
           socket_close ($this->sock);
           $this->is_open = 0;
-          return array(-1, socket_strerror(socket_last_error($this->sock)));
+          return array(-1, socket_strerror(ECONNRESET));
         }
       }
       return array(0, $response);
@@ -91,6 +91,31 @@ class spip_socket
     else
       return array(-1, "socket not open");
   }
+
+  public function read_raw ()
+  {
+    if ($this->is_open)
+    {
+      $raw_data = "";
+      $data = @socket_read ($this->sock, 8192, PHP_BINARY_READ);
+      $raw_data = $data;
+      while ($data)
+      {
+        $data = socket_read($this->sock, 8192, PHP_BINARY_READ);
+        $raw_data .= $data;
+      }
+      if (socket_last_error() == ECONNRESET)
+      {
+        socket_close ($this->sock);
+        $this->is_open = 0;
+        return array(-1, socket_strerror(ECONNRESET));
+      }
+      return array(0, $raw_data);
+    }
+    else
+      return array(-1, "socket not open");
+  }
+
 
   public function write ($string)
   {

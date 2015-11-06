@@ -20,6 +20,10 @@ class timing extends spip_webpage
     $this->config = spip::get_config();
     $this->beams = array();
 
+    $this->plot_width = 240;
+    $this->plot_height = 180;
+
+
     for ($ibeam=0; $ibeam<$this->config["NUM_BEAM"]; $ibeam++)
     {
       $beam_name = $this->config["BEAM_".$ibeam];
@@ -42,25 +46,183 @@ class timing extends spip_webpage
     }
   }
 
+  function javaScriptCallback()
+  {
+    return "timing_request();";
+  }
+
+  function printJavaScriptHead()
+  {
+?>
+    <script type='text/javascript'>
+
+      function handle_timing_request(t_xml_request)
+      {
+        if (t_xml_request.readyState == 4)
+        {
+          var xmlDoc = t_xml_request.responseXML;
+          var tcs_utcs = new Array();
+
+          if (xmlDoc != null)
+          {
+            var xmlObj = xmlDoc.documentElement;
+
+            // process the TCS state first
+            var tcs_state = xmlObj.getElementsByTagName("tcs_state")[0];
+            var beams = tcs_state.getElementsByTagName("beam");
+
+            var i, j, k;      
+            var source, name, ra, dec;
+            var params, observer, pid, mode, start, elapsed, tobs
+            var observation, integrated, snr;
+
+            for (i=0; i<beams.length; i++)
+            {
+              beam = beams[i];
+              var beam_name  = beam.getAttribute("name");
+              var beam_state = beam.getAttribute("state");
+
+              document.getElementById(beam_name + "_state").innerHTML = "Beam " + beam_name + ": " + beam_state
+
+              if (beam_state == "Recording")
+              {
+                source = beam.getElementsByTagName("source")[0];
+                name   = source.getElementsByTagName("name")[0].childNodes[0].nodeValue;
+                ra     = source.getElementsByTagName("ra")[0].childNodes[0].nodeValue;
+                dec    = source.getElementsByTagName("dec")[0].childNodes[0].nodeValue;
+    
+                params   = beam.getElementsByTagName("observation_parameters")[0];
+                observer = params.getElementsByTagName("observer")[0].childNodes[0].nodeValue;
+                pid      = params.getElementsByTagName("pid")[0].childNodes[0].nodeValue;
+                mode     = params.getElementsByTagName("mode")[0].childNodes[0].nodeValue;
+                start    = params.getElementsByTagName("utc_start")[0].childNodes[0].nodeValue;
+                elapsed  = params.getElementsByTagName("elapsed_time")[0].childNodes[0].nodeValue;
+                tobs     = params.getElementsByTagName("expected_length")[0].childNodes[0].nodeValue;
+
+                document.getElementById(beam_name + "_source").innerHTML = name;
+                document.getElementById(beam_name + "_ra").innerHTML = ra;
+                document.getElementById(beam_name + "_dec").innerHTML = dec;
+                document.getElementById(beam_name + "_observer").innerHTML = observer;
+                document.getElementById(beam_name + "_pid").innerHTML = pid;
+                document.getElementById(beam_name + "_mode").innerHTML = mode;
+                document.getElementById(beam_name + "_start").innerHTML = start;
+                document.getElementById(beam_name + "_elapsed").innerHTML = elapsed;
+                document.getElementById(beam_name + "_tobs").innerHTML = tobs;
+
+                tcs_utcs[beam_name] = start
+              }
+              else
+              {
+                tcs_utcs[beam_name] = ""
+              }
+            }
+
+            var repack_state = xmlObj.getElementsByTagName("repack_state")[0];
+            var beams = repack_state.getElementsByTagName("beam");
+  
+            for (i=0; i<beams.length; i++)
+            {
+              var beam = beams[i];
+
+              var beam_name = beam.getAttribute("name");
+              var active    = beam.getAttribute("active");
+
+              var plots = Array();
+
+              if (active == "True")
+              {
+                observation = beam.getElementsByTagName("observation")[0]
+                start = observation.getElementsByTagName("start")[0].childNodes[0].nodeValue;
+                integrated = observation.getElementsByTagName("integrated")[0].childNodes[0].nodeValue;
+                snr = observation.getElementsByTagName("snr")[0].childNodes[0].nodeValue;
+                plots = beam.getElementsByTagName("plot");
+    
+                if (start = tcs_utcs[beam_name])
+                {
+                  document.getElementById(beam_name + "_integrated").innerHTML = integrated;
+                  document.getElementById(beam_name + "_snr").innerHTML = snr;
+                }
+
+                for (j=0; j<plots.length; j++)
+                {
+                  var plot = plots[j]
+                  var plot_type = plots[j].getAttribute("type")  
+                  var plot_timestamp = plots[j].getAttribute("timestamp")  
+  
+                 var plot_id = beam_name + "_" + plot_type
+                  var plot_ts = beam_name + "_" + plot_type + "_ts"
+
+                  // if the image has been updated, reacquire it
+                  //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
+                  if (plot_timestamp != document.getElementById(plot_ts).value)
+                  {
+                    url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;
+                    document.getElementById(plot_id).src = url;
+                    document.getElementById(plot_ts).value = plot_timestamp;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      function timing_request() 
+      {
+        var url = "?update=true";
+
+        if (window.XMLHttpRequest)
+          t_xml_request = new XMLHttpRequest();
+        else
+          t_xml_request = new ActiveXObject("Microsoft.XMLHTTP");
+
+        t_xml_request.onreadystatechange = function()
+        {
+          handle_timing_request(t_xml_request)
+        };
+        t_xml_request.open("GET", url, true);
+        t_xml_request.send(null);
+      }
+
+
+    </script>
+
+    <style type='text/css'>
+      #obsTable table {
+        border: 1;
+      }
+
+      #obsTable th {
+        text-align: right;
+        padding-right: 5px;
+      }
+
+      #obsTable td {
+        text-align: left;
+      }
+
+      #plotTable table {
+        border: 0;
+      }
+
+      #plotTable td {
+        text-align: center;
+      }
+
+    </style>
+<?php
+  }
+
   function printHTML()
   {
-    echo "<h1>Timing</h1>\n";
-    echo "<p>Here is the pulsar timing page</p>\n";
-
-    echo "<table  width='100%' border=1>\n";
-    echo "<tr><th>Beam</th><th>Flux</th><th>Time</th><th>Freq</th><th>Details</th></tr>\n";
-
     foreach ($this->beams as $ibeam => $beam)
     {
-      echo "<tr>\n";
-      echo   "<td>".$beam["name"]."</td>\n";
-      echo   "<td><img src='' id='".$ibeam."_flux'/></td>\n";
-      echo   "<td><img src='' id='".$ibeam."_time'/></td>\n";
-      echo   "<td><img src='' id='".$ibeam."_freq'/></td>\n";
-      echo   "<td><span id='".$ibeam."_details'></span></td>\n";
-      echo "</tr>\n";
+      echo "<h2 id='".$beam["name"]."_state'>Beam ".$beam["name"]."</h2>\n";
+
+      $this->renderObsTable($beam["name"]);
+
+      $this->renderPlotTable($beam["name"]);
     }
-    echo "</table>\n";
   }
 
   function printUpdateHTML($get)
@@ -94,8 +256,25 @@ class timing extends spip_webpage
       }
       else
       {
-        $xml .= "<repack_state><beam id='".$beam["name"]."'></beam></repack_state>";
+        $xml .= "<repack_state><beam beam_name='".$beam["name"]."' active='False'></beam></repack_state>";
       }
+    }
+
+    # get all information from TCS too
+    $host = $this->config["TCS_INTERFACE_HOST"];
+    $port = $this->config["TCS_REPORT_PORT"];
+
+    $tcs_socket = new spip_socket();
+    if ($tcs_socket->open ($host, $port, 0) == 0)
+    {
+      $tcs_socket->write ($xml_req."\r\n");
+      list ($rval, $reply) = $tcs_socket->read();
+      $xml .= rtrim($reply);
+      $tcs_socket->close();
+    }
+    else
+    {
+      $xml .= "<tcs_state></tcs_state>";
     }
 
     $xml .= "</timing_update>";
@@ -107,8 +286,19 @@ class timing extends spip_webpage
   // will contact a repacker to request current image information
   function renderImage($get)
   {
-    $ibeam     = $get["ibeam"];
-    $beam_name = $this->beams[$ibeam]["name"];
+    $beam_name     = $get["beam_name"];
+    $ibeam = -1;
+    foreach ($this->beams as $ibeam => $beam)
+    {
+      if ($beam["name"] == $beam_name)
+        $ibeam = $ibeam;
+    }
+    if ($ibeam < 0)
+    {
+      echo "ERROR: could not identify beam name<br/>\n";
+      return;
+    }
+
     $host      = $this->beams[$ibeam]["host"];
     $port      = $this->config["STREAM_REPACK_PORT"];
     if ($ibeam >= 0)
@@ -123,22 +313,86 @@ class timing extends spip_webpage
     $xml_req .= "</repack_request>";
 
     $repack_socket = new spip_socket(); 
+    $rval = 0;
     $reply = 0;
     if ($repack_socket->open ($host, $port, 0) == 0)
     {
       $repack_socket->write ($xml_req."\r\n");
-      list ($rval, $reply) = $repack_socket->read();
+      list ($rval, $reply) = $repack_socket->read_raw();
     }
     else
     {
       // TODO generate PNG with error text
       echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
+      return;
     }
     $repack_socket->close();
-
-    header('Content-type: image/png');
-    echo $reply;
+    
+    if ($rval == 0)
+    {
+      header('Content-type: image/png');
+      header('Content-Disposition: inline; filename="image.png"');
+      echo $reply;
+    }
   }
+
+  function renderObsTable ($beam)
+  {
+    $cols = 4;
+    $fields = array( $beam."_source" => "Source",
+                     $beam."_start" => "UTC_START",
+                     $beam."_pid" => "Project ID",
+                     $beam."_tobs" => "Tobs",
+                     $beam."_ra" => "RAJ",
+                     $beam."_mode" => "Mode",
+                     $beam."_observer" => "Observer",
+                     $beam."_elapsed" => "Elapsed",
+                     $beam."_dec" => "DECJ",
+                     $beam."_snr" => "SNR",
+                     $beam."_integrated" => "Integrated");
+
+    echo "<table id='obsTable' width='100%'>\n";
+
+    $keys = array_keys($fields);
+    for ($i=0; $i<count($keys); $i++)
+    {
+      if ($i % $cols == 0)
+        echo "  <tr>\n";
+      echo "    <th>".$fields[$keys[$i]]."</th>\n";
+      echo "    <td width='100px'><span id='".$keys[$i]."'>--</span></td>\n";
+      if (($i+1) % $cols == 0)
+        echo "  </tr>\n";
+    }
+    echo "</table>\n";
+  }
+
+  function renderPlotTable ($beam)
+  {
+    $img_params = "src='/spip/images/blankimage.gif' width='".$this->plot_width."px' height='".$this->plot_height."px'";
+
+    echo "<table  width='100%' id='plotTable'>\n";
+
+    echo "<tr>\n";
+    echo   "<td><img id='".$beam."_flux_vs_phase' ".$img_params."/><input type='hidden' id='".$beam."_flux_vs_phase_ts' value='not set'/></td>\n";
+    echo   "<td><img id='".$beam."_freq_vs_phase' ".$img_params."/><input type='hidden' id='".$beam."_freq_vs_phase_ts' value='not set'/></td>\n";
+    echo   "<td><img id='".$beam."_time_vs_phase' ".$img_params."/><input type='hidden' id='".$beam."_time_vs_phase_ts' value='not set'/></td>\n";
+    echo   "<td><img id='".$beam."_bandpass' ".$img_params."/><input type='hidden' id='".$beam."_bandpass_ts' value='not set'/></td>\n";
+    echo "<tr><td>Flux</td><td>Freq</td><td>Time</td><td>Bandpass</td></tr>\n";
+    echo "</tr>\n";
+    echo "<table>\n";
+
+    echo "<table  width='100%' id='plotTable'>\n";
+    echo "<tr>\n";
+    echo   "<td><img id='".$beam."_snr_vs_time' ".$img_params."/><input type='hidden' id='".$beam."_snr_vs_time_ts' value='not set'/></td>\n";
+    echo   "<td><img id='".$beam."_snr_histogram' ".$img_params."/><input type='hidden' id='".$beam."_snr_histogram_ts'/></td>\n";
+    echo   "<td><img id='".$beam."_input_histogram' ".$img_params."/><input type='hidden' id='".$beam."_input_histogram_ts'/></td>\n";
+    echo   "<td><img id='".$beam."_freq_vs_time' ".$img_params."/><input type='hidden' id='".$beam."_freq_vs_time_ts'/></td>\n";
+    echo "<tr><td>SNR</td><td>SNR HG</td><td>Input HG</td><td>Freq vs Time</td></tr>\n";
+    echo "</tr>\n";
+
+    echo "</table>\n";
+  }
+    
 }
 if (!isset($_GET["update"]))
   $_GET["single"] = "true";

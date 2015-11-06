@@ -15,7 +15,7 @@ class tests extends spip_webpage
     spip_webpage::spip_webpage ();
 
     $this->title = "Test System";
-    $this->nav_item = "controls";
+    $this->nav_item = "test";
 
     $this->config = spip::get_config();
   }
@@ -134,11 +134,9 @@ class tests extends spip_webpage
 
 <tr> 
  <td colspan=2>
-  <div class="btns" style='text-align: center'>
-    <a href="javascript:startButton()"  class="btn" > <span>Start</span> </a>
-    <a href="javascript:stopButton()"  class="btn" > <span>Stop</span> </a>
-  </div>
- </td>
+  <input type='button' onClick='javascript:startButton()' value='Start'/>
+  <input type='button' onClick='javascript:stopButton()' value='Stop'/>
+ </tr>
 </tr>
 
 

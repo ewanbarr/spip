@@ -20,6 +20,7 @@ spip::UDPReceiver::UDPReceiver()
 {
   //format = new UDPFormat();
   format = 0;
+  verbose = 0;
 }
 
 spip::UDPReceiver::~UDPReceiver()
@@ -122,7 +123,11 @@ void spip::UDPReceiver::receive ()
       }
     }
 
+
     packet_number = format->decode_header_seq (buf);
+
+    format->decode_header (buf);
+    format->print_packet_header ();
 
     if (packet_number == (1 + prev_packet_number))
       stats->increment();

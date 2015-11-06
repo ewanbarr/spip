@@ -2,6 +2,7 @@
 webdir = $(prefix)/web/spip/images
 
 nobase_dist_web_SCRIPTS = \
+    blankimage.gif \
 		green_light.png \
     yellow_light.png \
 		red_light.png \

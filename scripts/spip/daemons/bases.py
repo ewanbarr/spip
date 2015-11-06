@@ -63,3 +63,17 @@ class RecvBased(Basis):
     stream_config = cfg["STREAM_" + str(id)]
     (host, beam_id) = stream_config.split(":")
     return (host, beam_id)
+
+class HostBased(Basis):
+
+  def __init__ (self, hostname, cfg):
+    Basis.__init__(self, "host")
+    self.id = hostname
+    self.req_host = hostname
+    if self.req_host == cfg["SERVER_HOST"]:
+      self.log_dir     = cfg["SERVER_LOG_DIR"]
+      self.control_dir = cfg["SERVER_CONTROL_DIR"]
+    else:
+      self.log_dir     = self.cfg["CLIENT_LOG_DIR"]
+      self.control_dir = self.cfg["CLIENT_CONTROL_DIR"]
+

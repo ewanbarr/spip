@@ -38,6 +38,8 @@ namespace spip
 
       inline const bool is_block_full () { return (curr_buf_bytes == data_bufsz); };
 
+      const char * get_header() { return reinterpret_cast<const char *>(header); } ;
+
     protected:
 
       ipcbuf_t * header_block;
@@ -60,15 +62,16 @@ namespace spip
 
       uint64_t curr_buf_bytes;
 
+      void * header;
+
+      uint64_t header_size;
+
     private:
 
       key_t data_block_key;
 
       key_t header_block_key;
 
-      void * header;
-
-      uint64_t header_size;
 
   };
 
