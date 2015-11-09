@@ -15,7 +15,6 @@
 #include <iostream>
 #include <stdexcept>
 #include <new>
-#include <pthread.h>
 
 #define SPEADReceiveDB_CMD_NONE 0
 #define SPEADReceiveDB_CMD_START 1
@@ -86,32 +85,23 @@ int spip::SPEADReceiveDB::configure (const char * config)
 
 void spip::SPEADReceiveDB::prepare (std::string ip_address, int port)
 {
+  spead_ip = ip_address;
+  spead_port = port;
+
+/*
   // make a shared pool
   pool = std::make_shared<spead2::memory_pool>(16384, 26214400, 12, 8);
 
-  stream = stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
-
-  stream.set_memory_pool(pool);
-
-  endpoint = endpoint (boost::asio::ip::address_v4::from_string(ip_address), port);
-
-  stream.emplace_reader<spead2::recv::udp_reader>(endpoint, spead2::recv::udp_reader::default_max_size, 8 * 1024 * 1024);
+  //endpoint = endpoint (boost::asio::ip::address_v4::from_string(ip_address), port);
+  endpoint = new boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::any(), port);
+*/
 }
 
 void spip::SPEADReceiveDB::start_control_thread (int port)
 {
   control_port = port;
 
-  int errno = pthread_create (&control_thread_id, 0, control_thread_wrapper, this);
-  if (errno != 0)
-    throw runtime_error ("pthread_create");
-}
-
-// wrapper method to start control thread
-void * spip::SPEADReceiveDB::control_thread_wrapper (void * ptr)
-{
-  reinterpret_cast<SPEADReceiveDB*>( ptr )->control_thread ();
-  return 0;
+  pthread_create (&control_thread_id, NULL, control_thread_wrapper, this);
 }
 
 void spip::SPEADReceiveDB::stop_control_thread ()
@@ -243,6 +233,13 @@ bool spip::SPEADReceiveDB::receive ()
 {
   cerr << "spip::SPEADReceiveDB::receive ()" << endl;
 
+  spead2::thread_pool worker;
+  std::shared_ptr<spead2::memory_pool> pool = std::make_shared<spead2::memory_pool>(16384, 26214400, 12, 8);
+  spead2::recv::ring_stream<> stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
+  stream.set_memory_pool(pool);
+  boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address_v4::any(), spead_port);
+  stream.emplace_reader<spead2::recv::udp_reader>( endpoint, spead2::recv::udp_reader::default_max_size, 8 * 1024 * 1024);
+
   control_state = Idle;
 
   uint64_t total_bytes_recvd = 0;
@@ -252,7 +249,7 @@ bool spip::SPEADReceiveDB::receive ()
   char * block;
   bool need_next_block = false;
 
-  const uint64_t samples_per_buf = format->get_samples_for_bytes (db->get_data_bufsz());
+  const uint64_t samples_per_buf = 100;
 
   // block accounting 
   const uint64_t heaps_per_buf = db->get_data_bufsz() / heap_size;
@@ -307,8 +304,8 @@ bool spip::SPEADReceiveDB::receive ()
       try
       {
         spead2::recv::heap fh = stream.pop();
-        n_complete++;
-        show_heap(fh);
+        //n_complete++;
+        //show_heap(fh);
       }
       catch (spead2::ringbuffer_stopped &e)
       {

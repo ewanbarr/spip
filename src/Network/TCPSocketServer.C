@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>          /* See NOTES */
 #include <sys/socket.h>
-
+#include <unistd.h>
 
 #include <cstdlib>
 #include <cstring>

@@ -165,6 +165,8 @@ void spip::UDPFormatMeerKATSPEAD::print_packet_header()
   uint64_t tmpval = *temp;
   cerr << "temp=" << std::bitset<64>(tmpval) << endl;
 
+  cerr << "num_items=" << std::bitset<16>(header.spead_hdr.num_items) << endl;
+
   spead_item_pointer_t * items = (spead_item_pointer_t *) (((char *) &header) + sizeof(spead_hdr_t));
 
   for (unsigned i=0; i<16; i++)

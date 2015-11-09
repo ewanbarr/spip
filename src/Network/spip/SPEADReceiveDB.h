@@ -4,6 +4,12 @@
 
 #include "dada_def.h"
 
+#include <boost/asio.hpp>
+
+#include "spead2/recv_udp.h"
+#include "spead2/recv_live_heap.h"
+#include "spead2/recv_ring_stream.h"
+
 #include "spip/DataBlockWrite.h"
 
 #include <iostream>
@@ -29,6 +35,11 @@ namespace spip {
 
       void start_control_thread (int port);
 
+      static void * control_thread_wrapper (void * obj)
+      {
+        ((SPEADReceiveDB*) obj )->control_thread ();
+      }
+
       void stop_control_thread ();
 
       void open ();
@@ -46,8 +57,6 @@ namespace spip {
       uint64_t get_data_bufsz () { return db->get_data_bufsz(); };
 
     protected:
-
-      static void * control_thread_wrapper (void *);
 
       void control_thread ();
 
@@ -85,13 +94,15 @@ namespace spip {
 
     private:
 
-      boost::asio::ip::udp::endpoint enpoint;
+      //boost::asio::ip::udp::endpoint * endpoint;
 
-      spead2::thread_pool worker;
+      //std::shared_ptr<spead2::memory_pool> pool;
+      //
+      std::string spead_ip;
 
-      std::shared_ptr<spead2::memory_pool> pool;
+      int spead_port;
 
-      spead2::recv::ring_stream stream;
+      unsigned heap_size;
   };
 
 }
