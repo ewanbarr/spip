@@ -76,7 +76,7 @@ class clientThread (threading.Thread):
           cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix
           self.parent.log(1, self.prefix + cmd)
           rval, lines = self.parent.system (cmd)
-          self.parent.log(1, self.prefix + str(rval) + " lines=" + str(lines))
+          self.parent.log(2, self.prefix + str(rval) + " lines=" + str(lines))
           if rval:
             for line in lines:
               self.parent.log(-2, prefix + line)
@@ -97,7 +97,7 @@ class clientThread (threading.Thread):
         for rank in ranks:
           for daemon in daemons[rank]: 
             cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'";
-            rval, lines = self.parent.system (cmd, 2 <= DL)
+            rval, lines = self.parent.system (cmd, 2)
             self.states[daemon] = (rval == 0)
             self.parent.log(3, prefix + daemon + ": " + str(self.states[daemon]))
 
@@ -122,7 +122,7 @@ class clientThread (threading.Thread):
           daemon_running = 0
           for daemon in daemons[rank]:
             cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3 <= DL)
+            rval, lines = self.parent.system (cmd, 3)
             if rval == 0 and len(lines) > 0:
               daemon_running = 1
               self.parent.log(2, prefix + "daemon " + daemon + " with rank " + 
@@ -136,7 +136,7 @@ class clientThread (threading.Thread):
         if rank_timeout == 0:
           for daemon in daemons[rank]:
             cmd = "pkill -f ''^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3 <= DL)
+            rval, lines = self.parent.system (cmd, 3)
 
         # remove daemon.quit files for this rank
         for daemon in daemons[rank]:
@@ -276,51 +276,59 @@ class LMCDaemon (Daemon,HostBased):
             else: 
               message = raw.strip()
               self.log(1, "main: message='" + message+"'")
-              xml = xmltodict.parse(message)
 
-              command = xml["lmc_cmd"]["command"]
-              if command == "daemon_status":
-                response = ""
-                response += "<lmc_reply>"
-                for stream in client_streams:
-                  response += "<stream id='" + str(stream) +"'>"
-                  for daemon in daemon_states[stream].keys():
-                    response += "<daemon name='" + daemon + "'>" + str(daemon_states[stream][daemon]) + "</daemon>"
-                  response += "</stream>"
-                response += "</lmc_reply>"
+              if len(message) == 0:
+                self.log(1, "main: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
 
-              elif command == "host_status":
-                response = "<lmc_reply>"
-
-                for disk in disks.keys():
-                  percent_full = 1.0 - (float(disks[disk]["available"]) / float(disks[disk]["size"]))
-                  response += "<disk mount='" + disk +"' percent_full='"+str(percent_full)+"'>"
-                  response += "<size units='MB'>" + disks[disk]["size"] + "</size>"
-                  response += "<used units='MB'>" + disks[disk]["used"] + "</used>"
-                  response += "<available units='MB'>" + disks[disk]["available"] + "</available>"
-                  response += "</disk>"
-
-                
-                response += "<system_load ncore='"+loads["ncore"]+"'>"
-                response += "<load1>" + loads["1min"] + "</load1>"
-                response += "<load5>" + loads["5min"] + "</load5>"
-                response += "<load15>" + loads["15min"] + "</load15>"
-                response += "</system_load>"
-
-                response += "<sensors>"
-                for sensor in sensors.keys():
-                  response += "<metric name='" + sensor + "' units='"+sensors[sensor]["units"]+"'>" + sensors[sensor]["value"] + "</metric>"
-                response += "</sensors>"
-                
-                response += "</lmc_reply>"
-
-                
               else:
-                response = "<lmc_reply>OK</lmc_reply>"
+                xml = xmltodict.parse(message)
 
-              self.log(2, "-> " + response)
+                command = xml["lmc_cmd"]["command"]
+                if command == "daemon_status":
+                  response = ""
+                  response += "<lmc_reply>"
+                  for stream in client_streams:
+                    response += "<stream id='" + str(stream) +"'>"
+                    for daemon in daemon_states[stream].keys():
+                      response += "<daemon name='" + daemon + "'>" + str(daemon_states[stream][daemon]) + "</daemon>"
+                    response += "</stream>"
+                  response += "</lmc_reply>"
 
-              handle.send(response + "\r\n")
+                elif command == "host_status":
+                  response = "<lmc_reply>"
+
+                  for disk in disks.keys():
+                    percent_full = 1.0 - (float(disks[disk]["available"]) / float(disks[disk]["size"]))
+                    response += "<disk mount='" + disk +"' percent_full='"+str(percent_full)+"'>"
+                    response += "<size units='MB'>" + disks[disk]["size"] + "</size>"
+                    response += "<used units='MB'>" + disks[disk]["used"] + "</used>"
+                    response += "<available units='MB'>" + disks[disk]["available"] + "</available>"
+                    response += "</disk>"
+
+                  
+                  response += "<system_load ncore='"+loads["ncore"]+"'>"
+                  response += "<load1>" + loads["1min"] + "</load1>"
+                  response += "<load5>" + loads["5min"] + "</load5>"
+                  response += "<load15>" + loads["15min"] + "</load15>"
+                  response += "</system_load>"
+
+                  response += "<sensors>"
+                  for sensor in sensors.keys():
+                    response += "<metric name='" + sensor + "' units='"+sensors[sensor]["units"]+"'>" + sensors[sensor]["value"] + "</metric>"
+                  response += "</sensors>"
+                  
+                  response += "</lmc_reply>"
+
+                else:
+                  response = "<lmc_reply>OK</lmc_reply>"
+
+                self.log(2, "-> " + response)
+
+                handle.send(response + "\r\n")
 
         counter -= 1
 

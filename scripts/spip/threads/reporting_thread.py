@@ -7,6 +7,7 @@
 
 import threading, socket, errno
 from xmltodict import parse
+from xml.parsers.expat import ExpatError
 from select import select
 
 class ReportingThread (threading.Thread):
@@ -67,26 +68,33 @@ class ReportingThread (threading.Thread):
               raw = handle.recv(4096)
               message = raw.strip()
 
-              self.script.log (2, "ReportingThread message='" + message+"'")
-              try:
-                xml = parse(message)
-              except ExpatError as e:
-                handle.send ("<xml>Malformed XML message</xml>\r\n")
+              if len(message) == 0:
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
                     del can_read[i]
 
-              self.script.log(3, "<- " + str(xml))
+              else:
+                self.script.log (2, "ReportingThread message='" + message+"'")
+                try:
+                  xml = parse(message)
+                except ExpatError as e:
+                  handle.send ("<xml>Malformed XML message</xml>\r\n")
+                  handle.close()
+                  for i, x in enumerate(can_read):
+                    if (x == handle):
+                      del can_read[i]
 
-              retain, reply = self.parse_message (xml)
+                self.script.log(3, "<- " + str(xml))
 
-              handle.send (reply)
-              if not retain:
-                handle.close()
-                for i, x in enumerate(can_read):
-                  if (x == handle):
-                    del can_read[i]
+                retain, reply = self.parse_message (xml)
+
+                handle.send (reply)
+                if not retain:
+                  handle.close()
+                  for i, x in enumerate(can_read):
+                    if (x == handle):
+                      del can_read[i]
 
             except socket.error as e:
               if e.errno == errno.ECONNRESET:

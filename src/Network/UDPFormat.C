@@ -88,11 +88,11 @@ double spip::UDPFormat::rand_normal (double mean, double stddev)
 void spip::UDPFormat::generate_noise_buffer (int nbits)
 {
   if (!noise_buffer)
-    noise_buffer = malloc (noise_buffer_size);
+    noise_buffer = (char *) malloc (noise_buffer_size);
 
-  // generate noise with mean of 0 and stddev of nbits-4
+  // generate noise with mean of 0 and stddev of 10
   const double mean = 0;
-  const double stddev = powf (2, (nbits-4));
+  const double stddev = 10;
   const unsigned size = (noise_buffer_size * 8) / nbits;
   int8_t * buffer8 = (int8_t *) noise_buffer;
   int16_t * buffer16 = (int16_t *) noise_buffer;

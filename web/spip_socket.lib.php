@@ -97,11 +97,11 @@ class spip_socket
     if ($this->is_open)
     {
       $raw_data = "";
-      $data = @socket_read ($this->sock, 8192, PHP_BINARY_READ);
+      $data = @socket_read ($this->sock, 65536, PHP_BINARY_READ);
       $raw_data = $data;
-      while ($data)
+      while ($data != '')
       {
-        $data = socket_read($this->sock, 8192, PHP_BINARY_READ);
+        $data = socket_read($this->sock, 65536, PHP_BINARY_READ);
         $raw_data .= $data;
       }
       if (socket_last_error() == ECONNRESET)

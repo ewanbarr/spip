@@ -20,7 +20,7 @@ from spip.plotting import HistogramPlot,FreqTimePlot
 
 from spip_smrb import SMRBDaemon
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL        = 1
 
 class StatReportingThread(ReportingThread):
@@ -56,15 +56,27 @@ class StatReportingThread(ReportingThread):
         self.script.log (3, "StatReportingThread::parse_message: stream is valid!")
 
         xml += "<polarisation name='0'>"
-        xml += "<histogram_mean>" + str(self.script.results["hg_mean_0"]) + "</histogram_mean>"
-        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_0"]) + "</histogram_stddev>"
+        xml += "<dimension name='real'>"
+        xml += "<histogram_mean>" + str(self.script.results["hg_mean_0_re"]) + "</histogram_mean>"
+        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_0_re"]) + "</histogram_stddev>"
+        xml += "</dimension>"
+        xml += "<dimension name='imag'>"
+        xml += "<histogram_mean>" + str(self.script.results["hg_mean_0_im"]) + "</histogram_mean>"
+        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_0_im"]) + "</histogram_stddev>"
+        xml += "</dimension>"
         xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "<plot type='freq_vs_time' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "</polarisation>"
 
         xml += "<polarisation name='1'>"
-        xml += "<histogram_mean>" + str(self.script.results["hg_mean_1"]) + "</histogram_mean>"
-        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_1"]) + "</histogram_stddev>"
+        xml += "<dimension name='real'>"
+        xml += "<histogram_mean>" + str(self.script.results["hg_mean_1_re"]) + "</histogram_mean>"
+        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_1_re"]) + "</histogram_stddev>"
+        xml += "</dimension>"
+        xml += "<dimension name='imag'>"
+        xml += "<histogram_mean>" + str(self.script.results["hg_mean_1_im"]) + "</histogram_mean>"
+        xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_1_im"]) + "</histogram_stddev>"
+        xml += "</dimension>"
         xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "<plot type='freq_vs_time' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "</polarisation>"
@@ -83,19 +95,33 @@ class StatReportingThread(ReportingThread):
       if req["plot"] in self.script.valid_plots:
 
         self.script.results["lock"].acquire()
-        self.script.log (1, "StatReportingThread::parse_message: " + \
+        self.script.log (2, "StatReportingThread::parse_message: " + \
                          " plot=" + req["plot"] + " pol=" + req["pol"]) 
 
         if self.script.results["valid"]:
           plot = req["plot"] + "_" + req["pol"]
-          bin_data = copy.deepcopy(self.script.results[plot])
-          self.script.log (1, "StatReportingThread::parse_message: valid, image len=" + str(len(bin_data)))
-          self.script.results["lock"].release()
-          return False, bin_data
+          if plot in self.script.results.keys():
+            if len (self.script.results[plot]) > 64:
+              bin_data = copy.deepcopy(self.script.results[plot])
+              self.script.log (2, "StatReportingThread::parse_message: valid, image len=" + str(len(bin_data)))
+              self.script.results["lock"].release()
+              return False, bin_data
+            else:
+              self.script.log (1, "StatReportingThread::parse_message len <= 64")
+          else:
+            self.script.log (1, "StatReportingThread::parse_message plot ["+plot+"] not in keys [" + str(self.script.results.keys()))
         else:
-          self.script.results["lock"].release()
-          # still return if the timestamp is recent
-          return False, self.no_data
+          self.script.log (1, "StatReportingThread::parse_message results not valid")
+
+        # return empty plot
+        self.script.log (1, "StatReportingThread::parse_message [returning NO DATA YET]")
+        self.script.results["lock"].release()
+        return False, self.no_data
+
+        #else:
+        #  self.script.results["lock"].release()
+        #  # still return if the timestamp is recent
+        #  return False, self.no_data
 
       xml += "<stat_state>"
       xml += "<error>Invalid request</error>"
@@ -138,6 +164,10 @@ class StatDaemon(Daemon,StreamBased):
     self.hg_plot = HistogramPlot()
     self.ft_plot = FreqTimePlot()
 
+    self.hg_valid = False
+    self.ft_valid = False
+    self.ms_valid = False
+
   #################################################################
   # main
   #       id >= 0   process folded archives from a stream
@@ -149,14 +179,14 @@ class StatDaemon(Daemon,StreamBased):
 
     if not os.path.exists(self.processing_dir):
       os.makedirs(self.processing_dir, 0755) 
-    self.log (2, "main: stream_id=" + str(self.id))
+    self.log (2, "StatDaemon::main stream_id=" + str(self.id))
 
     # get the data block keys
     db_prefix  = self.cfg["DATA_BLOCK_PREFIX"]
     db_id      = self.cfg["PROCESSING_DATA_BLOCK"]
     num_stream = self.cfg["NUM_STREAM"]
     db_key     = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id)
-    self.log (2, "main: db_key=" + db_key)
+    self.log (2, "StatDaemon::main db_key=" + db_key)
 
     # start dbstats in a separate thread
     stat_dir   = self.cfg["CLIENT_STATS_DIR"]   + "/processing/" + str(self.id)
@@ -179,7 +209,7 @@ class StatDaemon(Daemon,StreamBased):
     # stat will use the stream config file created for the recv command
     stream_config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
     while (not os.path.exists(stream_config_file)):
-      self.log (2, "main: waiting for stream_config file to be created by recv")
+      self.log (2, "StatDaemon::main waiting for stream_config file to be created by recv")
       time.sleep(1)    
 
     # this stat command will not change from observation to observation
@@ -201,96 +231,233 @@ class StatDaemon(Daemon,StreamBased):
        # initialize the threads
       stat_thread = dbstatsThread (stat_cmd, stat_dir, stat_log_pipe.sock, 1)
 
-      self.log (2, "main: starting stat thread")
+      self.log (2, "StatDaemon::main starting stat thread")
       stat_thread.start()
-      self.log (2, "main: stat thread started")
+      self.log (2, "StatDaemon::main stat thread started")
      
       while stat_thread.is_alive():
 
         # get a list of all the recent observations
         observations = os.listdir (stat_dir)
 
-        self.log (2, "main: observations=" + str(observations))
-
-        #cmd = "find " + stat_dir + " -mindepth 1 -maxdepth 1 -type d -name '????-??-??-??:??:??' -printf '%f\n'"
-        #self.log (2, "main: " + cmd)
-        #rval, observations = self.system (cmd, 3)
-        #self.log (3, "main: rval=" + str(rval) + " observations=" + str(observations))
+        self.log (2, "StatDaemon::main observations=" + str(observations))
 
         # for each observation      
         for utc in observations:
    
-          self.log (2, "main: utc=" + utc)
+          self.log (2, "StatDaemon::main utc=" + utc)
 
           utc_dir = stat_dir + "/" + utc
 
           # find the most recent HG stats file
-          hg_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".hg.stats")]
+          #hg_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".hg.stats")]
 
-          self.log (2, "main: hg_files=" + str(hg_files))
-          hg_file = hg_files[-1]
-          self.log (2, "main: hg_file=" + str(hg_file))
+          #self.log (3, "StatDaemon::main hg_files=" + str(hg_files))
+          #hg_file = hg_files[-1]
+          #self.log (3, "main: hg_file=" + str(hg_file))
 
           # only 1 channel in the histogram
-          hg_fptr = open (utc_dir + "/" + str(hg_file), "rb")
-          npol = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
-          ndim = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
-          nbin = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+          #hg_fptr = open (utc_dir + "/" + str(hg_file), "rb")
+         #npol = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+          #ndim = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+          #nbin = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
 
-          self.log (2, "main: npol=" + str(npol) +" ndim=" + str(ndim) + " nbin=" + str(nbin))
-          hg_data = {}
-          for ipol in range(npol):
-            hg_data[ipol] = {}
-            for idim in range(ndim):
-              hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nbin)
+          #self.log (3, "StatDaemon::main npol=" + str(npol) +" ndim=" + str(ndim) + " nbin=" + str(nbin))
+          #hg_data = {}
+          #for ipol in range(npol):
+          #  hg_data[ipol] = {}
+          #  for idim in range(ndim):
+          #    hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nbin)
+          #hg_fptr.close()
             
           # read the most recent freq_vs_time stats file
-          ft_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ft.stats")]
-          self.log (2, "main: ft_files=" + str(ft_files))
-          ft_file = ft_files[-1]
-          self.log (2, "main: ft_file=" + str(ft_file))
+          #ft_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ft.stats")]
+          #self.log (3, "StatDaemon::main ft_files=" + str(ft_files))
+          #ft_file = ft_files[-1]
+          #self.log (3, "StatDaemon::main ft_file=" + str(ft_file))
 
-          ft_fptr = open (utc_dir + "/" + str(ft_file), "rb")
-          npol = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          nfreq = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          ntime = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          self.log (2, "main: npol=" + str(npol) + " nfreq=" + str(nfreq) + " ntime=" + str(ntime))
+          #ft_fptr = open (utc_dir + "/" + str(ft_file), "rb")
+          #npol = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+          #nfreq = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+          #ntime = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+          #self.log (3, "StatDaemon::main npol=" + str(npol) + " nfreq=" + str(nfreq) + " ntime=" + str(ntime))
           
-          ft_data = {}
-          for ipol in range(npol):
-            ft_data[ipol] = np.fromfile (ft_fptr, dtype=np.uint32, count=nfreq*ntime)
-            ft_data[ipol].shape = (nfreq, ntime)
+          #ft_data = {}
+          #for ipol in range(npol):
+          #  ft_data[ipol] = np.fromfile (ft_fptr, dtype=np.uint32, count=nfreq*ntime)
+          #  ft_data[ipol].shape = (nfreq, ntime)
+          #ft_fptr.close()
+
+          # find the most recent Mean/Stddev stats files
+          #ms_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ms.stats")]
+          
+          #self.log (3, "StatDaemon::main ms_files=" + str(ms_files))
+          #ms_file = ms_files[-1]
+          #self.log (2, "StatDaemon::main ms_file=" + str(ms_file))
+          #ms_fptr = open (utc_dir + "/" + str(ms_file), "rb")
+          #npol = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
+          #ndim = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
+
+          #means = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
+          #stddevs = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
+          #ms_fptr.close()
+
+          self.process_hg (utc_dir)
+          self.process_ft (utc_dir)
+          self.process_ms (utc_dir)
 
           self.results["lock"].acquire()
-
-          self.hg_plot.plot_binned (240, 180, True, hg_data[0][0], hg_data[0][1], nbin)
-          self.results["histogram_0"] = self.hg_plot.getRawImage()
-
-          self.hg_plot.plot_binned (240, 180, True, hg_data[1][0], hg_data[1][1], nbin)
-          self.results["histogram_1"] = self.hg_plot.getRawImage()
-
-          self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
-          self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
-          self.ft_plot.plot (240, 180, True, ft_data[1], nfreq, ntime)
-          self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
-
-          self.results["hg_mean_0"] = 0.0
-          self.results["hg_stddev_0"] = 1.0
-          self.results["hg_mean_1"] = 0.0
-          self.results["hg_stddev_1"] = 1.0
           self.results["timestamp"] = times.getCurrentTime()
-          self.results["valid"] = True
+          self.results["valid"] = self.hg_valid and self.ft_valid and self.ms_valid
 
+          #self.hg_plot.plot_binned (240, 180, True, hg_data[0][0], hg_data[0][1], nbin)
+          #self.results["histogram_0"] = self.hg_plot.getRawImage()
+
+          #self.hg_plot.plot_binned (240, 180, True, hg_data[1][0], hg_data[1][1], nbin)
+          #self.results["histogram_1"] = self.hg_plot.getRawImage()
+
+          #self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
+          #self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
+
+          #self.ft_plot.plot (240, 180, True, ft_data[1], nfreq, ntime)
+          #self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
+
+          #self.results["hg_mean_0_re"] = means[0]
+          #self.results["hg_mean_0_im"] = means[1]
+          #self.results["hg_stddev_0_re"] = stddevs[0]
+          #self.results["hg_stddev_0_im"] = stddevs[1]
+          #self.results["hg_mean_1_re"] = means[2]
+          #self.results["hg_mean_1_im"] = means[3]
+          #self.results["hg_stddev_1_re"] = stddevs[2]
+          #self.results["hg_stddev_1_im"] = stddevs[3]
           self.results["lock"].release()
+
 
         time.sleep(5)
 
-      self.log (2, "main: joining stat thread")
+      self.log (2, "StatDaemon::main joining stat thread")
       rval = stat_thread.join()
-      self.log (2, "stat thread joined")
+      self.log (2, "StatDaemon::main stat thread joined")
       if rval:
         self.log (-2, "stat thread failed")
         self.quit_event.set()
+
+  
+  def process_hg (self, utc_dir):
+
+    # find the most recent HG stats file
+    files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".hg.stats")]
+
+    if len(files) > 0:
+
+      self.log (3, "StatDaemon::process_hg files=" + str(files))
+      hg_file = files[-1]
+      self.log (2, "StatDaemon::process_hg hg_file=" + str(hg_file))
+
+      # only 1 channel in the histogram
+      hg_fptr = open (utc_dir + "/" + str(hg_file), "rb")
+      npol = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+      ndim = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+      nbin = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+
+      self.log (3, "StatDaemon::process_hg npol=" + str(npol) +" ndim=" + str(ndim) + " nbin=" + str(nbin))
+      hg_data = {}
+      for ipol in range(npol):
+        hg_data[ipol] = {}
+        for idim in range(ndim):
+          hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nbin)
+      hg_fptr.close()
+
+      self.results["lock"].acquire()
+      self.hg_plot.plot_binned (240, 180, True, hg_data[0][0], hg_data[0][1], nbin)
+      self.results["histogram_0"] = self.hg_plot.getRawImage()
+      self.hg_plot.plot_binned (240, 180, True, hg_data[1][0], hg_data[1][1], nbin)
+      self.results["histogram_1"] = self.hg_plot.getRawImage()
+      self.hg_plot.plot_binned4 (240, 180, True, hg_data[0][0], hg_data[0][1], hg_data[1][0], hg_data[1][1], nbin)
+      self.results["histogram_s"] = self.hg_plot.getRawImage()
+
+      self.hg_valid = True
+      self.results["lock"].release()
+
+      for file in files:
+        os.remove (utc_dir + "/" + file)
+
+
+  def process_ft (self, utc_dir):
+    
+    self.log (2, "StatDaemon::process_ft("+utc_dir+")")
+
+    # read the most recent freq_vs_time stats file
+    files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ft.stats")]
+    if len(files) > 0:
+
+      self.log (3, "StatDaemon::process_ft files=" + str(files))
+      ft_file = files[-1]
+      self.log (2, "StatDaemon::process_ft ft_file=" + str(ft_file))
+
+      ft_fptr = open (utc_dir + "/" + str(ft_file), "rb")
+      npol = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+      nfreq = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+      ntime = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
+      self.log (3, "StatDaemon::process_ft npol=" + str(npol) + " nfreq=" + str(nfreq) + " ntime=" + str(ntime))
+
+      ft_data = {}
+      for ipol in range(npol):
+        ft_data[ipol] = np.fromfile (ft_fptr, dtype=np.uint32, count=nfreq*ntime)
+        ft_data[ipol].shape = (nfreq, ntime)
+      ft_fptr.close()
+
+      ft_summed = np.add(ft_data[0], ft_data[1])
+
+      self.log (3, "StatDaemon::process_ft plotting")
+      self.results["lock"].acquire()
+
+      self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (240, 180, True, ft_data[1], nfreq, ntime)
+      self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_s"] = self.ft_plot.getRawImage()
+      
+      self.ft_valid = True
+      self.results["lock"].release()
+
+      for file in files:
+        os.remove (utc_dir + "/" + file)
+
+  def process_ms (self, utc_dir):
+
+    self.log (2, "StatDaemon::process_ms("+utc_dir+")")
+
+    # find the most recent Mean/Stddev stats files
+    files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ms.stats")]
+    if len(files) > 0:
+
+      self.log (3, "StatDaemon::process_ms files=" + str(files))
+      ms_file = files[-1]
+      self.log (2, "StatDaemon::process_ms ms_file=" + str(ms_file))
+      ms_fptr = open (utc_dir + "/" + str(ms_file), "rb")
+      npol = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
+      ndim = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
+
+      means = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
+      stddevs = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
+      ms_fptr.close()
+
+      self.results["lock"].acquire()
+      self.results["hg_mean_0_re"] = means[0]
+      self.results["hg_mean_0_im"] = means[1]
+      self.results["hg_stddev_0_re"] = stddevs[0]
+      self.results["hg_stddev_0_im"] = stddevs[1]
+      self.results["hg_mean_1_re"] = means[2]
+      self.results["hg_mean_1_im"] = means[3]
+      self.results["hg_stddev_1_re"] = stddevs[2]
+      self.results["hg_stddev_1_im"] = stddevs[3]
+      self.ms_valid = True
+      self.results["lock"].release()
+
+      for file in files:
+        os.remove (utc_dir + "/" + file)
 
 
 ###############################################################################
@@ -308,8 +475,8 @@ if __name__ == "__main__":
   script = StatDaemon ("spip_stat", stream_id)
 
   state = script.configure (DAEMONIZE, DL, "stat", "stat") 
+
   if state != 0:
-    script.quit_event.set()
     sys.exit(state)
 
   script.log(1, "STARTING SCRIPT")

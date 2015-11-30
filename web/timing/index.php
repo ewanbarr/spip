@@ -19,6 +19,7 @@ class timing extends spip_webpage
 
     $this->config = spip::get_config();
     $this->beams = array();
+    $this->streams = array();
 
     $this->plot_width = 240;
     $this->plot_height = 180;
@@ -43,6 +44,7 @@ class timing extends spip_webpage
 
       list ($host, $beam, $subband) = explode (":", $this->config["STREAM_".$primary_stream]);
       $this->beams[$ibeam] = array ("name" => $beam_name, "host" => $host);
+      $this->streams[$beam_name] = $primary_stream;
     }
   }
 
@@ -149,15 +151,25 @@ class timing extends spip_webpage
                   var plot_type = plots[j].getAttribute("type")  
                   var plot_timestamp = plots[j].getAttribute("timestamp")  
   
-                 var plot_id = beam_name + "_" + plot_type
+                  var plot_id = beam_name + "_" + plot_type
                   var plot_ts = beam_name + "_" + plot_type + "_ts"
 
                   // if the image has been updated, reacquire it
                   //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
                   if (plot_timestamp != document.getElementById(plot_ts).value)
                   {
-                    url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;
-                    document.getElementById(plot_id).src = url;
+                    var new_image = new Image();
+                    new_image.id = plot_id;
+                    new_image.src = "/spip/timing/index.php?update=true&beam_name="+
+                                    beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;;
+                    new_image.onload = function() {
+                      var img = document.getElementById(plot_id);
+                      img.parentNode.insertBefore(new_image, img);
+                      img.parentNode.removeChild(img);
+                    }
+
+                    //url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;
+                    //document.getElementById(plot_id).src = url;
                     document.getElementById(plot_ts).value = plot_timestamp;
                   }
                 }
@@ -221,7 +233,7 @@ class timing extends spip_webpage
 
       $this->renderObsTable($beam["name"]);
 
-      $this->renderPlotTable($beam["name"]);
+      $this->renderPlotTable($beam["name"], $this->streams[$beam["name"]]);
     }
   }
 
@@ -299,40 +311,89 @@ class timing extends spip_webpage
       return;
     }
 
-    $host      = $this->beams[$ibeam]["host"];
-    $port      = $this->config["STREAM_REPACK_PORT"];
-    if ($ibeam >= 0)
-      $port += $ibeam;
-
-    $xml_req  = XML_DEFINITION;
-    $xml_req .= "<repack_request>";
-    $xml_req .= "<requestor>timing page</requestor>";
-    $xml_req .= "<type>plot</type>";
-    $xml_req .= "<beam>".$beam_name."</beam>";
-    $xml_req .= "<plot>".$get["plot"]."</plot>";
-    $xml_req .= "</repack_request>";
-
-    $repack_socket = new spip_socket(); 
-    $rval = 0;
-    $reply = 0;
-    if ($repack_socket->open ($host, $port, 0) == 0)
+    if (($get["plot"] == "flux_vs_phase") ||
+        ($get["plot"] == "freq_vs_phase") ||
+        ($get["plot"] == "time_vs_phase") ||
+        ($get["plot"] == "bandpass") ||
+        ($get["plot"] == "snr_vs_time"))
     {
-      $repack_socket->write ($xml_req."\r\n");
-      list ($rval, $reply) = $repack_socket->read_raw();
+      $host      = $this->beams[$ibeam]["host"];
+      $port      = $this->config["STREAM_REPACK_PORT"];
+      if ($ibeam >= 0)
+        $port += $ibeam;
+
+      $xml_req  = XML_DEFINITION;
+      $xml_req .= "<repack_request>";
+      $xml_req .= "<requestor>timing page</requestor>";
+      $xml_req .= "<type>plot</type>";
+      $xml_req .= "<beam>".$beam_name."</beam>";
+      $xml_req .= "<plot>".$get["plot"]."</plot>";
+      $xml_req .= "</repack_request>";
+
+      $repack_socket = new spip_socket(); 
+      $rval = 0;
+      $reply = 0;
+      if ($repack_socket->open ($host, $port, 0) == 0)
+      {
+        $repack_socket->write ($xml_req."\r\n");
+        list ($rval, $reply) = $repack_socket->read_raw();
+      }
+      else
+      {
+        // TODO generate PNG with error text
+        echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
+        return;
+      }
+      $repack_socket->close();
+      
+      if ($rval == 0)
+      {
+        header('Content-type: image/png');
+        header('Content-Disposition: inline; filename="image.png"');
+        echo $reply;
+      }
+    }
+    else if (($get["plot"] == "histogram") || 
+             ($get["plot"] == "freq_vs_time"))
+    {
+      $istream = $get["istream"];
+      $host      = $this->streams[$istream]["host"];
+      $port      = $this->config["STREAM_STAT_PORT"] + $istream;
+
+      $xml_req  = XML_DEFINITION;
+      $xml_req .= "<stat_request>";
+      $xml_req .= "<requestor>stat page</requestor>";
+      $xml_req .= "<type>plot</type>";
+      $xml_req .= "<plot>".$get["plot"]."</plot>";
+      $xml_req .= "<pol>".$get["pol"]."</pol>";
+      $xml_req .= "</stat_request>";
+
+      $stat_socket = new spip_socket();
+      $rval = 0;
+      $reply = 0;
+      if ($stat_socket->open ($host, $port, 0) == 0)
+      {
+        $stat_socket->write ($xml_req."\r\n");
+        list ($rval, $reply) = $stat_socket->read_raw();
+      }
+      else
+      {
+        // TODO generate PNG with error text
+        echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
+        return;
+      }
+      $stat_socket->close();
+
+      if ($rval == 0)
+      {
+        header('Content-type: image/png');
+        header('Content-Disposition: inline; filename="image.png"');
+        echo $reply;
+      }
     }
     else
     {
-      // TODO generate PNG with error text
-      echo "ERROR: could not connect to ".$host.":".$port."<BR>\n";
-      return;
-    }
-    $repack_socket->close();
-    
-    if ($rval == 0)
-    {
-      header('Content-type: image/png');
-      header('Content-Disposition: inline; filename="image.png"');
-      echo $reply;
+      ;
     }
   }
 
@@ -366,7 +427,7 @@ class timing extends spip_webpage
     echo "</table>\n";
   }
 
-  function renderPlotTable ($beam)
+  function renderPlotTable ($beam, $stream)
   {
     $img_params = "src='/spip/images/blankimage.gif' width='".$this->plot_width."px' height='".$this->plot_height."px'";
 
@@ -385,8 +446,8 @@ class timing extends spip_webpage
     echo "<tr>\n";
     echo   "<td><img id='".$beam."_snr_vs_time' ".$img_params."/><input type='hidden' id='".$beam."_snr_vs_time_ts' value='not set'/></td>\n";
     echo   "<td><img id='".$beam."_snr_histogram' ".$img_params."/><input type='hidden' id='".$beam."_snr_histogram_ts'/></td>\n";
-    echo   "<td><img id='".$beam."_input_histogram' ".$img_params."/><input type='hidden' id='".$beam."_input_histogram_ts'/></td>\n";
-    echo   "<td><img id='".$beam."_freq_vs_time' ".$img_params."/><input type='hidden' id='".$beam."_freq_vs_time_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_input_histogram' ".$img_params."/><input type='hidden' id='".$stream."_input_histogram_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_freq_vs_time' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_ts'/></td>\n";
     echo "<tr><td>SNR</td><td>SNR HG</td><td>Input HG</td><td>Freq vs Time</td></tr>\n";
     echo "</tr>\n";
 

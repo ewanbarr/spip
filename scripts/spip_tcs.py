@@ -34,7 +34,7 @@ class TCSReportingThread (ReportingThread):
     self.script.log(0, "beams=" + str(self.beams))
 
   def parse_message (self, xml):
-    self.script.log (0, "TCSReportingThread::parse_message: " + str(xml))
+    self.script.log (2, "TCSReportingThread::parse_message: " + str(xml))
 
     xml  = "<tcs_state>"
     for beam in self.beams:

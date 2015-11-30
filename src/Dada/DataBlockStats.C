@@ -13,6 +13,7 @@
 
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
@@ -31,24 +32,20 @@ using namespace std;
 
 spip::DataBlockStats::DataBlockStats(const char * key_string)
 {
-  cerr << "spip::DataBlockStats::DataBlockStats DataBlockView(" << key_string << ")" << endl;
   db = new DataBlockView (key_string);
 
-  cerr << "spip::DataBlockStats::DataBlockStats db->connect()" << endl;
   db->connect();
-  cerr << "spip::DataBlockStats::DataBlockStats db->lock()" << endl;
   db->lock();
 
   bufsz = db->get_data_bufsz();
   buffer = malloc(bufsz);
-  cerr << "spip::DataBlockStats::DataBlockStats buffer is " << bufsz << " bytes" << endl;
 
   control_port = -1;
   header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
 
   control_cmd = None;
   control_state = Idle;
-  verbose = true;
+  verbose = false;
   poll_time = 5;
 
 }
@@ -101,13 +98,15 @@ int spip::DataBlockStats::configure (const char * config)
 void spip::DataBlockStats::prepare ()
 {
   // allocate a private buffer to be used for stats analysis
-  cerr << "spip::DataBlockStats::prepare db->read_header()" << endl; 
+  if (verbose)
+    cerr << "spip::DataBlockStats::prepare db->read_header()" << endl; 
   db->read_header();
 
   if (ascii_header_get (db->get_header(), "UTC_START", "%s", utc_start) < 0)
     throw runtime_error ("could not read UTC_START from header");
 
-  cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start << endl;
 }
 
 void spip::DataBlockStats::start_control_thread (int port)
@@ -144,12 +143,14 @@ void spip::DataBlockStats::control_thread()
     return;
   }
 
-  cerr << "spip::DataBlockStats::control_thread creating TCPSocketServer" << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::control_thread creating TCPSocketServer" << endl;
   spip::TCPSocketServer * control_sock = new spip::TCPSocketServer();
 
   // open a listen sock on all interfaces for the control port
-  cerr << "spip::DataBlockStats::control_thread open socket on port=" 
-       << control_port << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::control_thread open socket on port=" 
+         << control_port << endl;
   control_sock->open ("any", control_port, 1);
 
   int fd = -1;
@@ -223,12 +224,23 @@ void spip::DataBlockStats::control_thread()
 // statistics on the data stream
 bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
 {
-  cerr << "spip::DataBlockStats::monitor ()" << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::monitor ()" << endl;
 
   if (stats_dir.length() > 0)
     stats_dir += "/";
 
   keep_monitoring = true;
+
+  vector <float>means;
+  means.resize (npol * ndim);
+
+  vector <float>variances;
+  variances.resize (npol * ndim);
+
+  vector <float> stddevs;
+  stddevs.resize (npol * ndim);
+
   const unsigned nbin = 256;
 
   vector <vector <vector <unsigned> > > hist;
@@ -255,7 +267,8 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
     }
   }
 
-  cerr << "spip::DataBlockStats::monitor: db->read (" << buffer << ", " << bufsz << ")" << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::monitor: db->read (" << buffer << ", " << bufsz << ")" << endl;
 
   int64_t bytes_read = db->read (buffer, bufsz);
   const unsigned nbytes_per_sample = (nchan * ndim * npol * nbit) / 8;
@@ -316,6 +329,11 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
         }
       }
 
+      // zero means and variances
+      for (unsigned i=0; i<npol*ndim; i++)
+      fill (means.begin(), means.end(), 0);
+      fill (variances.begin(), variances.end(), 0);
+
       // histogram all the samples
       uint64_t idat = 0;
       unsigned ibin, ifreq, itime;
@@ -333,6 +351,9 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
             {
               re = (int) in[idat];
               im = (int) in[idat+1];
+     
+              means[ipol*ndim + 0] += (float) re; 
+              means[ipol*ndim + 1] += (float) im; 
 
               ibin = re + 128;
               hist[ipol][0][ibin]++;
@@ -349,6 +370,50 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
             }
           }
         } 
+      }
+
+      // convert sums to means
+      float ndat = nblock * sample_block_resolution * nchan;
+      for (unsigned i=0; i<npol * ndim; i++)
+      {
+        //cerr << i << ": sum=" << means[i];
+        means[i] /= ndat;
+        //cerr << " mean=" << means[i] << " ndat=" << ndat << endl;
+      }
+
+      // now compute the variances
+      idat = 0;
+      float diff;
+
+      for (unsigned iblock=0; iblock<nblock; iblock++)
+      {
+        for (unsigned ichan=0; ichan<nchan; ichan++)
+        {
+          for (unsigned ipol=0; ipol<npol; ipol++)
+          {
+            for (unsigned isamp=0; isamp<sample_block_resolution; isamp++)
+            {
+              unsigned idx = ipol*ndim + 0;
+              re = (int) in[idat];
+              diff = (float) re - means[idx];
+              variances[idx] += diff * diff;
+
+              idx = ipol*ndim + 1;
+              im = (int) in[idat+1];
+              diff = (float) im - means[idx];
+              variances[idx] += diff * diff;
+
+              idat += 2;
+            }
+          }
+        } 
+      }
+
+      for (unsigned i=0; i<npol * ndim; i++)
+      {
+        variances[i] /= (float) ndat;
+        stddevs[i] = sqrtf (variances[i]);
+        //cerr <<  i << ": variance=" << variances[i] << " stddev=" << stddevs[i] << endl;
       }
 
       // write the data files to disk (not sure if this is the best long term idea...)
@@ -394,6 +459,22 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
         }
       }   
       ft_file.close();
+
+      ss.str("");
+      ss << stats_dir << utc_start << "/" << local_time << "." << stream_id << ".ms.stats";
+      if (verbose)
+        cerr << "spip::DataBlockStats::monitor creating MS stats file " << ss.str() << endl;
+      ofstream ms_file (ss.str().c_str(), ofstream::binary);
+      ms_file.write (reinterpret_cast<const char *>(&npol), sizeof(npol));
+      ms_file.write (reinterpret_cast<const char *>(&ndim), sizeof(ndim));
+      {
+        const char * buffer;
+        buffer = reinterpret_cast<const char*>(&means[0]);
+        ms_file.write (buffer, means.size() * sizeof(float));
+        buffer = reinterpret_cast<const char*>(&stddevs[0]);
+        ms_file.write (buffer, stddevs.size() * sizeof(float));
+      }
+      ms_file.close();
 
       if (verbose)
         cerr << "spip::DataBlockStats::monitor sleep(" << poll_time << ")" << endl;

@@ -17,8 +17,9 @@ from matplotlib.colors import LogNorm
 class InlinePlot (object):
 
   def __init__(self):
-    self.xres = 240
-    self.yres = 180
+    self.xres = 800
+    self.yres = 600
+    self.res_set = False
     self.log = False
     self.plain_plot = False
     self.title = ''
@@ -43,8 +44,9 @@ class InlinePlot (object):
 
   # change the resolution for this plot
   def setResolution (self, xres, yres):
+
     # if the resolution is different
-    if ((xres != self.xres) and (yres != self.yres)):
+    if ((xres != self.xres) and (yres != self.yres) and not self.res_set):
       xinches = float(xres) / float(self.dpi)
       yinches = float(yres) / float(self.dpi)
       self.fig.set_size_inches((xinches, yinches))
@@ -52,6 +54,7 @@ class InlinePlot (object):
       # save the new/current resolution
       self.xres = xres
       self.yres = yres
+      self.res_set = True
 
   def setLabels (self, title='', xlabel='', ylabel=''):
     self.title = title
@@ -62,6 +65,7 @@ class InlinePlot (object):
   def openPlot (self, xres, yres, plain):
 
     # ensure plot is of the right size
+    #print "InlinePlot::openPlot setResolution ("+str(xres)+", "+str(yres)+")"
     self.setResolution (xres, yres)
 
     # always add axes on a new plot [TODO check!]
@@ -70,8 +74,8 @@ class InlinePlot (object):
     else:
       self.ax = self.fig.add_subplot(1,1,1)
 
-    set_foregroundcolor(self.ax, 'black')
-    set_backgroundcolor(self.ax, 'white')
+    #set_foregroundcolor(self.ax, 'black')
+    #set_backgroundcolor(self.ax, 'white')
 
     if not plain:
       self.ax.set_title(self.title)
@@ -109,9 +113,19 @@ class HistogramPlot (InlinePlot):
   def plot_binned (self, xres, yres, plain, real, imag, nbins):
     self.openPlot(xres, yres, plain)
     self.bins = numpy.arange(-128,128,1)
-    self.ax.plot(self.bins, real)
-    self.ax.plot(self.bins, imag)
+    self.ax.plot(self.bins, real, color='red', label='real')
+    self.ax.plot(self.bins, imag, color='green', label='imag')
     self.closePlot()
+
+  def plot_binned4 (self, xres, yres, plain, real0, imag0, real1, imag1, nbins):
+    self.openPlot(xres, yres, plain)
+    self.bins = numpy.arange(-128,128,1)
+    self.ax.plot(self.bins, real0, color='red', label='real0')
+    self.ax.plot(self.bins, imag0, color='green', label='imag0')
+    self.ax.plot(self.bins, real1, color='yellow', label='real1')
+    self.ax.plot(self.bins, imag1, color='blue', label='imag1')
+    self.closePlot()
+
 
   def plot (self, xres, yres, plain, real, imag, nbins):
     self.openPlot(xres, yres, plain)
@@ -148,6 +162,23 @@ class TimeseriesPlot (InlinePlot):
     self.ax.set_ylim((-128.0, 127.0))
 
     self.closePlot()
+
+class SNRPlot (InlinePlot):
+
+  def __init__(self):
+    super(SNRPlot, self).__init__()
+    self.configure ()
+
+  def configure (self):
+    self.setLabels ('SNR Ratio for Observation', 'Time (seconds)', 'SNR')
+
+  def plot (self, xres, yres, plain, x, y):
+    self.openPlot(xres, yres, plain)
+
+    self.ax.plot(x, y)
+
+    self.closePlot()
+
 
 class BandpassPlot (InlinePlot):
 
@@ -214,11 +245,11 @@ class FreqTimePlot (InlinePlot):
       vmax = numpy.log(numpy.amax(spectra))
       self.ax.imshow(spectra, extent=(0, nsamps, 0, nchan), aspect='auto', 
                      origin='lower', interpolation='nearest', norm=LogNorm(vmin=0.0001,vmax=vmax), 
-                     cmap=cm.get_cmap('hot'))
+                     cmap=cm.get_cmap('gray'))
     else:
       self.ax.imshow(spectra, extent=(0, nsamps, 0, nchan), aspect='auto', 
                      origin='lower', interpolation='nearest', 
-                     cmap=cm.get_cmap('hot'))
+                     cmap=cm.get_cmap('gray'))
 
     self.closePlot()
 

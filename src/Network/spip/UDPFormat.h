@@ -80,7 +80,7 @@ namespace spip {
       
       double n2_cached;
         
-      void * noise_buffer;
+      char * noise_buffer;
 
       size_t noise_buffer_size;
 

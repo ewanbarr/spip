@@ -99,20 +99,38 @@ def getIPMISensors (dl):
       data = line.split("|")
       metric_name = data[0].strip().lower().replace("+", "").replace(" ", "_")
       value = data[1].strip()
+      lower = data[6].strip()
+      upper = data[7].strip()
 
       # Skip missing sensors
-      if re.search("(0x)", value ) or value == 'na':
+      if value == 'na':
         continue
 
-      # Extract out a float value
-      vmatch = re.search("([0-9.]+)", value)
-      if not vmatch:
-        continue
+      state = "na"
+      metric_units = "na"
+      metric_value = "na"
 
-      metric_value = vmatch.group(1)
-      metric_units = data[2].strip().replace("degrees C", "C")
+      # if sensor is a boolean value
+      if re.search("(0x)", value):
+        if value == "0x1":
+          metric_value = "ok"
+          metric_units = "na"
+          state = "ok"
+        else:
+          metric_value = "fail"
+          metric_units = "na"
+          state = "fail"
 
-      state = data[3]
+      else:
+        # Extract out a float value
+        vmatch = re.search("([0-9.]+)", value)
+        if not vmatch:
+          continue
+
+        metric_value = vmatch.group(1)
+        metric_units = data[2].strip().replace("degrees C", "C")
+
+        state = data[3]
 
       #lnr = float(data[4].strip())
       #lcr = float(data[5].strip())
@@ -128,7 +146,7 @@ def getIPMISensors (dl):
       #if value <= lnc or value >= unc:
       #  state = "non critical"
 
-      sensors[metric_name] = { "value": metric_value, "units": metric_units, "state": state }
+      sensors[metric_name] = { "value": metric_value, "units": metric_units, "state": state, "lower":lower, "upper":upper }
 
   return rval, sensors
 
