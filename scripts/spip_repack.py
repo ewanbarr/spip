@@ -133,7 +133,7 @@ class RepackDaemon(Daemon):
 
     # summary data stored in
     #  beam / utc_start / source / freq.sum
-    out_cfreq = 0
+    # out_cfreq = 0
 
     if not os.path.exists(self.processing_dir):
       os.makedirs(self.processing_dir, 0755) 
@@ -172,7 +172,7 @@ class RepackDaemon(Daemon):
             continue
 
           obs_dir = beam_dir + "/" + observation
-          out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(out_cfreq)
+          out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(self.out_cfreq)
 
           self.log (2, "main: chekcing out_dir=" + out_dir)
           if not os.path.exists(out_dir):
@@ -351,17 +351,17 @@ class RepackDaemon(Daemon):
 
     timestamp = times.getCurrentTime() 
 
-    cmd = "psrplot -p freq " + freq_file + " -D -/png"
+    cmd = "psrplot -p freq " + freq_file + " -jp -D -/png"
     rval, freq_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create freq plot")
 
-    cmd = "psrplot -p time " + time_file + " -D -/png"
+    cmd = "psrplot -p time " + time_file + " -jp -D -/png"
     rval, time_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrplot -p flux -jF " + freq_file + " -D -/png"
+    cmd = "psrplot -p flux -jF " + freq_file + " -jp -D -/png"
     rval, flux_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create time plot")

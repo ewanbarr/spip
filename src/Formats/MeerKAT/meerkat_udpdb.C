@@ -17,7 +17,10 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
+
+#ifdef HAVE_HWLOC
+#include <hwloc.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -56,15 +59,12 @@ int main(int argc, char *argv[]) try
   // core on which to bind thread operations
   int core = -1;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
-
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:c:f:hk:n:p:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:c:f:hk:p:v")) != EOF) 
   {
     switch(c) 
     {
@@ -90,12 +90,6 @@ int main(int argc, char *argv[]) try
         exit(EXIT_SUCCESS);
         break;
 
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
-        break;
-
       case 'p':
         port = atoi(optarg);
         break;
@@ -114,11 +108,38 @@ int main(int argc, char *argv[]) try
 
   // bind CPU computation to specific core
   if (core >= 0)
+  {
     dada_bind_thread_to_core (core);
-  
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
+
+#ifdef HAVE_HWLOC
+    hwloc_topology_t topology;
+    hwloc_topology_init(&topology);
+    hwloc_topology_load(topology);
+    hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, core);
+    if (obj)
+    {
+      // Get a copy of its cpuset that we may modify.
+      hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
+
+      // Get only one logical processor (in case the core is SMT/hyperthreaded)
+      hwloc_bitmap_singlify (cpuset);
+
+      hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
+      hwloc_membind_flags_t flags = 0;
+
+      int result = hwloc_set_membind (topology, cpuset, policy, flags);
+      if (result < 0)
+      {
+        fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
+                 strerror(errno));
+        return -1;
+      }
+
+      // Free our cpuset copy
+      hwloc_bitmap_free(cpuset);
+    }
+#endif
+  }
 
   // create a UDP recevier that writes to a data block
   udpdb = new spip::UDPReceiveDB (key.c_str());
@@ -261,6 +282,10 @@ int main(int argc, char *argv[]) try
   pthread_join (stats_thread_id, &result);
 */
 
+#ifdef HAVE_HWLOC
+  hwloc_topology_destroy(topology);
+#endif
+
   delete udpdb;
 }
 catch (std::exception& exc)
@@ -280,7 +305,6 @@ void usage()
     "  -f format   UDP data format [meerkat]\n"
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
-    "  -n node     allocate memory only on NUMA node\n"
     "  -p port     incoming udp port [default " << std::dec << MEERKAT_DEFAULT_UDP_PORT << "]\n"
     "  -v          verbose output\n"
     << endl;

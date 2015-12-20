@@ -13,7 +13,6 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <numa.h>
 
 #include <stdexcept>
 #include <cstdlib>
@@ -26,7 +25,36 @@ spip::Socket::Socket ()
   fd = 0;
 
   bufsz = 1500;               // standard MTU on most networks
-  buf = (char *) numa_alloc_local (bufsz);
+
+#ifdef HAVE_HWLOC
+  hwloc_topology_init(&topology);
+  hwloc_topology_load(topology);
+  hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
+  if (obj)
+  {
+    // Get a copy of its cpuset that we may modify.
+    hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
+
+    // Get only one logical processor (in case the core is SMT/hyperthreaded)
+    hwloc_bitmap_singlify (cpuset);
+
+    hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
+    hwloc_membind_flags_t flags = 0;
+
+    int result = hwloc_set_membind (topology, cpuset, policy, flags);
+    if (result < 0)
+    {
+      fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
+               strerror(errno));
+      return -1;
+    }
+
+    // Free our cpuset copy
+    hwloc_bitmap_free(cpuset);
+  }
+#endif
+
+  buf = (char *) malloc(bufsz);
   if (!buf)
   {
     cerr << "spip::Socket::Socket numa_alloc_local failed" << endl;
@@ -39,7 +67,12 @@ spip::Socket::~Socket ()
   close_me();
 
   if (buf)
-    numa_free (buf, bufsz);
+    free (buf);
+  buf = 0;
+
+#ifdef HAVE_HWLOC
+  hwloc_topology_destroy(topology);
+#endif
 }
 
 void spip::Socket::close_me ()
@@ -54,11 +87,12 @@ void spip::Socket::resize (size_t new_bufsz)
   if (new_bufsz > bufsz)
   {
     cerr << "spip::Socket::resize old=" << bufsz << " new=" << new_bufsz << endl;
-    numa_free (buf, bufsz);
+    if (buf)
+      free (buf);
     bufsz = new_bufsz;
-    buf = (char *) numa_alloc_local (bufsz);
+    buf = (char *) malloc (bufsz);
     if (!buf)
-      cerr << "spip::Socket::resize numa_alloc_local failed" << endl;
+      cerr << "spip::Socket::resize malloc failed" << endl;
   }
 }
 

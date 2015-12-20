@@ -1,13 +1,34 @@
 
 lib_LTLIBRARIES = libmeerkat.la
 
-libmeerkat_headers = spip/UDPFormatMeerKATSimple.h spip/UDPFormatMeerKATSPEAD.h
+libmeerkat_headers = spip/UDPFormatMeerKATSimple.h spip/BlockFormatMeerKAT.h
 
-libmeerkat_la_SOURCES = UDPFormatMeerKATSimple.C UDPFormatMeerKATSPEAD.C
+libmeerkat_la_SOURCES = UDPFormatMeerKATSimple.C BlockFormatMeerKAT.C
 
-bin_PROGRAMS = meerkat_udpdb meerkat_udpgen meerkat_udprecv meerkat_dbstats meerkat_speadrecv
+bin_PROGRAMS = meerkat_udpdb meerkat_udpgen meerkat_udprecv meerkat_dbstats
 
-AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I$(top_builddir)/src/Dada -I/home/spip/linux_64/include -std=c++11
+AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I$(top_builddir)/src/Dada 
 
-LDADD = libmeerkat.la -L/home/spip/linux_64/lib $(top_builddir)/src/Network/libspipnet.la $(top_builddir)/src/Dada/libspipdada.la -lpsrdada -L/home/dada/linux_64/lib -lspead2 -L/opt/cross/lib -lboost_system
+LDADD = libmeerkat.la $(top_builddir)/src/Dada/libspipdada.la $(top_builddir)/src/Network/libspipnet.la 
 
+if HAVE_PSRDADA
+
+AM_CXXFLAGS += @PSRDADA_CFLAGS@
+
+LDADD += @PSRDADA_LIBS@
+
+endif
+
+if HAVE_SPEAD2
+
+AM_CXXFLAGS += @SPEAD2_CFLAGS@
+
+LDADD += @SPEAD2_LIBS@
+
+libmeerkat_headers += spip/UDPFormatMeerKATSPEAD.h
+
+libmeerkat_la_SOURCES += UDPFormatMeerKATSPEAD.C
+
+bin_PROGRAMS += meerkat_speadrecv
+
+endif

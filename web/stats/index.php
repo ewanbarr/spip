@@ -104,7 +104,7 @@ class stat extends spip_webpage
                     //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
                     if (plot_timestamp != document.getElementById(plot_ts).value)
                     {
-                      url = "/spip/stat/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
+                      url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
                       document.getElementById(plot_id).src = url;
                       document.getElementById(plot_ts).value = plot_timestamp;
                     }

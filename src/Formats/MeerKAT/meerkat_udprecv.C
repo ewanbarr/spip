@@ -11,12 +11,13 @@
 
 #include "spip/UDPReceiver.h"
 #include "spip/UDPFormatMeerKATSimple.h"
+#ifdef HAVE_SPEAD2
 #include "spip/UDPFormatMeerKATSPEAD.h"
+#endif
 
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -33,7 +34,11 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
+#ifdef HAVE_SPEAD2
   string * format = new string("spead");
+#else
+  string * format = new string("simple");
+#endif
 
   char * config_file = 0;
 
@@ -46,15 +51,12 @@ int main(int argc, char *argv[])
   // core on which to bind thread operations
   int core = -1;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
-
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hnp:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hp:v")) != EOF) 
   {
     switch(c) 
     {
@@ -70,12 +72,6 @@ int main(int argc, char *argv[])
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 'p':
@@ -96,22 +92,52 @@ int main(int argc, char *argv[])
 
   // bind CPU computation to specific core
   if (core >= 0)
+  {
     dada_bind_thread_to_core (core);
 
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
+#ifdef HAVE_HWLOC
+    hwloc_topology_t topology;
+    hwloc_topology_init(&topology);
+    hwloc_topology_load(topology);
+    hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, core);
+    if (obj)
+    {
+      // Get a copy of its cpuset that we may modify.
+      hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
+
+      // Get only one logical processor (in case the core is SMT/hyperthreaded)
+      hwloc_bitmap_singlify (cpuset);
+
+      hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
+      hwloc_membind_flags_t flags = 0;
+
+      int result = hwloc_set_membind (topology, cpuset, policy, flags);
+      if (result < 0)
+      {
+        fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
+                 strerror(errno));
+        return -1;
+      }
+
+      // Free our cpuset copy
+      hwloc_bitmap_free(cpuset);
+    }
+#endif
+
+  }
 
   // create a UDP Receiver
   udprecv = new spip::UDPReceiver();
 
   if (format->compare("simple") == 0)
     udprecv->set_format (new spip::UDPFormatMeerKATSimple());
+#ifdef HAVE_SPEAD2
   else if (format->compare("spead") == 0)
   {
     cerr << "spip::UDPReceiver set_format (spip::UDPFormatMeerKATSPEAD)" << endl;
     udprecv->set_format (new spip::UDPFormatMeerKATSPEAD());
   }
+#endif
   else
   {
     cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
@@ -183,6 +209,10 @@ int main(int argc, char *argv[])
 
   delete udprecv;
 
+#ifdef HAVE_HWLOC
+  hwloc_topology_destroy(topology);
+#endif
+
   return 0;
 }
 
@@ -191,7 +221,11 @@ void usage()
   cout << "meerkat_udprecv [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
-    "  -f format   recverate UDP data of format [standard custom spead vdif]\n"
+#ifdef HAVE_SPEAD2
+    "  -f format   recverate UDP data of format [simple spead]\n"
+#else
+    "  -f format   recverate UDP data of format [simple spead]\n"
+#endif
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"

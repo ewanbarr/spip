@@ -7,6 +7,7 @@
 
 #include "spip/TCPSocketServer.h"
 #include "spip/DataBlockStats.h"
+#include "spip/BlockFormat.h"
 #include "sys/time.h"
 
 #include "ascii_header.h"
@@ -38,7 +39,7 @@ spip::DataBlockStats::DataBlockStats(const char * key_string)
   db->lock();
 
   bufsz = db->get_data_bufsz();
-  buffer = malloc(bufsz);
+  buffer = (char *) malloc(bufsz);
 
   control_port = -1;
   header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
@@ -108,6 +109,12 @@ void spip::DataBlockStats::prepare ()
   if (verbose)
     cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start << endl;
 }
+
+void spip::DataBlockStats::set_block_format (BlockFormat * fmt)
+{
+  block_format = fmt;
+}
+
 
 void spip::DataBlockStats::start_control_thread (int port)
 {
@@ -232,53 +239,16 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
 
   keep_monitoring = true;
 
-  vector <float>means;
-  means.resize (npol * ndim);
+  unsigned nbin = 256;
+  unsigned ntime = 512;
+  unsigned nfreq = 512;
 
-  vector <float>variances;
-  variances.resize (npol * ndim);
-
-  vector <float> stddevs;
-  stddevs.resize (npol * ndim);
-
-  const unsigned nbin = 256;
-
-  vector <vector <vector <unsigned> > > hist;
-  hist.resize(npol);
-  for (unsigned ipol=0; ipol<npol; ipol++)
-  {
-    hist[ipol].resize(ndim);
-    for (unsigned idim=0; idim<ndim; idim++)
-    {
-      hist[ipol][idim].resize(nbin);
-    }
-  }    
-
-  const unsigned ntime = 512;
-  const unsigned nfreq = 512;
-  vector <vector <vector <float> > > freq_time;
-  freq_time.resize(npol);
-  for (unsigned ipol=0; ipol<npol; ipol++)
-  {
-    freq_time[ipol].resize(nfreq);
-    for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
-    {
-      freq_time[ipol][ifreq].resize(ntime);
-    }
-  }
+  block_format->prepare (nbin, ntime, nfreq);
 
   if (verbose)
     cerr << "spip::DataBlockStats::monitor: db->read (" << buffer << ", " << bufsz << ")" << endl;
 
   int64_t bytes_read = db->read (buffer, bufsz);
-  const unsigned nbytes_per_sample = (nchan * ndim * npol * nbit) / 8;
-
-  // TODO make this part of the format
-  const unsigned sample_block_resolution = bufsz / nbytes_per_sample;
-  const unsigned nblock = bufsz / (nbytes_per_sample * sample_block_resolution);
-
-  const unsigned nsample_per_time = sample_block_resolution / ntime;
-  const unsigned nchan_per_freq = nchan / nfreq;
 
   char local_time[32];
   char command[128];
@@ -288,7 +258,12 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
   sprintf (command, "mkdir -p %s", ss.str().c_str());
   if (verbose)
     cerr << "spip::DataBlockStats::monitor " << command << endl;
-  system (command);
+  int rval = system (command);
+  if (rval != 0)
+  {
+    cerr << "spip::DataBlockStats::monitor could not create stats dir" << endl;
+    keep_monitoring = false;
+  }
 
   while (keep_monitoring)
   {
@@ -311,112 +286,14 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
       if (verbose)
         cerr << "spip::DataBlockStats::monitor reading data block" << endl;
 
+      block_format->reset();
+
       bytes_read = db->read (buffer, bufsz);
 
-      int8_t * in = (int8_t *) buffer;
-      int8_t val; 
- 
-      // zero all the histograms     
-      for (unsigned ipol=0; ipol<npol; ipol++)
-      {
-        for (unsigned idim=0; idim<ndim; idim++)
-        {
-          fill ( hist[ipol][idim].begin(), hist[ipol][idim].end(), 0);
-        }
-        for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
-        {
-          fill(freq_time[ipol][ifreq].begin(), freq_time[ipol][ifreq].end(), 0);
-        }
-      }
+      block_format->unpack_hgft (buffer, bufsz);
+      block_format->unpack_ms (buffer, bufsz);
 
-      // zero means and variances
-      for (unsigned i=0; i<npol*ndim; i++)
-      fill (means.begin(), means.end(), 0);
-      fill (variances.begin(), variances.end(), 0);
-
-      // histogram all the samples
-      uint64_t idat = 0;
-      unsigned ibin, ifreq, itime;
-      int re, im;
-      unsigned power;
-      for (unsigned iblock=0; iblock<nblock; iblock++)
-      {
-        for (unsigned ichan=0; ichan<nchan; ichan++)
-        {
-          ifreq = ichan / nchan_per_freq;
-
-          for (unsigned ipol=0; ipol<npol; ipol++)
-          {
-            for (unsigned isamp=0; isamp<sample_block_resolution; isamp++)
-            {
-              re = (int) in[idat];
-              im = (int) in[idat+1];
-     
-              means[ipol*ndim + 0] += (float) re; 
-              means[ipol*ndim + 1] += (float) im; 
-
-              ibin = re + 128;
-              hist[ipol][0][ibin]++;
-
-              ibin = im + 128;
-              hist[ipol][1][ibin]++;
-
-              // detect and average the timesamples into a NPOL sets of NCHAN * 512 waterfalls
-              power = (unsigned) ((re * re) + (im * im));
-              itime = isamp / nsample_per_time;
-              freq_time[ipol][ifreq][itime] += power;
-
-              idat += 2;
-            }
-          }
-        } 
-      }
-
-      // convert sums to means
-      float ndat = nblock * sample_block_resolution * nchan;
-      for (unsigned i=0; i<npol * ndim; i++)
-      {
-        //cerr << i << ": sum=" << means[i];
-        means[i] /= ndat;
-        //cerr << " mean=" << means[i] << " ndat=" << ndat << endl;
-      }
-
-      // now compute the variances
-      idat = 0;
-      float diff;
-
-      for (unsigned iblock=0; iblock<nblock; iblock++)
-      {
-        for (unsigned ichan=0; ichan<nchan; ichan++)
-        {
-          for (unsigned ipol=0; ipol<npol; ipol++)
-          {
-            for (unsigned isamp=0; isamp<sample_block_resolution; isamp++)
-            {
-              unsigned idx = ipol*ndim + 0;
-              re = (int) in[idat];
-              diff = (float) re - means[idx];
-              variances[idx] += diff * diff;
-
-              idx = ipol*ndim + 1;
-              im = (int) in[idat+1];
-              diff = (float) im - means[idx];
-              variances[idx] += diff * diff;
-
-              idat += 2;
-            }
-          }
-        } 
-      }
-
-      for (unsigned i=0; i<npol * ndim; i++)
-      {
-        variances[i] /= (float) ndat;
-        stddevs[i] = sqrtf (variances[i]);
-        //cerr <<  i << ": variance=" << variances[i] << " stddev=" << stddevs[i] << endl;
-      }
-
-      // write the data files to disk (not sure if this is the best long term idea...)
+      // write the data files to disk 
       time_t now = time(0);
       strftime (local_time, 32, DADA_TIMESTR, localtime(&now));
 
@@ -425,56 +302,23 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
       ss << stats_dir << utc_start << "/" << local_time << "." << stream_id << ".hg.stats";
       if (verbose)
         cerr << "spip::DataBlockStats::monitor creating HG stats file " << ss.str() << endl;
-      ofstream hg_file (ss.str().c_str(), ofstream::binary);
 
-      hg_file.write (reinterpret_cast<const char *>(&npol), sizeof(npol));
-      hg_file.write (reinterpret_cast<const char *>(&ndim), sizeof(ndim));
-      hg_file.write (reinterpret_cast<const char *>(&nbin), sizeof(nbin));
-      for (unsigned ipol=0; ipol<npol; ipol++)
-      {
-        for (unsigned idim=0; idim<ndim; idim++)
-        {
-          const char * buffer = reinterpret_cast<const char *>(&hist[ipol][idim][0]);
-          hg_file.write(buffer, hist[ipol][idim].size() * sizeof(unsigned));
-        }
-      }
-      hg_file.close();
+      block_format->write_histograms (ss.str());
       
       ss.str("");
-
-      ss << stats_dir << utc_start << "/" << local_time << "." << stream_id << ".ft.stats";
+      ss << stats_dir << utc_start << "/" << local_time << "." 
+         << stream_id << ".ft.stats";
       if (verbose)
         cerr << "spip::DataBlockStats::monitor creating FT stats file " << ss.str() << endl;
-      ofstream ft_file (ss.str().c_str(), ofstream::binary);
-
-      ft_file.write (reinterpret_cast<const char *>(&npol), sizeof(npol));
-      ft_file.write (reinterpret_cast<const char *>(&nfreq), sizeof(nfreq));
-      ft_file.write (reinterpret_cast<const char *>(&ntime), sizeof(ntime));
-      for (unsigned ipol=0; ipol<npol; ipol++)
-      {
-        for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
-        {
-          const char * buffer = reinterpret_cast<const char*>(&freq_time[ipol][ifreq][0]);
-          ft_file.write(buffer, freq_time[ipol][ifreq].size() * sizeof(unsigned));
-        }
-      }   
-      ft_file.close();
+      block_format->write_freq_times (ss.str());
 
       ss.str("");
-      ss << stats_dir << utc_start << "/" << local_time << "." << stream_id << ".ms.stats";
+      ss << stats_dir << utc_start << "/" << local_time << "." 
+         << stream_id << ".ms.stats";
       if (verbose)
         cerr << "spip::DataBlockStats::monitor creating MS stats file " << ss.str() << endl;
-      ofstream ms_file (ss.str().c_str(), ofstream::binary);
-      ms_file.write (reinterpret_cast<const char *>(&npol), sizeof(npol));
-      ms_file.write (reinterpret_cast<const char *>(&ndim), sizeof(ndim));
-      {
-        const char * buffer;
-        buffer = reinterpret_cast<const char*>(&means[0]);
-        ms_file.write (buffer, means.size() * sizeof(float));
-        buffer = reinterpret_cast<const char*>(&stddevs[0]);
-        ms_file.write (buffer, stddevs.size() * sizeof(float));
-      }
-      ms_file.close();
+
+      block_format->write_mean_stddevs (ss.str());
 
       if (verbose)
         cerr << "spip::DataBlockStats::monitor sleep(" << poll_time << ")" << endl;

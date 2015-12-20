@@ -5,6 +5,8 @@
 # 
 ###############################################################################
 
+import socket,errno
+
 from calendar import timegm
 from time import gmtime
 from sys import stderr
@@ -25,10 +27,11 @@ class LogSocket(object):
     self.last_conn_attempt = 0
     self.log_local = False
     self.sock = []
+    self.connected = False
 
-  def connect (self):
+  def connect (self, attempts=5):
     now = timegm(gmtime())
-    if (now - self.last_conn_attempt) > 5:
+    if (now - self.last_conn_attempt) > attempts:
       header = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
                "<log_stream>" + \
                "<host>" + self.host + "</host>" + \
@@ -41,26 +44,38 @@ class LogSocket(object):
       if self.sock:
         self.sock.send (header)
         junk = self.sock.recv(1)
+        self.connected = True
+      else:
+        self.connected = False
       self.last_conn_attempt = now
 
   def log (self, level, message):
     if level <= self.dl:
       # if the socket is currently not connected and we didn't try to connect in the last 10 seconds
       if not self.sock:
-        self.connect()
-      prefix = "[" + times.getCurrentTimeUS() + "] "
-      if level == -1:
-        prefix += "W "
-      if level == -2:
-        prefix += "E "
-      lines = message.split("\n")
-      for line in lines:
-        if self.log_local:
-          stderr.write (prefix + message + "\n")
-        if self.sock:
-          self.sock.send (prefix + message + "\n")
-
+        self.connected = False
+        self.connect(1)
+      if self.connected:
+        prefix = "[" + times.getCurrentTimeUS() + "] "
+        if level == -1:
+          prefix += "W "
+        if level == -2:
+          prefix += "E "
+        lines = message.split("\n")
+        try:
+          for line in lines:
+            if self.log_local:
+              stderr.write (prefix + message + "\n")
+            if self.sock:
+              self.sock.send (prefix + message + "\n")
+        except socket.error as e:
+          if e.errno == errno.EPIPE:
+            self.close()
+          else:
+            raise
+  
   def close (self):
     if self.sock:
       self.sock.close()
     self.sock = []
+    self.connected = False

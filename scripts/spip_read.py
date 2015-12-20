@@ -7,10 +7,10 @@
 # 
 ###############################################################################
 
-#import os, threading, sys, time, socket, select, signal, traceback, xmltodict
 
-import sys, socket, select, traceback, errno
+import sys, socket, select, traceback, threading, errno, xmltodict
 from time import sleep
+import abc
 
 from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
@@ -21,7 +21,26 @@ from spip import config
 DAEMONIZE = True
 DL = 1
 
-class GenDaemon(Daemon,StreamBased):
+#################################################################
+# thread for reading .dada files into a ring buffer
+class diskdbThread (threading.Thread):
+
+  def __init__ (self, parent, key, files, pipe):
+    threading.Thread.__init__(self)
+    self.parent = parent 
+    self.key = key
+    self.pipe = pipe
+    self.files = files
+
+  def run (self):
+    cmd = "dada_diskdb -k " + self.key + " -z"
+    for file in self.files:
+      cmd += " -f " + file
+    rval = self.parent.system_piped (cmd, self.pipe)
+    return rval
+
+class ReadDaemon(Daemon,StreamBased):
+  __metaclass__ = abc.ABCMeta
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
@@ -29,8 +48,7 @@ class GenDaemon(Daemon,StreamBased):
 
   def main (self):
 
-    # open a listening socket to receive the header to use in configuring the
-    # the data generator
+    # open a listening socket to receive the data files to read
     hostname = getHostNameShort()
 
     # get the site configurationa
@@ -49,9 +67,17 @@ class GenDaemon(Daemon,StreamBased):
       self.log(1, "START_CHANNEL\t"  + fixed_config["START_CHANNEL"])
       self.log(1, "END_CHANNEL\t"  + fixed_config["END_CHANNEL"])
 
+    self.log(1, "ReadDaemon::main self.list_obs()")
+    list_xml_str = self.list_obs()
+    list_xml = xmltodict.parse (list_xml_str)
+    first_obs = list_xml['observation_list']['observation'][0]
+    print str(first_obs)
+    self.read_obs (first_obs)
+    #self.log(1, "ReadDaemon::main " + str(xml))
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((hostname, int(self.cfg["STREAM_GEN_PORT"]) + int(self.id)))
+    sock.bind((hostname, int(self.cfg["STREAM_READ_PORT"]) + int(self.id)))
     sock.listen(1)
 
     can_read = [sock]
@@ -94,8 +120,8 @@ class GenDaemon(Daemon,StreamBased):
             message = handle.recv(4096).strip()
             self.log(3, "commandThread: message='" + str(message) +"'")
             
-            #xml = xmltodict.parse (message)
-            #self.log(3, DL, "commandThread: xml='" + str(xml) +"'")
+            xml = xmltodict.parse (message)
+            self.log(3, DL, "commandThread: xml='" + str(xml) +"'")
 
             if (len(message) == 0):
               self.log(1, "commandThread: closing connection")
@@ -104,76 +130,34 @@ class GenDaemon(Daemon,StreamBased):
                 if (x == handle):
                   del can_read[i]
             else:
-              #message = message.upper()
-              #self.log(3, DL, "<- " + message)
 
-              self.gen_obs (fixed_config, message)
+              if xml['command'] == "list_obs":
+                self.log (1, "command ["+xml['command'] + "]")
+                self.list_obs ()
+                response = "OK"
+
+              elif xml['command'] == "read_obs":
+                self.log (1, "command ["+xml['command'] + "]")
+                self.read_obs ()
+                response = "OK"
+
+              else:
+                self.log (-1, "unrecognized command ["+xml['command'] + "]")
+                response = "FAIL"
   
-              response = "OK"
               self.log(3, "-> " + response)
-              xml_response = "<gen_response>" + response + "</gen_response>"
+              xml_response = "<read_response>" + response + "</read_response>"
               handle.send (xml_response)
 
-  #############################################################################
-  # Generate the UDP data stream based on parameters in the XML message
-  def gen_obs (self, fixed_config, message):
+  ###############################################################################
+  # look for observations on disk that match
+  @abc.abstractmethod
+  def list_obs (self): pass
 
-    self.log(1, "gen_obs: " + str(message))
-    header = config.readDictFromString(message)
-
-    # generate the header file to be use by GEN_BINARY
-    header_file = "/tmp/spip_" + header["UTC_START"] + "." + self.id + ".header"
-
-    header["HDR_VERSION"] = "1.0"
-
-    # include the fixed configuration
-    header.update(fixed_config)
-
-    # rate in Gb/s
-    transmit_rate = float(header["BYTES_PER_SECOND"]) * 8.0 / 1000000000.0
-
-    transmit_rate /= 4
-
-    self.log(3, "gen_obs: writing header to " + header_file)
-    config.writeDictToCFGFile (header, header_file)
-
-    # determine the parameters for GEN_BINARY
-    (stream_ip, stream_port) =  (self.cfg["STREAM_UDP_" + str(self.id)]).split(":")
-
-    stream_core = self.cfg["STREAM_GEN_CORE_" + str(self.id)]  
-
-    tobs = "60"
-    if header["TOBS"] != "":
-      tobs = header["TOBS"]
-
-    cmd = self.cfg["STREAM_GEN_BINARY"] + " -b " + stream_core \
-          + " -p " + stream_port \
-          + " -r " + str(transmit_rate) \
-          + " -t " + tobs \
-          + " " + header_file + " " + stream_ip 
-    self.binary_list.append (cmd)
-
-    sleep(1)
-
-    log_pipe = LogSocket ("gen_src", "gen_src", str(self.id), "stream",
-                        self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
-                        int(DL))
-    log_pipe.connect()
-
-    sleep(1)
-   
-    # this should be a persistent / blocking command 
-    self.log(1, "gen_obs: [START] " + cmd)
-    rval = self.system_piped (cmd, log_pipe.sock)
-    self.log(1, "gen_obs: [END]   " + cmd)
-
-    if rval:
-      self.log (-2, cmd + " failed with return value " + str(rval))
-      self.quit_event.set()
-
-    log_pipe.close ()
-
-
+  ###############################################################################
+  # look for observations on disk that match
+  @abc.abstractmethod
+  def read_obs (self, xml): pass
 
 if __name__ == "__main__":
 
@@ -184,8 +168,8 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = GenDaemon ("spip_gen", stream_id)
-  state = script.configure (DAEMONIZE, DL, "gen", "gen")
+  script = ReadDaemon ("spip_read", stream_id)
+  state = script.configure (DAEMONIZE, DL, "read", "read")
   if state != 0:
     sys.exit(state)
 

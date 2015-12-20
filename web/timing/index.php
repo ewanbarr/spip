@@ -158,18 +158,18 @@ class timing extends spip_webpage
                   //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
                   if (plot_timestamp != document.getElementById(plot_ts).value)
                   {
-                    var new_image = new Image();
-                    new_image.id = plot_id;
-                    new_image.src = "/spip/timing/index.php?update=true&beam_name="+
-                                    beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;;
-                    new_image.onload = function() {
-                      var img = document.getElementById(plot_id);
-                      img.parentNode.insertBefore(new_image, img);
-                      img.parentNode.removeChild(img);
-                    }
+                    //var new_image = new Image();
+                    //new_image.id = plot_id;
+                    //new_image.src = "/spip/timing/index.php?update=true&beam_name="+
+                    //                beam_name+"&pol=0&type=plot&plot="+plot_type+"&ts="+plot_timestamp;;
+                    //new_image.onload = function() {
+                    //  var img = document.getElementById(plot_id);
+                    //  img.parentNode.insertBefore(new_image, img);
+                    //  img.parentNode.removeChild(img);
+                    //}
 
-                    //url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&plot="+plot_type+"&ts="+plot_timestamp;
-                    //document.getElementById(plot_id).src = url;
+                    url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&pol=0&plot="+plot_type+"&ts="+plot_timestamp;
+                    document.getElementById(plot_id).src = url;
                     document.getElementById(plot_ts).value = plot_timestamp;
                   }
                 }
@@ -356,8 +356,8 @@ class timing extends spip_webpage
     else if (($get["plot"] == "histogram") || 
              ($get["plot"] == "freq_vs_time"))
     {
-      $istream = $get["istream"];
-      $host      = $this->streams[$istream]["host"];
+      $istream   = $this->streams[$beam_name];
+      $host      = $this->beams[$ibeam]["host"];
       $port      = $this->config["STREAM_STAT_PORT"] + $istream;
 
       $xml_req  = XML_DEFINITION;

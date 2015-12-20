@@ -10,9 +10,9 @@
 #include "dada_affinity.h"
 #include "ascii_header.h"
 
-#include "spip/BlockFormatMeerKAT.h"
 #include "spip/DataBlockStats.h"
 #include "spip/TCPSocketServer.h"
+#include "spip/BlockFormatKAT7.h"
 
 #include <unistd.h>
 #include <signal.h>
@@ -40,9 +40,6 @@ int main(int argc, char *argv[]) try
 
   // tcp control port to receive configuration
   int control_port = -1;
-
-  // control socket for the control port
-  spip::TCPSocketServer * ctrl_sock = 0;
 
   // core on which to bind thread operations
   int core = -1;
@@ -104,10 +101,8 @@ int main(int argc, char *argv[]) try
   
   // create a DataBlockStats processor to read from the DB
   if (verbose)
-    cerr << "meerkat_dbstats: creating DataBlockStats with " << key << endl;
+    cerr << "kat7_dbstats: creating DataBlockStats with " << key << endl;
   dbstats = new spip::DataBlockStats (key.c_str());
-
-  dbstats->set_block_format (new spip::BlockFormatMeerKAT());
 
   // Check arguments
   if ((argc - optind) != 1) 
@@ -116,6 +111,8 @@ int main(int argc, char *argv[]) try
     usage();
     return EXIT_FAILURE;
   }
+
+  dbstats->set_block_format (new spip::BlockFormatKAT7());
  
   signal(SIGINT, signal_handler);
 
@@ -130,7 +127,7 @@ int main(int argc, char *argv[]) try
   }
 
   if (verbose)
-    cerr << "meerkat_dbstats: reading config from " << config_file << endl;
+    cerr << "kat7_dbstats: reading config from " << config_file << endl;
   if (fileread (config_file, config, DADA_DEFAULT_HEADER_SIZE) < 0)
   {
     free (config);
@@ -147,7 +144,7 @@ int main(int argc, char *argv[]) try
   }
 
   if (verbose)
-    cerr << "meerkat_dbstats: configuring using fixed config" << endl;
+    cerr << "kat7_dbstats: configuring using fixed config" << endl;
   dbstats->configure (config);
 
   // prepare a header which combines config with observation parameters
@@ -166,61 +163,25 @@ int main(int argc, char *argv[]) try
   // open a listening socket for observation parameters
   if (control_port > 0)
   {
-    cerr << "meerkat_dbstats: start_control_thread (" << control_port << ")" << endl;
+    cerr << "kat7_dbstats: start_control_thread (" << control_port << ")" << endl;
     dbstats->start_control_thread (control_port);
 
-/*
-    ctrl_sock = new spip::TCPSocketServer();
-
-    // open a listen sock on all interfaces for the control port
-    if (verbose)
-      cerr << "meerkat_dbstats: opening control socket on any:" << control_port << endl;
-    ctrl_sock->open ("any", control_port, 1);
-
-    int fd = -1;
-
-    // wait for a connection
-    while (!quit_threads && fd < 0)
-    {
-      if (verbose)
-        cerr << "meerkat_dbstats: ctrl_sock->accept(1)" << endl;
-      // try to accept with a 1 second timeout
-      fd = ctrl_sock->accept_client (1);
-    }
-
-    if (!quit_threads && fd > 0 )
-    {
-      char * obs = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-      ssize_t bytes_read = read (fd, obs, DADA_DEFAULT_HEADER_SIZE);
-      if (verbose)
-        cerr << "meerkat_dbstats: bytes_read=" << bytes_read << endl;
-      cerr << "meerkat_dbstats: obs=" << obs << endl;
-      ctrl_sock->close_me ();
-      strcat (header, obs);
-    }
-*/
     bool keep_monitoring = true;
     while (keep_monitoring)
     {
       if (verbose)
-        cerr << "meerkat_dbstats: monitor()" << endl;
+        cerr << "kat7_dbstats: monitor()" << endl;
       keep_monitoring = dbstats->monitor(stats_dir, stream);
       if (verbose)
-        cerr << "meerkat_dbstats: monitor returned" << endl;
+        cerr << "kat7_dbstats: monitor returned" << endl;
     }
   }
   else
   {
-    cerr << "meerkat_dbstats: calling monitor" << endl;
+    cerr << "kat7_dbstats: calling monitor" << endl;
     dbstats->monitor(stats_dir, stream);
   }
 
-/*
-  if (verbose)
-    cerr << "meerkat_dbstats: joining dbstats_thread" << endl;
-  void * result;
-  pthread_join (stats_thread_id, &result);
-*/
 
   delete dbstats;
 }
@@ -233,7 +194,7 @@ catch (std::exception& exc)
 
 void usage() 
 {
-  cout << "meerkat_dbstats [options] config\n"
+  cout << "kat7_dbstats [options] config\n"
     "  config      ascii file containing fixed configuration\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -c port     control port for dynamic configuration\n"

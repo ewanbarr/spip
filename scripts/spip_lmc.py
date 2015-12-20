@@ -19,6 +19,7 @@ from spip.daemons.bases import HostBased
 from spip.daemons.daemon import Daemon
 from spip.utils.sockets import getHostNameShort
 from spip import config
+from spip.utils.core import system
 
 DAEMONIZE = True
 DL        = 1
@@ -48,11 +49,8 @@ class clientThread (threading.Thread):
 
   def run (self):
 
-    process_suffix = ""
-    file_suffix = ""
-    if self.stream_id >= 0:
-      process_suffix = " " + str(self.stream_id)
-      file_suffix = "_" + str(self.stream_id)
+    process_suffix = " " + str(self.stream_id)
+    file_suffix = "_" + str(self.stream_id)
     prefix = self.prefix
     daemons = {}
 
@@ -69,7 +67,12 @@ class clientThread (threading.Thread):
       # start each of the daemons
       ranks = daemons.keys()
       ranks.sort()
+      to_sleep = 5
       for rank in ranks:
+        if rank > 0:
+          sleep(to_sleep)
+          to_sleep = 0
+
         self.parent.log(2, self.prefix + "launching daemons of rank " + rank)
         for daemon in daemons[rank]:
           self.states[daemon] = False
@@ -112,6 +115,10 @@ class clientThread (threading.Thread):
       for rank in ranks[::-1]:
 
         # single all daemons in rank to exit
+        if rank == 0:
+          self.parent.log (1, prefix + " sleep(5) for rank 0 daemons")
+          sleep(5)
+
         for daemon in daemons[rank]:
           open(self.control_dir + "/" + daemon + file_suffix + ".quit", 'w').close()
 
@@ -156,7 +163,6 @@ class clientThread (threading.Thread):
 #
 ################################################################$
 
-
 class LMCDaemon (Daemon,HostBased):
 
   def __init__ (self, name, hostname):
@@ -179,9 +185,19 @@ class LMCDaemon (Daemon,HostBased):
     # find matching server stream
     server_streams = []
     if self.cfg["SERVER_HOST"] == self.req_host:
-      server_streams.append(0)
+      server_streams.append(-1)
 
     daemon_states = {}
+
+    for stream in server_streams:
+      self.log(1, "main: client_thread[-1] = clientThread(-1)")
+      daemon_states[-1] = {}
+      server_thread = clientThread(-1, self, daemon_states[-1])
+      self.log(1, "main: client_thread[-1].start()")
+      server_thread.start()
+      self.log(1, "main: client_thread[-1] started")
+
+    sleep(1)
 
     # start a control thread for each stream
     for stream in client_streams:
@@ -191,13 +207,6 @@ class LMCDaemon (Daemon,HostBased):
       self.log(2, "main: client_thread["+str(stream)+"].start()")
       self.client_threads[stream].start()
       self.log(2, "main: client_thread["+str(stream)+"] started!")
-
-    #for stream in server_streams:
-    #  self.log(1, "main: client_thread[-1] = clientThread(-1)")
-    #  server_thread = clientThread(-1, cfg, quit_event)
-    #  self.log(1, "main: client_thread[-1].start()")
-    #  server_thread.start()
-    #  self.log(1, "main: client_thread[-1] started")
 
     # main thread
     disks_to_monitor = [self.cfg["CLIENT_DIR"]]
@@ -215,6 +224,8 @@ class LMCDaemon (Daemon,HostBased):
     hw_poll = 5
     counter = 0 
 
+    sensors = {}
+
     # monitor / control loop
     while not self.quit_event.isSet():
 
@@ -231,9 +242,9 @@ class LMCDaemon (Daemon,HostBased):
         rval, smrbs = lmc_mon.getSMRBCapacity (client_streams, self.quit_event, DL)
         self.log(3, "main: " + str(smrbs))
 
-        self.log(3, "main: getIPMISensors()")
-        rval, sensors = lmc_mon.getIPMISensors (DL)
-        self.log(3, "main: " + str(sensors))
+        #self.log(3, "main: getIPMISensors()")
+        #rval, sensors = lmc_mon.getIPMISensors (DL)
+        #self.log(3, "main: " + str(sensors))
 
         counter = hw_poll
 
@@ -350,9 +361,15 @@ class LMCDaemon (Daemon,HostBased):
 #
 if __name__ == "__main__":
 
-  if len(sys.argv) != 1:
-    print "ERROR: no command line arguments expected"
+  if len(sys.argv) != 2:
+    print "ERROR: 1 command line argument expected"
     sys.exit(1)
+
+  cfg = sys.argv[1]
+
+  cfg_dir = os.environ.get('SPIP_ROOT') + "/share"
+  cmd = "cp " + cfg_dir + "/" + cfg + "/*.cfg " + cfg_dir + "/"
+  system (cmd, False)  
 
   hostname = getHostNameShort()
 

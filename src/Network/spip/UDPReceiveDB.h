@@ -3,6 +3,7 @@
 #define __UDPReceiveDB_h
 
 #include "dada_def.h"
+#include "config.h"
 
 #include "spip/UDPSocketReceive.h"
 #include "spip/UDPFormat.h"
@@ -13,8 +14,7 @@
 #include <cstdlib>
 #include <pthread.h>
 
-#define USING_VMA_EXTRA_API
-#ifdef  USING_VMA_EXTRA_API
+#ifdef  HAVE_VMA
 #include <mellanox/vma_extra.h>
 #endif
 
@@ -83,7 +83,7 @@ namespace spip {
 
       char * header;
 
-#ifdef USING_VMA_EXTRA_API
+#ifdef HAVE_VMA
       struct vma_api_t *vma_api;
 
       struct vma_packets_t* pkts;

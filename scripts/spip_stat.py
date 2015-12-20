@@ -81,7 +81,7 @@ class StatReportingThread(ReportingThread):
         xml += "<plot type='freq_vs_time' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "</polarisation>"
 
-        xml += "</stream>"
+      xml += "</stream>"
 
       self.script.results["lock"].release()
 

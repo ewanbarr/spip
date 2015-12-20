@@ -12,7 +12,9 @@
 #include "spip/UDPGenerator.h"
 #include "spip/UDPFormatCustom.h"
 
-#include <numa.h>
+#if HAVE_HWLOC
+#include <hwloc.h>
+#endif
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h> 
@@ -50,8 +52,34 @@ int main(int argc, char *argv[])
   // data rate at which to transmit
   float data_rate_gbits = 0.5;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
+#ifdef HAVE_HWLOC
+  hwloc_topology_t toppology;
+  hwloc_topology_init(&topology);
+  hwloc_topology_load(topology);
+  hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
+  if (obj)
+  {
+    // Get a copy of its cpuset that we may modify.
+    hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
+
+    // Get only one logical processor (in case the core is SMT/hyperthreaded)
+    hwloc_bitmap_singlify (cpuset);
+
+    hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
+    hwloc_membind_flags_t flags = 0;
+
+    int result = hwloc_set_membind (topology, cpuset, policy, flags);
+    if (result < 0)
+    {
+      fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
+               strerror(errno));
+      return -1;
+    }
+
+    // Free our cpuset copy
+    hwloc_bitmap_free(cpuset);
+  }
+#endif
 
   // core on which to bind thread operations
   int core = -1;
@@ -61,7 +89,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hn:p:r:t:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:p:r:t:v")) != EOF) 
   {
     switch(c) 
     {
@@ -76,12 +104,6 @@ int main(int argc, char *argv[])
       case 'h':
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 't':
@@ -113,14 +135,37 @@ int main(int argc, char *argv[])
     dada_bind_thread_to_core (core);
   }
 
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
+#ifdef HAVE_HWLOC
+  hwloc_topology_t toppology;
+  hwloc_topology_init(&topology);
+  hwloc_topology_load(topology);
+  if (core > 0)
   {
-    cerr << "Binding to numa with node_mask " << &node_mask << endl;
-    numa_set_membind (node_mask);
+    hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
+    if (obj)
+    {
+      // Get a copy of its cpuset that we may modify.
+      hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
+
+      // Get only one logical processor (in case the core is SMT/hyperthreaded)
+      hwloc_bitmap_singlify (cpuset);
+
+      hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
+      hwloc_membind_flags_t flags = 0;
+
+      int result = hwloc_set_membind (topology, cpuset, policy, flags);
+      if (result < 0)
+      {
+        fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
+                 strerror(errno));
+        return -1;
+      }
+
+      // Free our cpuset copy
+      hwloc_bitmap_free(cpuset);
+    }
   }
-  else
-    cerr << "NUMA not present or configured" << endl;
+  #endif
 
   // Check arguments
   if ((argc - optind) != 2) 
@@ -206,6 +251,11 @@ int main(int argc, char *argv[])
   free (header_file);
   free (dest_host);
 
+#ifdef HAVE_HWLOC
+  hwloc_topology_destroy(topology);
+#endif
+
+
   return 0;
 }
 
@@ -217,7 +267,6 @@ void usage()
     "  -f format   generate UDP data of format [custom standard spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
-    "  -n node     allocate memory only on NUMA node\n"
     "  -t secs     number of seconds to transmit [default 5]\n"
     "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -r rate     transmit at rate Gib/s [default 0.5]\n"

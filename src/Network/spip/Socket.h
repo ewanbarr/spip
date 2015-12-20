@@ -2,6 +2,12 @@
 #ifndef __Socket_h
 #define __Socket_h
 
+#include "config.h"
+
+#ifdef HAVE_HWLOC
+#include <hwloc.h>
+#endif
+
 #include <cstddef>
 #include <string>
 
@@ -53,6 +59,10 @@ namespace spip {
       size_t bufsz;
 
     private:
+
+#ifdef HAVE_HWLOC
+      hwloc_topology_t topology;
+#endif
 
       // IP address of UDP interface
       std::string interface;

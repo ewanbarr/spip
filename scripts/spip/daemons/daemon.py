@@ -146,10 +146,12 @@ class Daemon(object):
     if self.log_sock:
       self.log_sock.close()
     self.log_sock = LogSocket(source, dest, self.id, type, host, port, self.dl)
-    self.log_sock.connect()
+    self.log_sock.connect(5)
 
   def log (self, level, message):
     if self.log_sock:
+      if not self.log_sock.connected:
+        self.log_sock.connect(1)
       self.log_sock.log (level, message)
 
   def conclude (self):

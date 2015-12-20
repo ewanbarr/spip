@@ -11,17 +11,12 @@ import socket, sys, traceback
 from select import select
 from xmltodict import parse
 
-#import os, threading, sys, time, socket, select, signal, traceback, xmltodict
-#import spip
-
 from spip import config
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.utils import sockets
 
-#from spip.threads.control_thread import ControlThread
-
-DAEMONIZE = False
+DAEMONIZE = True
 DL     = 2
 
 class LogsDaemon(Daemon):

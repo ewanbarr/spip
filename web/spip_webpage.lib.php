@@ -37,7 +37,7 @@ class spip_webpage
 
   }
 
-  function printUpdateHTML()
+  function printUpdateHTML($get)
   {
 
   }
@@ -137,7 +137,7 @@ function handleDirect($child_class)
     echo "    <div id='hdr-box2' class='box'></div>\n";
     echo "    <div id='hdr-box3' class='box'></div>\n";
     echo "    <div id='hdr-box4' class='box'></div>\n";
-    echo "    <h1>Swinburne Pulsar Instrumentation Package</h1>\n";
+    echo "    <h1>KAT7 - Swinburne Pulsar Instrumentation Package</h1>\n";
     echo "  </div>\n";
 
     // print the main navigation panel

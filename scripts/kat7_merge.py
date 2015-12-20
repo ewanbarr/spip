@@ -17,9 +17,9 @@ from spip import config
 from spip_smrb import SMRBDaemon
 
 DAEMONIZE = True
-DL = 1
+DL = 3
 
-class RecvDaemon(Daemon,StreamBased):
+class MergeDaemon(Daemon,StreamBased):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
@@ -27,28 +27,32 @@ class RecvDaemon(Daemon,StreamBased):
 
   def main (self):
 
-    db_id = self.cfg["PROCESSING_DATA_BLOCK"]
+    in_ids = self.cfg["RECEIVING_DATA_BLOCKS"].split(" ")
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
     num_stream = self.cfg["NUM_STREAM"]
-    db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
-    self.log(0, "db_key="+db_key)
+    pola_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, in_ids[0])
+    polb_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, in_ids[1])
+    out_id = self.cfg["PROCESSING_DATA_BLOCK"]
+    out_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, out_id)
+    self.log(2, "pola_key="+pola_key+" polb_key="+polb_key+" out_key="+out_key)
 
     # wait up to 10s for the SMRB to be created
     smrb_wait = 10
-    cmd = "dada_dbmetric -k " + db_key
+    cmd = "dada_dbmetric -k " + out_key
     self.binary_list.append (cmd)
 
     rval = 1
     while rval and smrb_wait > 0 and not self.quit_event.isSet():
-
+      self.log(2, "MergeDaemon::main smrb_wait="+str(smrb_wait))
       rval, lines = self.system (cmd)
+      self.log(2, "MergeDaemon::main rval="+str(rval) + " lines="+str(lines))
       if rval:
+        self.log(2, "waiting for SMRB to be created")
         sleep(1)
-      smrb_wait -= 1
+      smrb_wait  = smrb_wait - 1
 
     if rval:
-      self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
-                  "key=" + db_key)
+      self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " + "key=" + out_key)
       self.quit_event.set()
 
     else:
@@ -65,38 +69,33 @@ class RecvDaemon(Daemon,StreamBased):
       config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
       config.writeDictToCFGFile (local_config, config_file)
 
-      ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(self.id))
       stream_core = self.cfg["STREAM_CORE_" + str(self.id)]  
-      (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(self.id)].split(":")
 
-      cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key \
-            + " -v -b " + stream_core \
-            + " -c " + ctrl_port \
-            + " -p " + stream_port \
-            + " " + config_file + " " + stream_ip
+      # TODO CPU/RAM affinity
+      cmd = "dada_dbmergedb -w -s " + pola_key + " " + polb_key + " "  + out_key + " -v"
       self.binary_list.append (cmd)
 
-      self.log(3, "main: sleep(1)")
-      sleep(1)
-
-      self.log(3, "main: log_pipe = LogSocket(recv_src))")
-      log_pipe = LogSocket ("recv_src", "recv_src", str(self.id), "stream",
+      self.log(2, "MergeDaemon::main log_pipe = LogSocket(merge_src))")
+      log_pipe = LogSocket ("merge_src", "merge_src", str(self.id), "stream",
                             self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
                             int(DL))
 
-      self.log(3, "main: log_pipe.connect()")
+      self.log(2, "MergeDaemon::main log_pipe.connect()")
       log_pipe.connect()
 
-      self.log(3, "main: sleep(1)")
-      sleep(1)
+      while not self.quit_event.isSet():
+
+        self.log(2, "MergeDaemon::main sleep(1)")
+        sleep(1)
      
-      # this should be a persistent / blocking command 
-      rval = self.system_piped (cmd, log_pipe.sock)
+        # this should be a persistent / blocking command 
+        self.log(2, "MergeDaemon::main " + cmd)
+        rval = self.system_piped (cmd, log_pipe.sock)
+        if rval:
+          self.log (-2, cmd + " failed with return value " + str(rval))
+          self.quit_event.set()
 
-      if rval:
-        self.log (-2, cmd + " failed with return value " + str(rval))
-      self.quit_event.set()
-
+      self.log(2, "MergeDaemon::main closing log_pipe")
       log_pipe.close ()
 #
 # main
@@ -111,12 +110,13 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = RecvDaemon ("spip_recv", stream_id)
-  state = script.configure (DAEMONIZE, DL, "recv", "recv")
+  script = MergeDaemon ("kat7_merge", stream_id)
+  state = script.configure (DAEMONIZE, DL, "merge", "merge")
   if state != 0:
     sys.exit(state)
 
   script.log(1, "STARTING SCRIPT")
+  script.log(1, "quit_Event="+str(script.quit_event.isSet()))
 
   try:
     

@@ -112,6 +112,7 @@ def getStreamConfigFixed (site, cfg, id):
 
   bytes_per_second = (nchan_int * nbit * npol * ndim * 1e6) / (8 * tsamp)
   config["BYTES_PER_SECOND"] = str(bytes_per_second)
+  config["RESOLUTION"] = cfg["RESOLUTION"] 
 
   return config
 
