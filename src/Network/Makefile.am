@@ -15,7 +15,7 @@ AM_CXXFLAGS = @PSRDADA_CFLAGS@ -I$(top_builddir)/src/Dada -I/opt/cross/include -
 
 if HAVE_SPEAD2
 
-libspipnet_la_SOURCES +=  SPEADReceiveDB.C SPEADReceiver.C SPEADBeamFormerConfigC
+libspipnet_la_SOURCES +=  SPEADReceiveDB.C SPEADReceiver.C SPEADBeamFormerConfig.C
 
 AM_CXXFLAGS += @SPEAD2_CFLAGS@
 
