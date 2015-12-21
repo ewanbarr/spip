@@ -36,6 +36,7 @@ SWIN_LIB_VMA
 AC_C_CONST
 AC_CONFIG_FILES([Makefile
   src/Makefile
+  src/Affinity/Makefile
   src/Network/Makefile
   src/Formats/SKA1/Makefile
   src/Formats/MeerKAT/Makefile

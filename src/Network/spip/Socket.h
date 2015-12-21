@@ -62,6 +62,8 @@ namespace spip {
 
 #ifdef HAVE_HWLOC
       hwloc_topology_t topology;
+
+      int cpu_core;
 #endif
 
       // IP address of UDP interface

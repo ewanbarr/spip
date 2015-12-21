@@ -16,10 +16,11 @@ AC_DEFUN([SWIN_LIB_VMA],
   if test "$have_vma" != "user disabled"; then
 
     SWIN_PACKAGE_FIND([vma],[mellanox/vma_extra.h])
-    SWIN_PACKAGE_TRY_COMPILE([vma],[#include <mellanox/vma_extra.h>])
-
+    SWIN_PACKAGE_TRY_COMPILE([vma],[#include <netinet/in.h>
+#include <mellanox/vma_extra.h>])
     SWIN_PACKAGE_FIND([vma],[lib$VMA.*])
-    SWIN_PACKAGE_TRY_LINK([vma],[#include <mellanox/vma_extra.h>],
+    SWIN_PACKAGE_TRY_LINK([vma],[#include <netinet/in.h>
+#include <mellanox/vma_extra.h>],
                           [ struct vma_api_t *vma_api = vma_get_api(); ],
                           [-l$VMA])
 

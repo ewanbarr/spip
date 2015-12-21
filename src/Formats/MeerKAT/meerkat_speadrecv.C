@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -44,9 +43,6 @@ int main(int argc, char *argv[])
   // core on which to bind thread operations
   int core = -1;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
-
   int verbose = 0;
 
   opterr = 0;
@@ -64,12 +60,6 @@ int main(int argc, char *argv[])
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 'p':
@@ -91,10 +81,6 @@ int main(int argc, char *argv[])
   // bind CPU computation to specific core
   if (core >= 0)
     dada_bind_thread_to_core (core);
-
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
 
   // create a UDP Receiver
   speadrecv = new spip::SPEADReceiver();

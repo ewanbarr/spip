@@ -9,14 +9,15 @@ bin_PROGRAMS = kat7_dbstats
 
 kat7_dbstats_SOURCES = kat7_dbstats.C
 
-AM_CXXFLAGS = -I. -I$(top_builddir)/src/Network -I$(top_builddir)/src/Dada 
+AM_CXXFLAGS = -I. \
+	-I$(top_builddir)/src/Network \
+	-I$(top_builddir)/src/Dada 
 
-LDADD = libkat7.la $(top_builddir)/src/Dada/libspipdada.la $(top_builddir)/src/Network/libspipnet.la 
+LDADD = libkat7.la \
+	$(top_builddir)/src/Network/libspipnet.la \
+	$(top_builddir)/src/Dada/libspipdada.la \
+	-L/opt/cross/lib
 
-if HAVE_PSRDADA
+AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
+LDADD += @PSRDADA_LIBS@ @HWLOC_LIBS@ @SPEAD2_LIBS@
 
-AM_CXXFLAGS += @PSRDADA_CFLAGS@
-
-LDADD += @PSRDADA_LIBS@
-
-endif

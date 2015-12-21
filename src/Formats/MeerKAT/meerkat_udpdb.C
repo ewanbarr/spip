@@ -10,6 +10,7 @@
 #include "dada_affinity.h"
 #include "ascii_header.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatMeerKATSimple.h"
 #include "spip/TCPSocketServer.h"
@@ -17,10 +18,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-
-#ifdef HAVE_HWLOC
-#include <hwloc.h>
-#endif
 
 #include <cstdio>
 #include <cstring>
@@ -56,13 +53,14 @@ int main(int argc, char *argv[]) try
   // control socket for the control port
   spip::TCPSocketServer * ctrl_sock = 0;
 
-  // core on which to bind thread operations
-  int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
   int verbose = 0;
 
   opterr = 0;
   int c;
+
+  int core;
 
   while ((c = getopt(argc, argv, "b:c:f:hk:p:v")) != EOF) 
   {
@@ -70,6 +68,8 @@ int main(int argc, char *argv[]) try
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'c':
@@ -104,41 +104,6 @@ int main(int argc, char *argv[]) try
         return EXIT_FAILURE;
         break;
     }
-  }
-
-  // bind CPU computation to specific core
-  if (core >= 0)
-  {
-    dada_bind_thread_to_core (core);
-
-#ifdef HAVE_HWLOC
-    hwloc_topology_t topology;
-    hwloc_topology_init(&topology);
-    hwloc_topology_load(topology);
-    hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, core);
-    if (obj)
-    {
-      // Get a copy of its cpuset that we may modify.
-      hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
-
-      // Get only one logical processor (in case the core is SMT/hyperthreaded)
-      hwloc_bitmap_singlify (cpuset);
-
-      hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
-      hwloc_membind_flags_t flags = 0;
-
-      int result = hwloc_set_membind (topology, cpuset, policy, flags);
-      if (result < 0)
-      {
-        fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
-                 strerror(errno));
-        return -1;
-      }
-
-      // Free our cpuset copy
-      hwloc_bitmap_free(cpuset);
-    }
-#endif
   }
 
   // create a UDP recevier that writes to a data block
@@ -274,17 +239,6 @@ int main(int argc, char *argv[]) try
 
 
   udpdb->close();
-
-/*
-  if (verbose)
-    cerr << "meerkat_udpdb: joining stats_thread" << endl;
-  void * result;
-  pthread_join (stats_thread_id, &result);
-*/
-
-#ifdef HAVE_HWLOC
-  hwloc_topology_destroy(topology);
-#endif
 
   delete udpdb;
 }

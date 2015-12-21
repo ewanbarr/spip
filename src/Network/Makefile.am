@@ -11,7 +11,7 @@ libspipnet_la_SOURCES = Socket.C UDPSocket.C UDPSocketReceive.C UDPSocketSend.C 
 
 AM_CXXFLAGS = @PSRDADA_CFLAGS@ -I$(top_builddir)/src/Dada -I/opt/cross/include -std=c++0x
 
-AM_LDFLAGS = @SPEAD2_LIBS@
+#AM_LDFLAGS = @SPEAD2_LIBS@
 
 if HAVE_SPEAD2
 

@@ -29,6 +29,7 @@ spip::Socket::Socket ()
 #ifdef HAVE_HWLOC
   hwloc_topology_init(&topology);
   hwloc_topology_load(topology);
+  int core_depth;
   hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
   if (obj)
   {
@@ -39,14 +40,13 @@ spip::Socket::Socket ()
     hwloc_bitmap_singlify (cpuset);
 
     hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
-    hwloc_membind_flags_t flags = 0;
+    hwloc_membind_flags_t flags = HWLOC_MEMBIND_THREAD;
 
     int result = hwloc_set_membind (topology, cpuset, policy, flags);
     if (result < 0)
     {
       fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
                strerror(errno));
-      return -1;
     }
 
     // Free our cpuset copy

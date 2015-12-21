@@ -119,10 +119,7 @@ void spip::DataBlockStats::set_block_format (BlockFormat * fmt)
 void spip::DataBlockStats::start_control_thread (int port)
 {
   control_port = port;
-
-  int errno = pthread_create (&control_thread_id, 0, control_thread_wrapper, this);
-  if (errno != 0)
-    throw runtime_error ("pthread_create");
+  pthread_create (&control_thread_id, 0, control_thread_wrapper, this);
 }
 
 // wrapper method to start control thread

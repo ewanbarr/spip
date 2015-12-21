@@ -9,6 +9,7 @@
 #include "dada_affinity.h"
 #include "futils.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPGenerator.h"
 #include "spip/UDPFormatMeerKATSimple.h"
 
@@ -17,9 +18,6 @@
 #include <signal.h> 
 #include <cstdio>
 #include <cstring>
-#if HAVE_HWLOC
-#include <hwloc.h>
-#endif
 
 #include <iostream>
 
@@ -54,6 +52,7 @@ int main(int argc, char *argv[])
 
   // core on which to bind thread operations
   int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
   int verbose = 0;
 
@@ -66,6 +65,8 @@ int main(int argc, char *argv[])
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'f':
@@ -99,42 +100,6 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
         break;
     }
-  }
-
-  if (core >= 0)
-  {
-    cerr << "Binding to CPU core " << core << endl;
-    dada_bind_thread_to_core (core);
-
-#ifdef HAVE_HWLOC
-    hwloc_topology_init(&topology);
-    hwloc_topology_load(topology);
-    hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, core);
-    if (obj)
-    {
-      // Get a copy of its cpuset that we may modify.
-      hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
-
-      // Get only one logical processor (in case the core is SMT/hyperthreaded)
-      hwloc_bitmap_singlify (cpuset);
-
-      hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
-      hwloc_membind_flags_t flags = 0;
-
-      int result = hwloc_set_membind (topology, cpuset, policy, flags);
-      if (result < 0)
-      {
-        fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
-                 strerror(errno));
-        return -1;
-      }
-
-      // Free our cpuset copy
-      hwloc_bitmap_free(cpuset);
-    }
-  #endif
-
-
   }
 
   // Check arguments
@@ -218,10 +183,6 @@ int main(int argc, char *argv[])
   free (header);
   free (header_file);
   free (dest_host);
-
-#ifdef HAVE_HWLOC
-  hwloc_topology_destroy(topology);
-#endif
 
   return 0;
 }
