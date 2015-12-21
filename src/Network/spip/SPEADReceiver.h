@@ -2,11 +2,14 @@
 #ifndef __SPEADReceiver_h
 #define __SPEADReceiver_h
 
+
 #include <boost/asio.hpp>
 
 #include "spead2/recv_udp.h"
 #include "spead2/recv_live_heap.h"
 #include "spead2/recv_ring_stream.h"
+
+#include "spip/SPEADBeamFormerConfig.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -29,6 +32,11 @@ namespace spip {
       int open();
 
       bool receive ();
+
+      void parse_metadata (const spead2::recv::item &item);
+
+      uint64_t item_ptr_48u (const unsigned char * ptr);
+      double item_ptr_64f (const unsigned char * ptr);
 
       void show_heap(const spead2::recv::heap &fheap);
 
@@ -71,6 +79,11 @@ namespace spip {
       spead2::thread_pool worker;
 
       std::shared_ptr<spead2::memory_pool> pool;
+
+      SPEADBeamFormerConfig bf_config;
+
+      uint64_t start_adc_sample;
+
   };
 
 }

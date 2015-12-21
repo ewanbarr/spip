@@ -105,8 +105,10 @@ void spip::UDPReceiver::receive ()
     while (!have_packet && cont)
     {
       got = recvfrom (fd, buf, bufsz, 0, (struct sockaddr *)&client_addr, &size);
-      if (got == bufsz)
+      if (got > 64)
+      {
         have_packet = 1;
+      }
       else if (got == -1)
       {
         nsleeps++;
@@ -122,7 +124,6 @@ void spip::UDPReceiver::receive ()
         cont = 0;
       }
     }
-
 
     packet_number = format->decode_header_seq (buf);
 

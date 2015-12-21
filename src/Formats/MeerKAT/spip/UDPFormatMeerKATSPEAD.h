@@ -5,6 +5,8 @@
 #include "spip/meerkat_def.h"
 #include "spip/UDPFormat.h"
 
+#include "spead2/recv_packet.h"
+
 #define UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP 4550
 #define UDP_FORMAT_MEERKAT_SPEAD_NDIM 2
 #define UDP_FORMAT_MEERKAT_SPEAD_NPOL 2
@@ -40,6 +42,8 @@ namespace spip {
   } spead_item_pointer_t;
 
   typedef struct {
+
+    spead2::recv::packet_header hdr;
 
     spead_hdr_t spead_hdr;
 
@@ -99,15 +103,19 @@ namespace spip {
       inline void gen_packet (char * buf, size_t bufsz);
 
       // accessor methods for header params
-      void set_heap_num (int64_t heap_num ) { header.heap_number.item_address = heap_num; };
-      void set_chan_no (int16_t chan_no)    { header.frequency_channel.item_address = chan_no; };
-      void set_beam_no (int16_t beam_no)    { header.beam_number.item_address = beam_no; };
+      void set_heap_num (int64_t heap_num ) { header.heap_cnt = heap_num * 8192; };
+      void set_chan_no (int16_t chan_no)    { ; };
+      void set_beam_no (int16_t beam_no)    { ; };
 
       static unsigned get_samples_per_packet () { return UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP; };
 
     private:
 
-      meerkat_spead_udp_hdr_t header;
+      spead2::recv::packet_header header;
+
+      uint64_t obs_start_sample;
+
+      //meerkat_spead_udp_hdr_t header;
 
       //uint64_t nsamp_offset;
 

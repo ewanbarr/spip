@@ -11,6 +11,7 @@
 #include "spead2/recv_ring_stream.h"
 
 #include "spip/DataBlockWrite.h"
+#include "spip/SPEADBeamFormerConfig.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -72,8 +73,6 @@ namespace spip {
 
       char * header;
 
-      bool keep_receiving;
-
       unsigned nchan;
 
       unsigned ndim;
@@ -92,7 +91,13 @@ namespace spip {
 
       unsigned bytes_per_second;
 
+      uint64_t start_adc_sample;
+
     private:
+
+      bool have_metadata;
+
+      bool keep_receiving;
 
       //boost::asio::ip::udp::endpoint * endpoint;
 
@@ -103,6 +108,10 @@ namespace spip {
       int spead_port;
 
       unsigned heap_size;
+
+      SPEADBeamFormerConfig bf_config;
+
+      uint64_t timestamp;
   };
 
 }
