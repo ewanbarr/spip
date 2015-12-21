@@ -26,34 +26,6 @@ spip::Socket::Socket ()
 
   bufsz = 1500;               // standard MTU on most networks
 
-#ifdef HAVE_HWLOC
-  hwloc_topology_init(&topology);
-  hwloc_topology_load(topology);
-  int core_depth;
-  hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
-  if (obj)
-  {
-    // Get a copy of its cpuset that we may modify.
-    hwloc_cpuset_t cpuset = hwloc_bitmap_dup (obj->cpuset);
-
-    // Get only one logical processor (in case the core is SMT/hyperthreaded)
-    hwloc_bitmap_singlify (cpuset);
-
-    hwloc_membind_policy_t policy = HWLOC_MEMBIND_BIND;
-    hwloc_membind_flags_t flags = HWLOC_MEMBIND_THREAD;
-
-    int result = hwloc_set_membind (topology, cpuset, policy, flags);
-    if (result < 0)
-    {
-      fprintf (stderr, "dada_db: failed to set memory binding policy: %s\n",
-               strerror(errno));
-    }
-
-    // Free our cpuset copy
-    hwloc_bitmap_free(cpuset);
-  }
-#endif
-
   buf = (char *) malloc(bufsz);
   if (!buf)
   {
@@ -69,10 +41,6 @@ spip::Socket::~Socket ()
   if (buf)
     free (buf);
   buf = 0;
-
-#ifdef HAVE_HWLOC
-  hwloc_topology_destroy(topology);
-#endif
 }
 
 void spip::Socket::close_me ()

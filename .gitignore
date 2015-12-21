@@ -41,4 +41,4 @@ src/Formats/MeerKAT/meerkat_udpdb
 src/Formats/MeerKAT/meerkat_udpgen
 src/Formats/MeerKAT/meerkat_dbstats
 src/Formats/MeerKAT/meerkat_udprecv
-
+src/Formats/KAT7/kat7_dbstats

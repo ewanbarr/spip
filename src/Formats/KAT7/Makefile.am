@@ -14,8 +14,8 @@ AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Dada 
 
 LDADD = libkat7.la \
-	$(top_builddir)/src/Network/libspipnet.la \
 	$(top_builddir)/src/Dada/libspipdada.la \
+	$(top_builddir)/src/Network/libspipnet.la \
 	-L/opt/cross/lib
 
 AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
