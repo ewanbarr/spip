@@ -28,9 +28,19 @@ def getUTCTime(toadd=0):
   now_str = now.strftime("%Y-%m-%d-%H:%M:%S")
   return now_str
 
+def convertLocalToUnixTime(epoch_str):
+  epoch = datetime.strptime(epoch_str, "%Y-%m-%d-%H:%M:%S")
+  return epoch.strftime('%s')
+
 def convertUTCToUnixTime(epoch_str):
   epoch = datetime.strptime(epoch_str + " UTC", "%Y-%m-%d-%H:%M:%S %Z")
   return epoch.strftime('%s')
+
+def diffUTCTimes(epoch1_str, epoch2_str):
+  epoch1 = datetime.strptime(epoch1_str+ " UTC", "%Y-%m-%d-%H:%M:%S %Z")
+  epoch2 = datetime.strptime(epoch2_str+ " UTC", "%Y-%m-%d-%H:%M:%S %Z")
+  delta = epoch2 - epoch1
+  return delta.seconds
 
 def diffUTCTime(epoch_str):
   epoch = datetime.strptime(epoch_str+ " UTC", "%Y-%m-%d-%H:%M:%S %Z")

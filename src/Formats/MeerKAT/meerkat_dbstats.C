@@ -10,13 +10,13 @@
 #include "dada_affinity.h"
 #include "ascii_header.h"
 
+#include "spip/BlockFormatMeerKAT.h"
 #include "spip/DataBlockStats.h"
 #include "spip/TCPSocketServer.h"
 
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -48,9 +48,6 @@ int main(int argc, char *argv[]) try
   int core = -1;
 
   string stats_dir = "";
-
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
 
   int verbose = 0;
 
@@ -85,12 +82,6 @@ int main(int argc, char *argv[]) try
         exit(EXIT_SUCCESS);
         break;
 
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
-        break;
-
       case 's':
         stream = atoi(optarg);
         break;
@@ -111,14 +102,12 @@ int main(int argc, char *argv[]) try
   if (core >= 0)
     dada_bind_thread_to_core (core);
   
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
-
   // create a DataBlockStats processor to read from the DB
   if (verbose)
     cerr << "meerkat_dbstats: creating DataBlockStats with " << key << endl;
   dbstats = new spip::DataBlockStats (key.c_str());
+
+  dbstats->set_block_format (new spip::BlockFormatMeerKAT());
 
   // Check arguments
   if ((argc - optind) != 1) 
@@ -251,7 +240,6 @@ void usage()
     "  -D dir      dump HG and FT files to dir [default cwd]\n"
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to read from [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
-    "  -n node     allocate memory only on NUMA node\n"
     "  -s stream   dump HG and FT files with this stream id [default 0]\n"
     "  -v          verbose output\n"
     << endl;

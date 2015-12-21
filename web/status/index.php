@@ -204,7 +204,7 @@ class status extends spip_webpage
     echo "</table>\n";
   }
 
-  function printUpdateHTML()
+  function printUpdateHTML($get)
   {
     # spip_lmc script runs on each client/server, check that it is running and responsive
     $xml = "<status_update>";

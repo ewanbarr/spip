@@ -39,7 +39,7 @@ class RecvDaemon(Daemon,StreamBased):
     self.binary_list.append (cmd)
 
     rval = 1
-    while rval and smrb_wait > 0 and self.quit_event.isSet:
+    while rval and smrb_wait > 0 and not self.quit_event.isSet():
 
       rval, lines = self.system (cmd)
       if rval:

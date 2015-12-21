@@ -76,11 +76,21 @@ class stat extends spip_webpage
                   polarisation = polarisations[j];
                   pol_name = polarisation.getAttribute("name")
 
-                  hg_mean   = polarisation.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue;
-                  hg_stddev = polarisation.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue;
+                  var dimensions = polarisation.getElementsByTagName ("dimension");
+                  for (k=0; k<dimensions.length; k++)
+                  {
+                    var dimension = dimensions[k];
+                    var dim_name = dimension.getAttribute("name")
+                    var hg_mean   = parseFloat(dimension.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue);
+                    var hg_stddev = parseFloat(dimension.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue);
+                    var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;
+                    var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
+          
+                    document.getElementById(hg_mean_id).innerHTML = hg_mean.toFixed(2);
+                    document.getElementById(hg_stddev_id).innerHTML = hg_stddev.toFixed(2);
+                  }
 
                   plots = polarisation.getElementsByTagName("plot");
-    
                   for (k=0; k<plots.length; k++)
                   {
                     var plot = plots[k]
@@ -94,7 +104,7 @@ class stat extends spip_webpage
                     //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
                     if (plot_timestamp != document.getElementById(plot_ts).value)
                     {
-                      url = "/spip/stat/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
+                      url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
                       document.getElementById(plot_id).src = url;
                       document.getElementById(plot_ts).value = plot_timestamp;
                     }
@@ -245,13 +255,42 @@ class stat extends spip_webpage
   function renderObsTable ($stream)
   {
     $cols = 4;
-    $fields = array( $stream."_histogram_mean_0" => "Mean [0]",
-                     $stream."_histogram_stddev_0" => "StdDev [0]",
-                     $stream."_histogram_mean_1" => "Mean [1]",
-                     $stream."_histogram_stddev_1" => "StdDev [1]" );
+    $fields = array( $stream."_histogram_mean_0_real" => "Mean [0 Re]",
+                     $stream."_histogram_mean_0_imag" => "Mean [0 Im]",
+                     $stream."_histogram_mean_1_real" => "Mean [1 Re]",
+                     $stream."_histogram_mean_1_imag" => "Mean [1 Im]",
+                     $stream."_histogram_stddev_0_real" => "StdDev [0 Re]",
+                     $stream."_histogram_stddev_1_real" => "StdDev [1 Re]",
+                     $stream."_histogram_stddev_0_imag" => "StdDev [0 Im]",
+                     $stream."_histogram_stddev_1_imag" => "StdDev [1 Im]" );
 
-    echo "<table id='obsTable' width='100%'>\n";
+    echo "<table id='obsTable' width='100%' border=0>\n";
 
+    echo "<tr><th colspan=8 style='text-align: center;'>Stream ".$stream."</th></tr>\n";
+
+    echo "<tr><th colspan=4 style='text-align: center;'>Pol 0</th>".
+             "<th colspan=4 style='text-align: center;'>Pol 1</th></tr>\n";
+
+
+    echo "<tr>\n";
+    echo "<th width='10%'>Mean</th>\n";
+    echo "<td width='15%'>(<span id='".$stream."_histogram_mean_0_real'></span>,".
+                           "<span id='".$stream."_histogram_mean_0_imag'></span>)</td>\n";
+
+    echo "<th width='10%'>Std. Dev.</th>\n";
+    echo "<td width='15%'>(<span id='".$stream."_histogram_stddev_0_real'></span>,".
+                           "<span id='".$stream."_histogram_stddev_0_imag'></span>)</td>\n";
+
+    echo "<th width='10%'>Mean</th>\n";
+    echo "<td width='15%'>(<span id='".$stream."_histogram_mean_1_real'></span>,".
+                           "<span id='".$stream."_histogram_mean_1_imag'></span>)</td>\n";
+    echo "<th width='10%'>Std. Dev.</th>\n";
+    echo "<td width='15%'>(<span id='".$stream."_histogram_stddev_1_real'></span>,".
+                           "<span id='".$stream."_histogram_stddev_1_imag'></span>)</td>\n";
+    
+    echo "</tr>\n";
+
+    /*
     $keys = array_keys($fields);
     for ($i=0; $i<count($keys); $i++)
     {
@@ -262,6 +301,7 @@ class stat extends spip_webpage
       if (($i+1) % $cols == 0)
         echo "  </tr>\n";
     }
+    */
     echo "</table>\n";
   }
 
@@ -272,11 +312,10 @@ class stat extends spip_webpage
     echo "<table  width='100%' id='plotTable'>\n";
     echo "<tr>\n";
     echo   "<td><img id='".$stream."_histogram_0' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_ts'/></td>\n";
-    echo   "<td><img id='".$stream."_histogram_1' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_ts'/></td>\n";
     echo   "<td><img id='".$stream."_freq_vs_time_0' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_0_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_1' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_ts'/></td>\n";
     echo   "<td><img id='".$stream."_freq_vs_time_1' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_1_ts'/></td>\n";
-    echo "<tr><td>Input HG</td><td>Freq vs Time</td></tr>\n";
-    echo "</tr>\n";
+    echo "<tr><td>Input HG</td><td>Freq vs Time</td><td>Input HG</td><td>Freq vs Time</td></tr>\n";
 
     echo "</table>\n";
   }

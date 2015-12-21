@@ -9,6 +9,7 @@
 #include "futils.h"
 #include "dada_affinity.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiver.h"
 #include "spip/UDPFormatCustom.h"
 
@@ -41,6 +42,7 @@ int main(int argc, char *argv[])
 
   // core on which to bind thread operations
   int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
   int verbose = 0;
 
@@ -53,6 +55,8 @@ int main(int argc, char *argv[])
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'f':

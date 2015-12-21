@@ -5,14 +5,16 @@
  *
  ****************************************************************************/
 
+#include "config.h" 
+
 #include "dada_def.h"
 #include "dada_affinity.h"
 #include "futils.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPGenerator.h"
 #include "spip/UDPFormatCustom.h"
 
-#include <numa.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h> 
@@ -50,23 +52,23 @@ int main(int argc, char *argv[])
   // data rate at which to transmit
   float data_rate_gbits = 0.5;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
-
   // core on which to bind thread operations
   int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hn:p:r:t:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:p:r:t:v")) != EOF) 
   {
     switch(c) 
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'f':
@@ -76,12 +78,6 @@ int main(int argc, char *argv[])
       case 'h':
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 't':
@@ -106,21 +102,6 @@ int main(int argc, char *argv[])
         break;
     }
   }
-
-  if (core >= 0)
-  {
-    cerr << "Binding to CPU core " << core << endl;
-    dada_bind_thread_to_core (core);
-  }
-
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-  {
-    cerr << "Binding to numa with node_mask " << &node_mask << endl;
-    numa_set_membind (node_mask);
-  }
-  else
-    cerr << "NUMA not present or configured" << endl;
 
   // Check arguments
   if ((argc - optind) != 2) 
@@ -217,7 +198,6 @@ void usage()
     "  -f format   generate UDP data of format [custom standard spead vdif]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
-    "  -n node     allocate memory only on NUMA node\n"
     "  -t secs     number of seconds to transmit [default 5]\n"
     "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -r rate     transmit at rate Gib/s [default 0.5]\n"

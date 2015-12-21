@@ -17,7 +17,7 @@
 #include <new>
 #include <pthread.h>
 
-#ifdef  USING_VMA_EXTRA_API
+#ifdef  HAVE_VMA
 #include <mellanox/vma_extra.h>
 #endif
 
@@ -39,7 +39,7 @@ spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
   control_port = -1;
   header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
 
-#ifdef USING_VMA_EXTRA_API
+#ifdef HAVE_VMA
   vma_api = vma_get_api(); 
   if (!vma_api)
     cerr << "spip::UDPReceiveDB::UDPReceiveDB VMA support compiled, but VMA not available" << endl;
@@ -133,8 +133,7 @@ void spip::UDPReceiveDB::set_format (spip::UDPFormat * fmt)
 void spip::UDPReceiveDB::start_control_thread (int port)
 {
   control_port = port;
-
-   pthread_create (&control_thread_id, 0, control_thread_wrapper, this);
+  pthread_create (&control_thread_id, 0, control_thread_wrapper, this);
 }
 
 // wrapper method to start control thread
@@ -359,7 +358,7 @@ bool spip::UDPReceiveDB::receive ()
   cerr << "spip::UDPReceiveDB::receive packets_per_buf=" << packets_per_buf << endl;
 #endif
 
-#ifdef USING_VMA_EXTRA_API
+#ifdef HAVE_VMA
   int flags;
   cerr << "spip::UDPReceiveDB::receive beginning acquisition loop" << endl;
 #endif
@@ -371,7 +370,7 @@ bool spip::UDPReceiveDB::receive ()
   {
     if (vma_api)
     {
-#ifdef USING_VMA_EXTRA_API
+#ifdef HAVE_VMA
       if (pkts)
       {
         vma_api->free_packets(fd, pkts->pkts, pkts->n_packet_num);

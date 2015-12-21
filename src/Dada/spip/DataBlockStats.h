@@ -4,6 +4,7 @@
 
 #include "dada_def.h"
 
+#include "BlockFormat.h"
 #include "spip/DataBlockView.h"
 
 #include <iostream>
@@ -27,6 +28,8 @@ namespace spip {
       int configure (const char * config);
 
       void prepare ();
+
+      void set_block_format (BlockFormat * fmt);
 
       void start_control_thread (int port);
 
@@ -52,9 +55,11 @@ namespace spip {
 
       void update_stats();
 
+      BlockFormat * block_format;
+
       DataBlockView * db;
 
-      void * buffer;
+      char * buffer;
 
       pthread_t control_thread_id;
 

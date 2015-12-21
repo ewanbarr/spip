@@ -13,6 +13,7 @@ from spip.daemons.bases import BeamBased,ServerBased
 from spip.daemons.daemon import Daemon
 from spip.threads.reporting_thread import ReportingThread
 from spip.utils import times,sockets
+from spip.plotting import SNRPlot
 
 DAEMONIZE = True
 DL        = 1
@@ -30,6 +31,7 @@ class RepackReportingThread(ReportingThread):
       self.no_data = file.read()
 
   def parse_message (self, request):
+
     self.script.log (2, "RepackReportingThread::parse_message: " + str(request))
 
     xml = ""
@@ -66,6 +68,7 @@ class RepackReportingThread(ReportingThread):
           xml += "<plot type='freq_vs_phase' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
           xml += "<plot type='time_vs_phase' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
           xml += "<plot type='bandpass' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
+          xml += "<plot type='snr_vs_time' timestamp='" + self.script.results[beam]["timestamp"] + "'/>"
 
         xml += "</beam>"
 
@@ -90,6 +93,8 @@ class RepackReportingThread(ReportingThread):
           self.script.results[req["beam"]]["lock"].release()
           return False, bin_data
         else:
+          self.script.log (2, "RepackReportingThread::parse_message beam was not valid")
+
           self.script.results[req["beam"]]["lock"].release()
           # still return if the timestamp is recent
           return False, self.no_data
@@ -105,10 +110,13 @@ class RepackDaemon(Daemon):
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
 
-    self.valid_plots = ["freq_vs_phase", "flux_vs_phase", "time_vs_phase", "bandpass"]
+    self.valid_plots = ["freq_vs_phase", "flux_vs_phase", "time_vs_phase", "bandpass", "snr_vs_time"]
     self.beams = []
     self.subbands = []
     self.results = {}
+    self.snr_history = {}
+
+    self.snr_plot = SNRPlot()
 
   #################################################################
   # main
@@ -125,7 +133,7 @@ class RepackDaemon(Daemon):
 
     # summary data stored in
     #  beam / utc_start / source / freq.sum
-    out_cfreq = 0
+    # out_cfreq = 0
 
     if not os.path.exists(self.processing_dir):
       os.makedirs(self.processing_dir, 0755) 
@@ -164,7 +172,7 @@ class RepackDaemon(Daemon):
             continue
 
           obs_dir = beam_dir + "/" + observation
-          out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(out_cfreq)
+          out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(self.out_cfreq)
 
           self.log (2, "main: chekcing out_dir=" + out_dir)
           if not os.path.exists(out_dir):
@@ -343,17 +351,17 @@ class RepackDaemon(Daemon):
 
     timestamp = times.getCurrentTime() 
 
-    cmd = "psrplot -p freq " + freq_file + " -D -/png"
+    cmd = "psrplot -p freq " + freq_file + " -jp -D -/png"
     rval, freq_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create freq plot")
 
-    cmd = "psrplot -p time " + time_file + " -D -/png"
+    cmd = "psrplot -p time " + time_file + " -jp -D -/png"
     rval, time_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrplot -p flux -jF " + freq_file + " -D -/png"
+    cmd = "psrplot -p flux -jF " + freq_file + " -jp -D -/png"
     rval, flux_raw = self.system_raw (cmd)
     if rval < 0:
       return (rval, "failed to create time plot")
@@ -363,13 +371,13 @@ class RepackDaemon(Daemon):
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{printf(\"%5.1f\",$2)}'"
+    cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{printf(\"%f\",$2)}'"
     rval, lines = self.system (cmd)
     if rval < 0:
       return (rval, "failed to extract snr from freq.sum")
     snr = lines[0]
 
-    cmd = "psrstat -c length " + time_file + " | awk -F= '{printf(\"%5.1f\",$2)}'"
+    cmd = "psrstat -c length " + time_file + " | awk -F= '{printf(\"%f\",$2)}'"
     rval, lines = self.system (cmd)
     if rval < 0:
       return (rval, "failed to extract time from time.sum")
@@ -387,6 +395,17 @@ class RepackDaemon(Daemon):
     self.results[beam]["snr"] = snr
     self.results[beam]["length"] = length
     self.results[beam]["valid"] = True
+    
+    t1 = int(times.convertLocalToUnixTime(timestamp))
+    t2 = int(times.convertUTCToUnixTime(utc))
+    delta_time = t1 - t2
+    self.snr_history[beam]["times"].append(delta_time)
+    self.snr_history[beam]["snrs"].append(snr)
+
+    self.snr_plot.configure()
+    self.snr_plot.plot (240, 180, False, self.snr_history[beam]["times"], self.snr_history[beam]["snrs"])
+    self.log (2, "process_observation: snr_plot len=" + str(len(self.snr_plot.getRawImage())))
+    self.results[beam]["snr_vs_time"] = self.snr_plot.getRawImage()
 
     self.results[beam]["lock"].release() 
 
@@ -420,6 +439,8 @@ class RepackDaemon(Daemon):
       fptr.write(self.results[beam]["bandpass"])
       fptr.close()
 
+      self.snr_history[beam]["times"] = []
+      self.snr_history[beam]["snrs"] = []
 
       # indicate that the beam is no longer valid now that the 
       # observation has finished
@@ -456,6 +477,10 @@ class RepackServerDaemon (RepackDaemon, ServerBased):
       self.results[bid]["valid"] = False
       self.results[bid]["lock"] = threading.Lock()
       self.results[bid]["cond"] = threading.Condition(self.results[bid]["lock"])
+
+      self.snr_history[bid] = {}
+      self.snr_history[bid]["times"] = []
+      self.snr_history[bid]["snrs"] = []
 
     for i in range(int(self.cfg["NUM_SUBBAND"])):
       (cfreq , bw, nchan) = self.cfg["SUBBAND_CONFIG_" + str(i)].split(":")
@@ -498,6 +523,10 @@ class RepackBeamDaemon (RepackDaemon, BeamBased):
     self.results[bid]["valid"] = False
     self.results[bid]["lock"] = threading.Lock()
     self.results[bid]["cond"] = threading.Condition(self.results[bid]["lock"])
+
+    self.snr_history[bid] = {}
+    self.snr_history[bid]["times"] = []
+    self.snr_history[bid]["snrs"] = []
 
     # find the subbands for the specified beam that are processed by this script
     for isubband in range(int(self.cfg["NUM_SUBBAND"])):

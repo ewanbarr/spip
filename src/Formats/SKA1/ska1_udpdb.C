@@ -9,13 +9,13 @@
 #include "futils.h"
 #include "dada_affinity.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatCustom.h"
 
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -47,21 +47,21 @@ int main(int argc, char *argv[]) try
 
   // core on which to bind thread operations
   int core = -1;
-
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
+  spip::HardwareAffinity hw_affinity;
 
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hk:n:p:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hk:p:v")) != EOF) 
   {
     switch(c) 
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'f':
@@ -76,12 +76,6 @@ int main(int argc, char *argv[]) try
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 'p':
@@ -99,14 +93,6 @@ int main(int argc, char *argv[]) try
         break;
     }
   }
-
-  // bind CPU computation to specific core
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
-  
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
 
   // create a UDP recevier that writes to a data block
   udpdb = new spip::UDPReceiveDB (key.c_str());
@@ -206,7 +192,6 @@ void usage()
     "  -f format   UDP data format [standard custom]\n"
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
-    "  -n node     allocate memory only on NUMA node\n"
     "  -p port     destination udp port [default " << std::dec << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -v          verbose output\n"
     << endl;

@@ -2,6 +2,8 @@
 #ifndef __Socket_h
 #define __Socket_h
 
+#include "config.h"
+
 #include <cstddef>
 #include <string>
 

@@ -34,7 +34,7 @@ class TCSReportingThread (ReportingThread):
     self.script.log(0, "beams=" + str(self.beams))
 
   def parse_message (self, xml):
-    self.script.log (0, "TCSReportingThread::parse_message: " + str(xml))
+    self.script.log (2, "TCSReportingThread::parse_message: " + str(xml))
 
     xml  = "<tcs_state>"
     for beam in self.beams:
@@ -259,14 +259,14 @@ class TCSDaemon(Daemon):
         beam_name = self.cfg["BEAM_" + beam]
 
         # control port the this recv stream 
-        ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
+        #ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
 
         # connect to recv agent and provide observation configuration
-        self.log(1, "issue_cmd: openSocket("+host+","+str(ctrl_port)+")")
-        sock = sockets.openSocket (DL, host, ctrl_port, 1)
-        if sock:
-          sock.send(obs_header)
-          sock.close()
+        #self.log(1, "issue_cmd: openSocket("+host+","+str(ctrl_port)+")")
+        #sock = sockets.openSocket (DL, host, ctrl_port, 1)
+        #if sock:
+        #  sock.send(obs_header)
+        #  sock.close()
 
         # connect to spip_gen and issue start command for UTC
         # assumes gen host is the same as the recv host!

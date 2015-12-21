@@ -9,14 +9,17 @@
 #include "futils.h"
 #include "dada_affinity.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiver.h"
 #include "spip/UDPFormatMeerKATSimple.h"
+
+#ifdef HAVE_SPEAD2
 #include "spip/UDPFormatMeerKATSPEAD.h"
+#endif
 
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <numa.h>
 
 #include <cstdio>
 #include <cstring>
@@ -33,7 +36,11 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
+#ifdef HAVE_SPEAD2
   string * format = new string("spead");
+#else
+  string * format = new string("simple");
+#endif
 
   char * config_file = 0;
 
@@ -44,22 +51,23 @@ int main(int argc, char *argv[])
   int port = MEERKAT_DEFAULT_UDP_PORT;
 
   // core on which to bind thread operations
-  int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
-  char have_numa = (numa_available() != -1);
-  struct bitmask * node_mask = 0;
+  int core = -1;
 
   int verbose = 0;
 
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hnp:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hp:v")) != EOF) 
   {
     switch(c) 
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'f':
@@ -70,12 +78,6 @@ int main(int argc, char *argv[])
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'n':
-        node_mask = numa_parse_nodestring (optarg);
-        if (!node_mask)
-          cerr << "ERROR: failed to parse NUMA node from " << optarg << endl;
         break;
 
       case 'p':
@@ -94,24 +96,18 @@ int main(int argc, char *argv[])
     }
   }
 
-  // bind CPU computation to specific core
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
-
-  // set memory allocation policy to NUMA node
-  if (have_numa && node_mask)
-    numa_set_membind (node_mask);
-
   // create a UDP Receiver
   udprecv = new spip::UDPReceiver();
 
   if (format->compare("simple") == 0)
     udprecv->set_format (new spip::UDPFormatMeerKATSimple());
+#ifdef HAVE_SPEAD2
   else if (format->compare("spead") == 0)
   {
     cerr << "spip::UDPReceiver set_format (spip::UDPFormatMeerKATSPEAD)" << endl;
     udprecv->set_format (new spip::UDPFormatMeerKATSPEAD());
   }
+#endif
   else
   {
     cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
@@ -191,7 +187,11 @@ void usage()
   cout << "meerkat_udprecv [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        hostname/ip of UDP receiver\n"
-    "  -f format   recverate UDP data of format [standard custom spead vdif]\n"
+#ifdef HAVE_SPEAD2
+    "  -f format   recverate UDP data of format [simple spead]\n"
+#else
+    "  -f format   recverate UDP data of format [simple spead]\n"
+#endif
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
     "  -n secs     number of seconds to transmit [default 5]\n"

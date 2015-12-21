@@ -114,7 +114,7 @@ class GenDaemon(Daemon,StreamBased):
               xml_response = "<gen_response>" + response + "</gen_response>"
               handle.send (xml_response)
 
-  ###############################################################################
+  #############################################################################
   # Generate the UDP data stream based on parameters in the XML message
   def gen_obs (self, fixed_config, message):
 

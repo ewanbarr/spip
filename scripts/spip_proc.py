@@ -71,6 +71,8 @@ class ProcDaemon (Daemon, StreamBased):
     db_id_in  = self.cfg["PROCESSING_DATA_BLOCK"]
     db_id_out = self.cfg["SEND_DATA_BLOCK"]
     num_stream = self.cfg["NUM_STREAM"]
+
+    stream_id = self.id
     db_key_in = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_in)
     db_key_out = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_out)
 
@@ -86,113 +88,157 @@ class ProcDaemon (Daemon, StreamBased):
     gpu_id = self.cfg["GPU_ID_" + str(self.id)]
     prev_utc_start = ""
 
-    while (not self.quit_event.isSet()):
+    (cfreq, bw, nchan) = self.cfg["SUBBAND_CONFIG_" + stream_id].split(":")
 
-      cmd = "dada_header -k " + db_key_in
-      self.binary_list.append (cmd)
-      self.log(0, cmd)
+    # wait up to 10s for the SMRB to be created
+    smrb_wait = 10
+    cmd = "dada_dbmetric -k " + db_key_in
+    self.binary_list.append (cmd)
+
+    rval = 1
+    while rval and smrb_wait > 0 and not self.quit_event.isSet():
+
       rval, lines = self.system (cmd)
+      if rval:
+        time.sleep(1)
+      smrb_wait -= 1
 
-      # if the command returned ok and we have a header
-      if rval != 0:
-        if self.quit_event.isSet():
-          self.log (2, cmd + " failed, but quit_event true")
-        else:
-          self.log (-2, cmd + " failed")
-          self.quit_event.set()
+    if rval:
+      self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
+                  "key=" + db_key)
+      self.quit_event.set()
 
-      elif len(lines) == 0:
-      
-        self.log (-2, "header was empty")
-        self.quit_event.set()
-      
-      else:
+    else:
 
-        header = config.parseHeader (lines)
+      while (not self.quit_event.isSet()):
 
-        utc_start = header["UTC_START"]
+        cmd = "dada_header -k " + db_key_in
+        self.binary_list.append (cmd)
+        self.log(0, cmd)
+        rval, lines = self.system (cmd)
 
-        # default processing commands
-        fold_cmd = "dada_dbnull -s -k " + db_key_in
-        trans_cmd = "dada_dbnull -s -k " + db_key_out
-        search_cmd = "dada_dbnull -s -k " + db_key_in
+        # if the command returned ok and we have a header
+        if rval != 0:
+          if self.quit_event.isSet():
+            self.log (2, cmd + " failed, but quit_event true")
+          else:
+            self.log (-2, cmd + " failed")
+            self.quit_event.set()
 
-        if prev_utc_start == utc_start:
-          self.log (-2, "UTC_START [" + utc_start + "] repeated, ignoring observation")
+        elif len(lines) == 0:
         
-        else: 
-          beam = self.cfg["BEAM_" + str(self.beam_id)]
-          cfreq = header["FREQ"]
-          source = header["SOURCE"]
+          self.log (-2, "header was empty")
+          self.quit_event.set()
+        
+        else:
 
-          # output directories 
-          suffix     = "/processing/" + beam + "/" + utc_start + "/" + source + "/" + cfreq
-          fold_dir   = self.cfg["CLIENT_FOLD_DIR"]   + suffix
-          trans_dir  = self.cfg["CLIENT_TRANS_DIR"]  + suffix
-          search_dir = self.cfg["CLIENT_SEARCH_DIR"] + suffix
+          header = config.parseHeader (lines)
 
-          if header["PERFORM_FOLD"] == "1":
-            os.makedirs (fold_dir, 0755)
-            fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -overlap -minram 4000 -x 16384 -b 1024 -L 5 -no_dyn"
-            #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
+          utc_start = header["UTC_START"]
 
-          if header["PERFORM_SEARCH"] == "1" or header["PERFORM_TRANS"] == "1":
-            os.makedirs (search_dir, 0755)
-            search_cmd = "digifil " + db_key_filename + " -c -B 10 -o " + utc_start + " .fil"
-            if header["PERFORM_TRANS"] == "1":
-              search_cmd += " -k " + db_key_out
+          # default processing commands
+          fold_cmd = "dada_dbnull -s -k " + db_key_in
+          trans_cmd = "dada_dbnull -s -k " + db_key_out
+          search_cmd = "dada_dbnull -s -k " + db_key_in
 
-          if header["PERFORM_TRANS"] == "1" and int(self.cfg["NUM_SUBBAND"] ) == "1":
-            os.makedirs (trans_dir, 0755)
-            trans_cmd = "heimdall -k " + db_key_out + " -gpu_id 1"
+          if prev_utc_start == utc_start:
+            self.log (-2, "UTC_START [" + utc_start + "] repeated, ignoring observation")
+          
+          else: 
+            beam = self.cfg["BEAM_" + str(self.beam_id)]
 
-        log_host = self.cfg["SERVER_HOST"]
-        log_port = int(self.cfg["SERVER_LOG_PORT"])
+            if not float(bw) == float(header["BW"]):
+              self.log (-2, "configured bandwidth ["+bw+"] != header["+header["BW"]+"]")
+            if not float(cfreq) == float(header["FREQ"]):
+              self.log (-2, "configured cfreq ["+cfreq+"] != header["+header["FREQ"]+"]")
+            if not int(nchan) == int(header["NCHAN"]):
+              self.log (-2, "configured nchan ["+nchan+"] != header["+header["NCHAN"]+"]")
 
-        # setup output pipes
-        fold_log_pipe   = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
-                                     log_host, log_port, int(DL))
+            source = header["SOURCE"]
 
-        #trans_log_pipe  = LogSocket ("trans_src", "trans_src", str(self.id), "stream",
-        #                             log_host, log_port, int(DL))
-        #search_log_pipe = LogSocket ("search_src", "search_src", str(self.id), "stream",
-        #                             log_host, log_port, int(DL))
+            # output directories 
+            suffix     = "/processing/" + beam + "/" + utc_start + "/" + source + "/" + cfreq
+            fold_dir   = self.cfg["CLIENT_FOLD_DIR"]   + suffix
+            trans_dir  = self.cfg["CLIENT_TRANS_DIR"]  + suffix
+            search_dir = self.cfg["CLIENT_SEARCH_DIR"] + suffix
+            
+            fold = False
+            search = False
+            trans = False 
+          
+            try:
+              fold = (header["PERFORM_FOLD"] == "1")
+              search = (header["PERFORM_SEARCH"] == "1")
+              trans = (header["PERFORM_TRANS"] == "1")
+            except KeyError as e:
+              fold = True
+              search = False
+              trans = False 
 
-        fold_log_pipe.connect()
+            if fold:
+              os.makedirs (fold_dir, 0755)
+              fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -overlap -minram 4000 -x 16384 -b 1024 -L 5 -no_dyn"
+              fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn"
+              fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn -skz -skzs 4 -skzm 128 -skz_no_tscr -skz_no_fscr"
+              #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
-        self.binary_list.append (fold_cmd)
-        #self.binary_list.append (trans_cmd)
-        #self.binary_list.append (search_cmd)
+            if search or trans:
+              os.makedirs (search_dir, 0755)
+              search_cmd = "digifil " + db_key_filename + " -c -B 10 -o " + utc_start + " .fil"
+              if trans:
+                search_cmd += " -k " + db_key_out
 
-        # create processing threads
-        self.log (1, "creating processing threads")      
-        fold_thread = procThread (fold_cmd, fold_dir, fold_log_pipe.sock, 1)
+            if trans and int(self.cfg["NUM_SUBBAND"] ) == "1":
+              os.makedirs (trans_dir, 0755)
+              trans_cmd = "heimdall -k " + db_key_out + " -gpu_id 1"
 
-        #trans_thread = procThread (trans_cmd, self.log_sock.sock, 2)
-        #search_thread = procThread (search_cmd, self.log_sock.sock, 2)
+          log_host = self.cfg["SERVER_HOST"]
+          log_port = int(self.cfg["SERVER_LOG_PORT"])
 
-        # start processing threads
-        self.log (1, "starting processing threads")      
-        fold_thread.start()
-        #trans_thread.start()
-        #search_thread.start()
+          # setup output pipes
+          fold_log_pipe   = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
+                                       log_host, log_port, int(DL))
 
-        # join processing threads
-        self.log (2, "waiting for fold thread to terminate")
-        rval = fold_thread.join() 
-        self.log (2, "fold thread joined")
-        if rval:
-          self.log (-2, "fold thread failed")
-          quit_event.set()
+          #trans_log_pipe  = LogSocket ("trans_src", "trans_src", str(self.id), "stream",
+          #                             log_host, log_port, int(DL))
+          #search_log_pipe = LogSocket ("search_src", "search_src", str(self.id), "stream",
+          #                             log_host, log_port, int(DL))
 
-        #self.log (2, "joining trans thread")
-        #rval = trans_thread.join() 
-        #self.log (2, "trans thread joined")
-        #if rval:
-        #  self.log (-2, "trans thread failed")
-        #  quit_event.set()
+          fold_log_pipe.connect()
 
-        #self.log (2, "joining search thread")
+          self.binary_list.append (fold_cmd)
+          #self.binary_list.append (trans_cmd)
+          #self.binary_list.append (search_cmd)
+
+          # create processing threads
+          self.log (1, "creating processing threads")      
+          fold_thread = procThread (fold_cmd, fold_dir, fold_log_pipe.sock, 1)
+
+          #trans_thread = procThread (trans_cmd, self.log_sock.sock, 2)
+          #search_thread = procThread (search_cmd, self.log_sock.sock, 2)
+
+          # start processing threads
+          self.log (1, "starting processing threads")      
+          fold_thread.start()
+          #trans_thread.start()
+          #search_thread.start()
+
+          # join processing threads
+          self.log (2, "waiting for fold thread to terminate")
+          rval = fold_thread.join() 
+          self.log (2, "fold thread joined")
+          if rval:
+            self.log (-2, "fold thread failed")
+            quit_event.set()
+
+          #self.log (2, "joining trans thread")
+          #rval = trans_thread.join() 
+          #self.log (2, "trans thread joined")
+          #if rval:
+          #  self.log (-2, "trans thread failed")
+          #  quit_event.set()
+
+          #self.log (2, "joining search thread")
         #rval = search_thread.join() 
         #self.log (2, "search thread joined")
         #if rval:

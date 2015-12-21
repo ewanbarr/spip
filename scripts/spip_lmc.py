@@ -19,6 +19,7 @@ from spip.daemons.bases import HostBased
 from spip.daemons.daemon import Daemon
 from spip.utils.sockets import getHostNameShort
 from spip import config
+from spip.utils.core import system
 
 DAEMONIZE = True
 DL        = 1
@@ -48,11 +49,8 @@ class clientThread (threading.Thread):
 
   def run (self):
 
-    process_suffix = ""
-    file_suffix = ""
-    if self.stream_id >= 0:
-      process_suffix = " " + str(self.stream_id)
-      file_suffix = "_" + str(self.stream_id)
+    process_suffix = " " + str(self.stream_id)
+    file_suffix = "_" + str(self.stream_id)
     prefix = self.prefix
     daemons = {}
 
@@ -69,14 +67,19 @@ class clientThread (threading.Thread):
       # start each of the daemons
       ranks = daemons.keys()
       ranks.sort()
+      to_sleep = 5
       for rank in ranks:
+        if rank > 0:
+          sleep(to_sleep)
+          to_sleep = 0
+
         self.parent.log(2, self.prefix + "launching daemons of rank " + rank)
         for daemon in daemons[rank]:
           self.states[daemon] = False
           cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix
           self.parent.log(1, self.prefix + cmd)
           rval, lines = self.parent.system (cmd)
-          self.parent.log(1, self.prefix + str(rval) + " lines=" + str(lines))
+          self.parent.log(2, self.prefix + str(rval) + " lines=" + str(lines))
           if rval:
             for line in lines:
               self.parent.log(-2, prefix + line)
@@ -97,7 +100,7 @@ class clientThread (threading.Thread):
         for rank in ranks:
           for daemon in daemons[rank]: 
             cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'";
-            rval, lines = self.parent.system (cmd, 2 <= DL)
+            rval, lines = self.parent.system (cmd, 2)
             self.states[daemon] = (rval == 0)
             self.parent.log(3, prefix + daemon + ": " + str(self.states[daemon]))
 
@@ -112,6 +115,10 @@ class clientThread (threading.Thread):
       for rank in ranks[::-1]:
 
         # single all daemons in rank to exit
+        if rank == 0:
+          self.parent.log (1, prefix + " sleep(5) for rank 0 daemons")
+          sleep(5)
+
         for daemon in daemons[rank]:
           open(self.control_dir + "/" + daemon + file_suffix + ".quit", 'w').close()
 
@@ -122,7 +129,7 @@ class clientThread (threading.Thread):
           daemon_running = 0
           for daemon in daemons[rank]:
             cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3 <= DL)
+            rval, lines = self.parent.system (cmd, 3)
             if rval == 0 and len(lines) > 0:
               daemon_running = 1
               self.parent.log(2, prefix + "daemon " + daemon + " with rank " + 
@@ -136,7 +143,7 @@ class clientThread (threading.Thread):
         if rank_timeout == 0:
           for daemon in daemons[rank]:
             cmd = "pkill -f ''^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3 <= DL)
+            rval, lines = self.parent.system (cmd, 3)
 
         # remove daemon.quit files for this rank
         for daemon in daemons[rank]:
@@ -155,7 +162,6 @@ class clientThread (threading.Thread):
 
 #
 ################################################################$
-
 
 class LMCDaemon (Daemon,HostBased):
 
@@ -179,9 +185,19 @@ class LMCDaemon (Daemon,HostBased):
     # find matching server stream
     server_streams = []
     if self.cfg["SERVER_HOST"] == self.req_host:
-      server_streams.append(0)
+      server_streams.append(-1)
 
     daemon_states = {}
+
+    for stream in server_streams:
+      self.log(1, "main: client_thread[-1] = clientThread(-1)")
+      daemon_states[-1] = {}
+      server_thread = clientThread(-1, self, daemon_states[-1])
+      self.log(1, "main: client_thread[-1].start()")
+      server_thread.start()
+      self.log(1, "main: client_thread[-1] started")
+
+    sleep(1)
 
     # start a control thread for each stream
     for stream in client_streams:
@@ -191,13 +207,6 @@ class LMCDaemon (Daemon,HostBased):
       self.log(2, "main: client_thread["+str(stream)+"].start()")
       self.client_threads[stream].start()
       self.log(2, "main: client_thread["+str(stream)+"] started!")
-
-    #for stream in server_streams:
-    #  self.log(1, "main: client_thread[-1] = clientThread(-1)")
-    #  server_thread = clientThread(-1, cfg, quit_event)
-    #  self.log(1, "main: client_thread[-1].start()")
-    #  server_thread.start()
-    #  self.log(1, "main: client_thread[-1] started")
 
     # main thread
     disks_to_monitor = [self.cfg["CLIENT_DIR"]]
@@ -215,6 +224,8 @@ class LMCDaemon (Daemon,HostBased):
     hw_poll = 5
     counter = 0 
 
+    sensors = {}
+
     # monitor / control loop
     while not self.quit_event.isSet():
 
@@ -231,9 +242,9 @@ class LMCDaemon (Daemon,HostBased):
         rval, smrbs = lmc_mon.getSMRBCapacity (client_streams, self.quit_event, DL)
         self.log(3, "main: " + str(smrbs))
 
-        self.log(3, "main: getIPMISensors()")
-        rval, sensors = lmc_mon.getIPMISensors (DL)
-        self.log(3, "main: " + str(sensors))
+        #self.log(3, "main: getIPMISensors()")
+        #rval, sensors = lmc_mon.getIPMISensors (DL)
+        #self.log(3, "main: " + str(sensors))
 
         counter = hw_poll
 
@@ -276,51 +287,59 @@ class LMCDaemon (Daemon,HostBased):
             else: 
               message = raw.strip()
               self.log(1, "main: message='" + message+"'")
-              xml = xmltodict.parse(message)
 
-              command = xml["lmc_cmd"]["command"]
-              if command == "daemon_status":
-                response = ""
-                response += "<lmc_reply>"
-                for stream in client_streams:
-                  response += "<stream id='" + str(stream) +"'>"
-                  for daemon in daemon_states[stream].keys():
-                    response += "<daemon name='" + daemon + "'>" + str(daemon_states[stream][daemon]) + "</daemon>"
-                  response += "</stream>"
-                response += "</lmc_reply>"
+              if len(message) == 0:
+                self.log(1, "main: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
 
-              elif command == "host_status":
-                response = "<lmc_reply>"
-
-                for disk in disks.keys():
-                  percent_full = 1.0 - (float(disks[disk]["available"]) / float(disks[disk]["size"]))
-                  response += "<disk mount='" + disk +"' percent_full='"+str(percent_full)+"'>"
-                  response += "<size units='MB'>" + disks[disk]["size"] + "</size>"
-                  response += "<used units='MB'>" + disks[disk]["used"] + "</used>"
-                  response += "<available units='MB'>" + disks[disk]["available"] + "</available>"
-                  response += "</disk>"
-
-                
-                response += "<system_load ncore='"+loads["ncore"]+"'>"
-                response += "<load1>" + loads["1min"] + "</load1>"
-                response += "<load5>" + loads["5min"] + "</load5>"
-                response += "<load15>" + loads["15min"] + "</load15>"
-                response += "</system_load>"
-
-                response += "<sensors>"
-                for sensor in sensors.keys():
-                  response += "<metric name='" + sensor + "' units='"+sensors[sensor]["units"]+"'>" + sensors[sensor]["value"] + "</metric>"
-                response += "</sensors>"
-                
-                response += "</lmc_reply>"
-
-                
               else:
-                response = "<lmc_reply>OK</lmc_reply>"
+                xml = xmltodict.parse(message)
 
-              self.log(2, "-> " + response)
+                command = xml["lmc_cmd"]["command"]
+                if command == "daemon_status":
+                  response = ""
+                  response += "<lmc_reply>"
+                  for stream in client_streams:
+                    response += "<stream id='" + str(stream) +"'>"
+                    for daemon in daemon_states[stream].keys():
+                      response += "<daemon name='" + daemon + "'>" + str(daemon_states[stream][daemon]) + "</daemon>"
+                    response += "</stream>"
+                  response += "</lmc_reply>"
 
-              handle.send(response + "\r\n")
+                elif command == "host_status":
+                  response = "<lmc_reply>"
+
+                  for disk in disks.keys():
+                    percent_full = 1.0 - (float(disks[disk]["available"]) / float(disks[disk]["size"]))
+                    response += "<disk mount='" + disk +"' percent_full='"+str(percent_full)+"'>"
+                    response += "<size units='MB'>" + disks[disk]["size"] + "</size>"
+                    response += "<used units='MB'>" + disks[disk]["used"] + "</used>"
+                    response += "<available units='MB'>" + disks[disk]["available"] + "</available>"
+                    response += "</disk>"
+
+                  
+                  response += "<system_load ncore='"+loads["ncore"]+"'>"
+                  response += "<load1>" + loads["1min"] + "</load1>"
+                  response += "<load5>" + loads["5min"] + "</load5>"
+                  response += "<load15>" + loads["15min"] + "</load15>"
+                  response += "</system_load>"
+
+                  response += "<sensors>"
+                  for sensor in sensors.keys():
+                    response += "<metric name='" + sensor + "' units='"+sensors[sensor]["units"]+"'>" + sensors[sensor]["value"] + "</metric>"
+                  response += "</sensors>"
+                  
+                  response += "</lmc_reply>"
+
+                else:
+                  response = "<lmc_reply>OK</lmc_reply>"
+
+                self.log(2, "-> " + response)
+
+                handle.send(response + "\r\n")
 
         counter -= 1
 
@@ -342,9 +361,15 @@ class LMCDaemon (Daemon,HostBased):
 #
 if __name__ == "__main__":
 
-  if len(sys.argv) != 1:
-    print "ERROR: no command line arguments expected"
+  if len(sys.argv) != 2:
+    print "ERROR: 1 command line argument expected"
     sys.exit(1)
+
+  cfg = sys.argv[1]
+
+  cfg_dir = os.environ.get('SPIP_ROOT') + "/share"
+  cmd = "cp " + cfg_dir + "/" + cfg + "/*.cfg " + cfg_dir + "/"
+  system (cmd, False)  
 
   hostname = getHostNameShort()
 
