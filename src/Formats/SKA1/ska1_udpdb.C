@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) try
     {
       case 'b':
         core = atoi(optarg);
-        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_process_to_cpu_core (core);
         hw_affinity.bind_to_memory (core);
         break;
 
@@ -229,7 +229,7 @@ void * stats_thread (void * arg)
   uint64_t s_total = 0;
   uint64_t s_1sec;
 
-  uint64_t p_drop_curr = 0;
+  uint64_t b_drop_curr = 0;
 
   float gb_recv_ps = 0;
   float mb_recv_ps = 0;
@@ -238,7 +238,7 @@ void * stats_thread (void * arg)
   {
     // get a snapshot of the data as quickly as possible
     b_recv_curr = recv->get_stats()->get_data_transmitted();
-    p_drop_curr = recv->get_stats()->get_packets_dropped();
+    b_drop_curr = recv->get_stats()->get_data_dropped();
     s_curr = recv->get_stats()->get_nsleeps();
 
     // calc the values for the last second
@@ -253,7 +253,7 @@ void * stats_thread (void * arg)
     gb_recv_ps = (mb_recv_ps * 8)/1000;
 
     // determine how much memory is free in the receivers
-    fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu packets\n", gb_recv_ps, s_1sec, p_drop_curr);
+    fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
 
     sleep(1);
   }
