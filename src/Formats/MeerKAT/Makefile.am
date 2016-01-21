@@ -24,7 +24,7 @@ libmeerkat_headers += spip/UDPFormatMeerKATSPEAD.h
 
 libmeerkat_la_SOURCES += UDPFormatMeerKATSPEAD.C
 
-bin_PROGRAMS += meerkat_speadrecv meerkat_speaddb
+bin_PROGRAMS += meerkat_speadrecv meerkat_speadrecvmerge meerkat_speaddb
 
 endif
 
