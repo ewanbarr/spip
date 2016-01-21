@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
     {
       case 'b':
         core = atoi(optarg);
-        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_process_to_cpu_core (core);
         hw_affinity.bind_to_memory (core);
         break;
 
@@ -162,6 +162,7 @@ void usage()
 void signal_handler(int signalValue)
 {
   fprintf(stderr, "received signal %d\n", signalValue);
+  speaddb->stop_capture();
   if (quit_threads) 
   {
     fprintf(stderr, "received signal %d twice, hard exit\n", signalValue);
