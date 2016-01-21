@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
     {
       case 'b':
         core = atoi(optarg);
-        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_process_to_cpu_core (core);
         hw_affinity.bind_to_memory (core);
         break;
 
