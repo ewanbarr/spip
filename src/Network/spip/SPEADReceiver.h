@@ -82,7 +82,7 @@ namespace spip {
 
       SPEADBeamFormerConfig bf_config;
 
-      uint64_t start_adc_sample;
+      int64_t start_adc_sample;
 
   };
 
