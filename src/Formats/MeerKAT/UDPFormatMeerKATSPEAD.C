@@ -5,6 +5,8 @@
  *
  ***************************************************************************/
 
+// Assume heaps arrive in order
+
 #include "spip/UDPFormatMeerKATSPEAD.h"
 
 #include "spead2/common_defines.h"
@@ -14,6 +16,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <cmath>
 #include <iostream>
 #include <bitset>
 
@@ -23,14 +26,25 @@ using namespace std;
 
 spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
 {
-  packet_header_size = sizeof(meerkat_spead_udp_hdr_t);
-  packet_data_size   = 2 * UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP;
+  packet_header_size = 48 + 8;
+  packet_data_size   = 9132;
 
   obs_start_sample = 0;
+  npol = 1;
+  ndim = 2;
   nchan = 4096;
-  //nsamp_offset = 0;
-  //header.frequency_channel.item_address = 0;
-  //header.beam_number.item_address = 0;
+  nsamp_per_heap = 256;
+  nbytes_per_samp = 2;
+  nbytes_per_heap = nsamp_per_heap * nchan * nbytes_per_samp; 
+  timestamp_to_samples = nchan * nbytes_per_samp;
+
+  // this is the average size 
+  avg_pkt_size = 9132;
+  pkts_per_heap = (unsigned) ceil ( (float) (nsamp_per_heap * nchan * nbytes_per_samp) / (float) avg_pkt_size);
+
+  curr_heap_cnt = -1;
+  
+  cerr << "spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD pkts_per_heap=" << pkts_per_heap << endl;
 }
 
 spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()
@@ -75,21 +89,48 @@ inline void spip::UDPFormatMeerKATSPEAD::encode_header (char * buf)
 inline uint64_t spip::UDPFormatMeerKATSPEAD::decode_header_seq (char * buf)
 {
   spead2::recv::decode_packet (header, (const uint8_t *) buf, 9200);
-  uint64_t first_sample = header.heap_cnt / 4096;
-  if (obs_start_sample == 0)
-    obs_start_sample = first_sample;
-  first_sample -= obs_start_sample;
-  uint64_t channel = header.payload_offset / 1024;
-  
-  //cerr << "samp=" << first_sample << " channel=" << channel << " nchan=" << nchan << endl;
 
-  return first_sample * nchan + channel;
+  // if this packet belongs to the current (validated) heap, return 
+  // the packet number
+  if (header.heap_cnt == curr_heap_cnt)
+  {
+    return 0;
+
+#ifdef OLD_WAY
+    const uint64_t seq = (curr_heap_number * pkts_per_heap) + 
+                          (uint64_t) rintf ((float)header.payload_offset / (float)avg_pkt_size);
+    cerr << "spip::UDPFormatMeerKATSPEAD::decode_header_seq matching heap_cnt, offset="
+         << header.payload_offset << " seq=" << seq << endl;
+    return seq;
+#endif
+  }
+  // If this is a CBF_RAW + TIMESTAMP packet //TODO be able to get the first heap...
+  else if (header.n_items == 2 && header.heap_length == 2097152)
+  {
+    const int64_t timestamp = get_timestamp_fast();
+
+    if (timestamp >= 0)
+    {
+      curr_heap_cnt = header.heap_cnt;
+      curr_sample_number = timestamp / timestamp_to_samples;
+      //curr_heap_number = curr_sample_number / nsamp_per_heap;
+      curr_heap_offset = 0;
+#ifdef OLD_WAY
+      const uint64_t seq = curr_heap_number * pkts_per_heap + 
+                           (uint64_t) rintf (header.payload_offset / avg_pkt_size);
+      cerr << "spip::UDPFormatMeerKATSPEAD::decode_header_seq heap_cnt=" << curr_heap_cnt
+           << " sample_number=" << curr_sample_number << " heap_number=" << curr_heap_number 
+           << " seq=" << seq <<endl;
+      return seq;
+#endif
+    }
+  }
+  return 0;
 }
 
 inline void spip::UDPFormatMeerKATSPEAD::decode_header (char * buf)
 {
   spead2::recv::decode_packet (header, (const uint8_t *) buf, 9200);
-
   
   //cerr << "spip::UDPFormatMeerKATSPEAD::decode_header copying " << sizeof (meerkat_spead_udp_hdr_t) << " bytes" << endl;
   // copy the spead pkt hdr to the 
@@ -115,37 +156,32 @@ inline void spip::UDPFormatMeerKATSPEAD::decode_header (char * buf)
 // assumes the packet has already been "decoded" by a call to decode header
 inline int spip::UDPFormatMeerKATSPEAD::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
 {
-  if (header.heap_length != 2097152 || header.payload_length != 1024)
+  if (header.heap_cnt == curr_heap_cnt)
+  {
+    if (curr_sample_number < start_samp)
+    {
+      cerr << "header.heap_cnt=" << header.heap_cnt 
+           << " sample_number=" << curr_sample_number 
+           << " start_samp=" << start_samp << endl;
+      return UDP_PACKET_TOO_LATE;
+    }
+    else if (curr_sample_number >= next_start_samp)
+    {
+      return UDP_PACKET_TOO_EARLY;
+    }
+    else
+    {
+      // all packets from the same heap will have the same offset
+      if (!curr_heap_offset)
+        curr_heap_offset = (curr_sample_number - start_samp) * nchan * nbytes_per_samp;
+
+      // copy the payload into the output buffer
+      memcpy (buf + curr_heap_offset + header.payload_offset, header.payload, header.payload_length);
+      return header.payload_length;
+    }
+  }
+  else
     return UDP_PACKET_IGNORE;
-
-  // heap_cnt increments by 2097152 each heap, so it must be divided by 8192 (256/2097152) to get sample number
-  const uint64_t sample_number = header.heap_cnt / 8192;
-
-  if (sample_number < start_samp)
-  {
-    cerr << "header.heap_cnt=" << header.heap_cnt << " sample_number=" << sample_number << " start_samp=" << start_samp << endl;
-    return UDP_PACKET_TOO_LATE;
-  }
-  if (sample_number >= next_start_samp)
-  {
-    return UDP_PACKET_TOO_EARLY;
-  }
-
-  const unsigned bytes_per_heap = UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP * nchan * ndim; 
-  const unsigned buf_offset = (sample_number - start_samp) * bytes_per_heap;
-  
-/*
-  const unsigned heap_start_offset = (sample_offset - start_samp) * bytes_per_heap
- 
-  // determine the channel offset in bytes
-  const unsigned channel_offset = (header.frequency_channel.item_address - start_channel) * channel_stride;
-  const unsigned sample_offset  = sample_number - start_samp;
-*/
-
-  // copy the 512 bytes to the correct place in the output buffer
-  memcpy (buf + buf_offset + header.payload_offset, header.payload, header.payload_length);
-
-  return 0;
 }
 
 // generate the next packet in the cycle
@@ -169,6 +205,23 @@ inline void spip::UDPFormatMeerKATSPEAD::gen_packet (char * buf, size_t bufsz)
   */
 
 }
+// assume packet has been decoded
+int64_t spip::UDPFormatMeerKATSPEAD::get_timestamp_fast ()
+{
+  int64_t timestamp = -1;
+  spead2::recv::pointer_decoder decoder(header.heap_address_bits);
+  for (int i = 0; i < header.n_items; i++)
+  {
+    spead2::item_pointer_t pointer = spead2::load_be<spead2::item_pointer_t>(header.pointers + i * sizeof(spead2::item_pointer_t));
+    spead2::s_item_pointer_t item_id = decoder.get_id(pointer);
+    // CBF TIMESTAMP
+    if (item_id == 0x1600 && decoder.is_immediate(pointer))
+    {
+      timestamp = decoder.get_immediate(pointer);
+    }
+  }
+  return timestamp;
+}
 
 void spip::UDPFormatMeerKATSPEAD::print_item_pointer (spead_item_pointer_t item)
 {
@@ -181,7 +234,7 @@ void spip::UDPFormatMeerKATSPEAD::print_packet_header()
 {
   cerr << "heap_cnt=" << header.heap_cnt << " heap_length=" << header.heap_length 
        << " payload_offset=" << header.payload_offset 
-       << " payload_length=" << header.payload_length << " nitems=" 
+       << " payload_length=" << header.payload_length << " n_items=" 
        << header.n_items << endl;
 
   spead2::recv::pointer_decoder decoder(header.heap_address_bits);

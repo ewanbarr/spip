@@ -7,9 +7,8 @@
 
 #include "spead2/recv_packet.h"
 
-#define UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP 4550
 #define UDP_FORMAT_MEERKAT_SPEAD_NDIM 2
-#define UDP_FORMAT_MEERKAT_SPEAD_NPOL 2
+#define UDP_FORMAT_MEERKAT_SPEAD_NPOL 1
 
 #include <cstring>
 
@@ -79,6 +78,8 @@ namespace spip {
 
       void set_channel_range (unsigned start, unsigned end);
 
+      int64_t get_timestamp_fast ();
+
       static void encode_seq (char * buf, uint64_t seq)
       {
         memcpy (buf, (void *) &seq, sizeof(uint64_t));
@@ -107,7 +108,7 @@ namespace spip {
       void set_chan_no (int16_t chan_no)    { ; };
       void set_beam_no (int16_t beam_no)    { ; };
 
-      static unsigned get_samples_per_packet () { return UDP_FORMAT_MEERKAT_SPEAD_PACKET_NSAMP; };
+      static unsigned get_samples_per_packet () { return 1; };
 
     private:
 
@@ -115,11 +116,27 @@ namespace spip {
 
       uint64_t obs_start_sample;
 
-      //meerkat_spead_udp_hdr_t header;
-
-      //uint64_t nsamp_offset;
-
       uint64_t nsamp_per_sec;
+
+      unsigned nsamp_per_heap;
+
+      unsigned nbytes_per_samp;
+
+      unsigned avg_pkt_size;
+
+      unsigned pkts_per_heap;
+
+      int64_t curr_heap_cnt;
+
+      uint64_t curr_sample_number;
+
+      uint64_t curr_heap_offset;
+
+      uint64_t curr_heap_number;
+
+      unsigned nbytes_per_heap;
+
+      unsigned timestamp_to_samples;
 
   };
 
