@@ -18,11 +18,15 @@ namespace spip {
 
       ~HardwareAffinity ();
 
-      void bind_to_cpu_core (int);
+      void bind_thread_to_cpu_core (int core);
+
+      void bind_process_to_cpu_core (int core);
 
       void bind_to_memory (int);
 
     private:
+
+      void bind_to_cpu_core (int core, int flags);
 
 #ifdef HAVE_HWLOC
       hwloc_topology_t topology;

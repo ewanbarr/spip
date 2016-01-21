@@ -28,7 +28,17 @@ spip::HardwareAffinity::~HardwareAffinity ()
 #endif
 }
 
-void spip::HardwareAffinity::bind_to_cpu_core (int cpu_core)
+void spip::HardwareAffinity::bind_thread_to_cpu_core (int cpu_core)
+{
+  bind_to_cpu_core (cpu_core, HWLOC_CPUBIND_THREAD);
+}
+
+void spip::HardwareAffinity::bind_process_to_cpu_core (int cpu_core)
+{
+  bind_to_cpu_core (cpu_core, 0);
+}
+
+void spip::HardwareAffinity::bind_to_cpu_core (int cpu_core, int flags)
 {
 #ifdef HAVE_HWLOC
   // determine the depth of CPU cores in the topology
@@ -36,7 +46,7 @@ void spip::HardwareAffinity::bind_to_cpu_core (int cpu_core)
 
   int n_cpu_cores = hwloc_get_nbobjs_by_depth (topology, core_depth);
 
-  if (core_depth >= 0 && core_depth < n_cpu_cores)
+  if (cpu_core >= 0 && cpu_core < n_cpu_cores)
   {
     // get the object corresponding to the specified core
     hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
@@ -48,7 +58,7 @@ void spip::HardwareAffinity::bind_to_cpu_core (int cpu_core)
     hwloc_bitmap_singlify(cpuset);
 
     // try to bind this current process to the CPU set
-    if (hwloc_set_cpubind(topology, cpuset, 0))
+    if (hwloc_set_cpubind(topology, cpuset, flags))
     {
       char *str;
       int error = errno;
@@ -70,7 +80,7 @@ void spip::HardwareAffinity::bind_to_memory (int cpu_core)
 
   int n_cpu_cores = hwloc_get_nbobjs_by_depth (topology, core_depth);
 
-  if (core_depth >= 0 && core_depth < n_cpu_cores)
+  if (cpu_core >= 0 && cpu_core < n_cpu_cores)
   {
     // get the object corresponding to the specified core
     hwloc_obj_t obj = hwloc_get_obj_by_depth (topology, core_depth, cpu_core);
