@@ -109,7 +109,7 @@ bool spip::SPEADReceiver::receive ()
   uint64_t total_bytes_recvd = 0;
   bool obs_started = false;
 
-  int lower = 4194304 * 4;
+  int lower = nchan * 256 * 2;
   int upper = lower + 4096;
 
   pool = std::make_shared<spead2::memory_pool>(lower, upper, 12, 8);
@@ -182,11 +182,13 @@ bool spip::SPEADReceiver::receive ()
   uint64_t timestamp;
   // now receive RAW CBF heaps
 
-  uint64_t adc_to_bf_sampling_ratio = 8192;
+  uint64_t adc_to_bf_sampling_ratio = nchan * 2;
   uint64_t samples_per_heap = 256;
+  cerr << "spip::SPEADReceiver::receive nchan=" << nchan << " adc_to_bf_sampling_ratio=" << adc_to_bf_sampling_ratio << " samples_per_heap=" << samples_per_heap << endl;
 
-  uint64_t nreceived = 0;
-  uint64_t ndropped = 0;
+  int64_t nreceived = 0;
+  int64_t ndropped = 0;
+
   while (keep_receiving)
   {
     try
@@ -201,7 +203,9 @@ bool spip::SPEADReceiver::receive ()
 
       const auto &items = fh.get_items();
 
-      //cerr << "heap ID=" << fh.get_cnt() << " size=" << items.size() << endl;
+#ifdef _DEBUG
+      cerr << "heap ID=" << fh.get_cnt() << " size=" << items.size() << endl;
+#endif
       
       ptr = 0;
       timestamp = 0;
@@ -219,8 +223,9 @@ bool spip::SPEADReceiver::receive ()
  */
       for (unsigned i=0; i<items.size(); i++)
       {
+/*
         cerr << "spip::SPEADReceiver::receive item[" << i << "] ID 0x" << std::hex << items[i].id << std::dec << " length=" << items[i].length << endl;
-
+*/
         if (items[i].id == SPEAD_CBF_RAW_SAMPLES)
         {
           raw_id = i;
@@ -242,7 +247,7 @@ bool spip::SPEADReceiver::receive ()
 
      if (raw_id >= 0)
      {
-        if (start_adc_sample == 0)
+        if (nreceived == 0 && start_adc_sample == 0)
           start_adc_sample = timestamp;
 
         // the number of ADC samples since the start of this observation
@@ -250,21 +255,23 @@ bool spip::SPEADReceiver::receive ()
         uint64_t bf_sample = adc_sample / adc_to_bf_sampling_ratio;
         heap = (int64_t) bf_sample / samples_per_heap;
 
-//#ifdef _DEBUG
-        cerr << "timestamp=" << timestamp << " adc_sample=" << adc_sample << " bf_sample=" << bf_sample << " heap=" << heap << endl;
-//#endif
+#ifdef _DEBUG
+        cerr << "start=" << start_adc_sample << " timestamp=" << timestamp << " adc_sample=" << adc_sample << " adc_to_bf_sampling_ratio=" << adc_to_bf_sampling_ratio << " bf_sample=" << bf_sample << " heap=" << heap << endl;
+#endif
+
+        nreceived++;
 
         if (heap != prev_heap + 1)
         {
-          ndropped += (heap - prev_heap);
+          ndropped += (heap - (prev_heap+1));
           float percent_dropped = ((float) ndropped / (float) (ndropped + nreceived)) * 100;
-          cerr << "DROPPED: " << (heap - prev_heap) << " [" << ndropped << ", " << nreceived << " => " << percent_dropped << "]" << endl;
-        }
-        else
-        {
-          nreceived++;
+          cerr << "DROPPED: " << (heap - prev_heap) << " heaps. Totals [" << ndropped << " dropped " << nreceived << "recvd  => " << percent_dropped << "% ]" << endl;
+
         }
         prev_heap = heap;
+
+        if (nreceived % 1024 == 0)
+          cerr << "received=" << nreceived << " dropped=" << ndropped << " curr=" << fh.get_cnt() << endl;
       }
     }
     catch (spead2::ringbuffer_stopped &e)
