@@ -318,12 +318,12 @@ class KATCPServer (DeviceServer):
         self._host_sensors[host]["disk_size"] = Sensor.float(disk_prefix+".size",
           description=host+": disk size",
           unit="MB",
-          params[8192,1e9],
+          params=[8192,1e9],
           default=0)
         self._host_sensors[host]["disk_available"] = Sensor.float(disk_prefix+".available",
           description=host+": disk available space",
           unit="MB",
-          params[1024,1e9],
+          params=[1024,1e9],
           default=0)
         self.add_sensor(self._host_sensors[host]["disk_size"])
         self.add_sensor(self._host_sensors[host]["disk_available"])
@@ -332,7 +332,7 @@ class KATCPServer (DeviceServer):
         self._host_sensors[host]["num_cores"] = Sensor.integer (host+".num_cores",
           description=host+": disk available space",
           unit="MB",
-          params[1,64],
+          params=[1,64],
           default=0)
 
         self._host_sensors[host]["load1"] = Sensor.float(host+".load.1min",
