@@ -40,7 +40,7 @@ void spip::SPEADBeamFormerConfig::reset ()
   n_chans = 0;
   requant_bits = 0;
   fft_shift = 0;
-  feng_pkt_len = 0;
+  feng_pkt_len = 256;
   centre_freq = 0;
   adc_sample_rate = 0;
   n_ants = 0;
@@ -156,12 +156,19 @@ void spip::SPEADBeamFormerConfig::parse_descriptor (const spead2::descriptor &d)
 
 bool spip::SPEADBeamFormerConfig::valid ()
 {
+  return (n_chans > 0 &&
+          feng_pkt_len > 0 &&
+          adc_sample_rate > 0 &&
+          bandwidth > 0 &&
+          sync_time > 0 &&
+          scale_factor_timestamp > 0);
+/*
   return (n_chans > 0 && sync_time > 0 && rx_udp_port > 0 &&
           requant_bits > 0 && fft_shift > 0 && feng_pkt_len > 0 &&
           adc_sample_rate > 0 && n_ants > 0 && adc_bits > 0  &&
           n_bengs > 0 && xeng_acc_len > 0 && beng_out_bits_per_sample > 0 &&
           raw_samples_desc == 1 && raw_timestamp_desc == 1);
-
+*/
 
 }
 // return the sampling rate in samples per second
