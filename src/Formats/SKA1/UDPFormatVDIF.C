@@ -99,11 +99,11 @@ inline int spip::UDPFormatVDIF::insert_packet (char * buf, char * pkt, uint64_t 
   {
     cerr << "header.seq_number=" << header.seq_number << " header.channel_number=" << header.channel_number << endl;
     cerr << "sample_number=" << sample_number << " start_samp=" << start_samp << endl;
-    return 2;
+    return UDP_PACKET_TOO_LATE;
   }
   if (sample_number >= next_start_samp)
   {
-    return 1;
+    return UDP_PACKET_TOO_EARLY;
   }
  
   // determine the channel offset in bytes
@@ -117,7 +117,7 @@ inline int spip::UDPFormatVDIF::insert_packet (char * buf, char * pkt, uint64_t 
   memcpy (buf + pol0_offset, pkt, 4000);
   memcpy (buf + pol1_offset, pkt + 4000, 4000);
 
-  return 0;
+  return 8000;
 }
 
 // generate the next packet in the cycle
