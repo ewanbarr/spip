@@ -35,6 +35,8 @@ spip::SPEADReceiveDB::SPEADReceiveDB(const char * key_string)
 
   control_cmd = None;
   control_state = Idle;
+
+  verbose = 1;
 }
 
 spip::SPEADReceiveDB::~SPEADReceiveDB()
@@ -65,8 +67,11 @@ int spip::SPEADReceiveDB::configure (const char * config)
   if (ascii_header_get (config, "BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
 
-  if (ascii_header_get (config, "START_ADC_SAMPLE", "%lu", &start_adc_sample) != 1)
-    start_adc_sample = 0;  
+  if (ascii_header_get (config, "RESOLUTION", "%lu", &resolution) != 1)
+    throw invalid_argument ("RESOLUTION did not exist in header");
+
+  if (ascii_header_get (config, "START_ADC_SAMPLE", "%ld", &start_adc_sample) != 1)
+    start_adc_sample = -1;  
 
   channel_bw = bw / nchan;
 
@@ -82,10 +87,12 @@ int spip::SPEADReceiveDB::configure (const char * config)
   // save the header for use on the first open block
   strncpy (header, config, strlen(config)+1);
 
-  cerr << "spip::SPEADReceiveDB::configure db->open()" << endl;
+  if (verbose)
+    cerr << "spip::SPEADReceiveDB::configure db->open()" << endl;
   db->open();
 
-  cerr << "spip::SPEADReceiveDB::configure db->write_header()" << endl;
+  if (verbose)
+    cerr << "spip::SPEADReceiveDB::configure db->write_header()" << endl;
   db->write_header (header);
 }
 
@@ -106,7 +113,6 @@ void spip::SPEADReceiveDB::prepare (std::string ip_address, int port)
 void spip::SPEADReceiveDB::start_control_thread (int port)
 {
   control_port = port;
-
   pthread_create (&control_thread_id, NULL, control_thread_wrapper, this);
 }
 
@@ -227,10 +233,12 @@ void spip::SPEADReceiveDB::open (const char * header)
 
 void spip::SPEADReceiveDB::close ()
 {
-  cerr << "spip::SPEADReceiveDB::close()" << endl;
+  if (verbose)
+    cerr << "spip::SPEADReceiveDB::close()" << endl;
   if (db->is_block_open())
   {
-    cerr << "spip::SPEADReceiveDB::close db->close_block(" << db->get_data_bufsz() << ")" << endl;
+    if (verbose)
+      cerr << "spip::SPEADReceiveDB::close db->close_block(" << db->get_data_bufsz() << ")" << endl;
     db->close_block(db->get_data_bufsz());
   }
 
@@ -241,10 +249,13 @@ void spip::SPEADReceiveDB::close ()
 // receive SPEAD heaps for the specified time at the specified data rate
 bool spip::SPEADReceiveDB::receive ()
 {
-  cerr << "spip::SPEADReceiveDB::receive ()" << endl;
+  if (verbose)
+    cerr << "spip::SPEADReceiveDB::receive ()" << endl;
 
-  int lower = 2097152;
-  int upper = lower + 4096;
+  // Bruce advised the lower limit should be the expected heap size
+  // Upper limit should be  + 4K for headers etc
+  const int lower = resolution;
+  const int upper = resolution + 4096;
 
   spead2::thread_pool worker;
   std::shared_ptr<spead2::memory_pool> pool = std::make_shared<spead2::memory_pool>(lower, upper, 12, 8);
@@ -255,20 +266,20 @@ bool spip::SPEADReceiveDB::receive ()
 
   control_state = Idle;
   keep_receiving = true;
-
   have_metadata = false;
 
-  // the UTC of the first sample in the SPEAD stream will be provided in the
-  // observation configuration
-
-/*
+  // read the meta-data from the spead stream
   while (keep_receiving && !have_metadata)
   {
     try
     {
-      cerr << "spip::SPEADReceiver::receive stream.pop()" << endl;
-
+//#ifdef _DEBUG
+      cerr << "spip::SPEADReceiveDB::receive waiting for meta-data heap" << endl;
+//#endif
       spead2::recv::heap fh = stream.pop();
+//#ifdef _DEBUG
+      cerr << "spip::SPEADReceiveDB::receive received meta-data heap with ID=" << fh.get_cnt() << endl;
+//#endif
 
       const auto &items = fh.get_items();
       for (const auto &item : items)
@@ -280,25 +291,30 @@ bool spip::SPEADReceiveDB::receive ()
         else
         {
           bf_config.parse_item (item);
-          have_metadata = bf_config.valid();
         }
       }
+
+      vector<spead2::descriptor> descriptors = fh.get_descriptors();
+      for (const auto &descriptor : descriptors)
+      {
+        bf_config.parse_descriptor (descriptor);
+      }
+      bf_config.print_config();
+      have_metadata = bf_config.valid();
     }
+
     catch (spead2::ringbuffer_stopped &e)
     {
       keep_receiving = false;
     }
   }
-*/
 
   // block accounting 
-  //const unsigned bytes_per_heap = bf_config.get_bytes_per_heap();
-  //const unsigned samples_per_heap = bf_config.get_samples_per_heap();
-  const unsigned bytes_per_heap = 2097152;
-  const unsigned samples_per_heap = 256;
+  const unsigned bytes_per_heap = bf_config.get_bytes_per_heap();
+  const unsigned samples_per_heap = bf_config.get_samples_per_heap();
   const uint64_t heaps_per_buf = db->get_data_bufsz() / bytes_per_heap;
-  //const double adc_to_bf_sampling_ratio = bf_config.get_adc_to_bf_sampling_ratio ();
-  const double adc_to_bf_sampling_ratio = 8192;
+
+  const double adc_to_bf_sampling_ratio = bf_config.get_adc_to_bf_sampling_ratio ();
 
   cerr << "spip::SPEADReceiveDB::receive bytes_per_heap=" << bytes_per_heap << endl;
   cerr << "spip::SPEADReceiveDB::receive heaps_per_buf=" << heaps_per_buf << endl;
@@ -340,9 +356,11 @@ bool spip::SPEADReceiveDB::receive ()
       // open a new data block buffer if necessary
       if (!db->is_block_open())
       {
-        cerr << "spip::SPEADReceiveDB::receive db=" << (void *) db << " open_block()" << endl;
+        if (verbose > 1)
+          cerr << "spip::SPEADReceiveDB::receive db=" << (void *) db << " open_block()" << endl;
         block = (char *) (db->open_block());
-        cerr << "spip::SPEADReceiveDB::receive db block opened!" << endl;
+        if (verbose > 1)
+          cerr << "spip::SPEADReceiveDB::receive db block opened!" << endl;
         need_next_block = false;
 
         if (heaps_this_buf == 0 && next_heap > 0)
@@ -353,28 +371,26 @@ bool spip::SPEADReceiveDB::receive ()
 
         // number is first packet due in block to first packet of next block
         curr_heap = next_heap;
-        next_heap += heaps_per_buf;
+        next_heap = curr_heap + heaps_per_buf;
 
-//#ifdef _DEBUG
+#ifdef _DEBUG
         cerr << "spip::SPEADReceiveDB::receive [" << curr_heap << " - " 
              << next_heap << "] (" << heaps_this_buf << ")" << endl;
-//#endif
+#endif
         heaps_this_buf = 0;
       }
 
       try
       {
-//#ifdef _DEBUG
+#ifdef _DEBUG
         cerr << "spip::SPEADReceiver::receive stream.pop()" << endl;
-//#endif
+#endif
 
         spead2::recv::heap fh = stream.pop();
 
-        cerr << "heap popped!" << endl;
-
         const auto &items = fh.get_items();
         int raw_id = -1;
-        timestamp = 0;
+        timestamp = -1;
 
         for (unsigned i=0; i<items.size(); i++)
         {
@@ -397,21 +413,26 @@ bool spip::SPEADReceiveDB::receive ()
           }
         }
 
-        cerr << "raw_id=" << raw_id << " timestamp=" << timestamp << endl;
+        //cerr << "raw_id=" << raw_id << " timestamp=" << timestamp << " start_adc_sample=" << start_adc_sample << endl;
 
-        if (start_adc_sample == 0)
+        // if a starting ADC sample was provided not provided in the configuration
+        if (start_adc_sample == -1)
           start_adc_sample = timestamp;
 
-        // if a RAW CBF heap has been received
-        if (raw_id >= 0 && timestamp > 0)
+        // if a RAW CBF heap has been received and is valid
+        if (raw_id >= 0 && timestamp >= 0 && timestamp >= start_adc_sample)
         {
           // the number of ADC samples since the start of this observation
-          uint64_t adc_sample = timestamp - start_adc_sample;
+          uint64_t adc_sample = (uint64_t) (timestamp - start_adc_sample);
+
+          // TODO check the implications of non integer adc_to_bf ratios
           uint64_t bf_sample = adc_sample / adc_to_bf_sampling_ratio;
           uint64_t heap = bf_sample / samples_per_heap;
 
+          //cerr << "adc_sample=" <<adc_sample << " bf_sample=" << bf_sample << " heap=" << heap << " [" << curr_heap << " - " << next_heap << "]" << endl;
+
           // if this heap belongs in the current block
-          if (curr_heap >= heap && heap + heaps_per_buf < next_heap)
+          if (heap >= curr_heap && heap < next_heap)
           {
             uint64_t byte_offset = (heap - curr_heap) * bytes_per_heap;
             memcpy (block + byte_offset, items[raw_id].ptr, items[raw_id].length);
@@ -421,12 +442,15 @@ bool spip::SPEADReceiveDB::receive ()
           {
             cerr << "ERROR: heap=" << heap << " curr_heap=" << curr_heap << endl;
           }
-          else if (heap > next_heap)
+          else if (heap >= next_heap)
           {
             need_next_block = true;
             cerr << "WARN : heap=" << heap << " next_heap=" << next_heap << endl;
             // TODO we should keep this heap if possible
           }
+          else
+            cerr << "WARNING else case!" << endl;
+        
         }
       }
       catch (spead2::ringbuffer_stopped &e)
@@ -438,11 +462,11 @@ bool spip::SPEADReceiveDB::receive ()
       // close open data block buffer if is is now full
       if (heaps_this_buf == heaps_per_buf || need_next_block)
       {
-  #ifdef _DEBUG
+#ifdef _DEBUG
         cerr << "spip::SPEADReceiveDB::receive close_block heaps_this_buf=" 
              << heaps_this_buf << " heaps_per_buf=" << heaps_per_buf 
              << " need_next_block=" << need_next_block << endl;
-  #endif
+#endif
         db->close_block(db->get_data_bufsz());
       }
     }

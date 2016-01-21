@@ -87,11 +87,15 @@ namespace spip {
 
       float tsamp;
 
+      uint64_t resolution;
+
       unsigned bits_per_second;
 
       unsigned bytes_per_second;
 
-      uint64_t start_adc_sample;
+      int64_t start_adc_sample;
+
+      char verbose;
 
     private:
 
