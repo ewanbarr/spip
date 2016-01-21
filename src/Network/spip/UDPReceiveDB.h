@@ -112,14 +112,14 @@ namespace spip {
       unsigned bytes_per_second;
 
       uint64_t b_recv_curr;
-      uint64_t p_drop_curr;
+      uint64_t b_drop_curr;
       uint64_t s_curr;
       uint64_t b_recv_total;
-      uint64_t p_drop_total;
+      uint64_t b_drop_total;
       uint64_t s_total;
 
       double bytes_recv_ps;
-      double packets_dropped_ps;
+      double bytes_drop_ps;
       double sleeps_ps;
 
       struct timeval curr;

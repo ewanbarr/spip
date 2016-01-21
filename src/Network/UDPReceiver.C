@@ -66,7 +66,7 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
   sock->resize (format->get_header_size() + format->get_data_size());
 
   // this should not be required when using VMA offloading
-  //sock->resize_kernel_buffer (4*1024*1024);
+  sock->resize_kernel_buffer (64*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
 }
@@ -127,13 +127,14 @@ void spip::UDPReceiver::receive ()
 
     packet_number = format->decode_header_seq (buf);
 
-    format->decode_header (buf);
-    format->print_packet_header ();
+    //format->decode_header (buf);
 
-    if (packet_number == (1 + prev_packet_number))
-      stats->increment();
-    else
+    stats->increment_bytes(got);
+
+    if (packet_number != (1 + prev_packet_number) && (packet_number > 0))
     {
+      cerr << "DROP: prev=" << prev_packet_number << " curr=" << packet_number << endl;
+      format->print_packet_header ();
       stats->dropped();
     }
 
