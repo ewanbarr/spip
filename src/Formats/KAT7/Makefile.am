@@ -11,11 +11,13 @@ kat7_dbstats_SOURCES = kat7_dbstats.C
 
 AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Network \
-	-I$(top_builddir)/src/Dada 
+	-I$(top_builddir)/src/Dada \
+	-I$(top_builddir)/src/Affinity
 
 LDADD = libkat7.la \
 	$(top_builddir)/src/Dada/libspipdada.la \
 	$(top_builddir)/src/Network/libspipnet.la \
+	$(top_builddir)/src/Affinity/libspipaffinity.la \
 	-L/opt/cross/lib
 
 AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
