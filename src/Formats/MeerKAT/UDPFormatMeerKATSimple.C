@@ -108,7 +108,7 @@ inline int spip::UDPFormatMeerKATSimple::insert_packet (char * buf, char * pkt, 
   memcpy (buf + pol0_offset, pkt, 2048);
   memcpy (buf + pol1_offset, pkt + 2048, 2048);
 
-  return 0;
+  return 4096;
 }
 
 // generate the next packet in the cycle
