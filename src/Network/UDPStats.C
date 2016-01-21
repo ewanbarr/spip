@@ -29,24 +29,34 @@ spip::UDPStats::~UDPStats ()
 
 void spip::UDPStats::reset ()
 {
-  pkts_transmitted = 0;
-  pkts_dropped = 0;
+  bytes_transmitted = 0;
+  bytes_dropped = 0;
   nsleeps = 0;
 }
 
 void spip::UDPStats::increment ()
 {
-  pkts_transmitted ++;
+  increment_bytes (data);
+}
+
+void spip::UDPStats::increment_bytes (uint64_t nbytes)
+{
+  bytes_transmitted += nbytes;
 }
 
 void spip::UDPStats::dropped ()
 {
-  pkts_dropped ++;
+  dropped_bytes (data);
+}
+
+void spip::UDPStats::dropped_bytes (uint64_t nbytes)
+{
+  bytes_dropped += nbytes;
 }
 
 void spip::UDPStats::dropped (uint64_t ndropped)
 {
-  pkts_dropped += ndropped;
+  dropped_bytes (ndropped * data);
 }
 
 void spip::UDPStats::sleeps (uint64_t to_add)

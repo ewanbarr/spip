@@ -19,7 +19,11 @@ namespace spip {
 
       void increment ();
 
+      void increment_bytes (uint64_t nbytes);
+
       void dropped ();
+
+      void dropped_bytes (uint64_t nbytes);
 
       void dropped (uint64_t ndropped);
 
@@ -27,17 +31,9 @@ namespace spip {
 
       void reset ();
 
-      uint64_t get_data_transmitted () { return pkts_transmitted * data; };
+      uint64_t get_data_transmitted () { return bytes_transmitted; };
 
-      uint64_t get_payload_transmitted () { return pkts_transmitted * payload; };
-
-      uint64_t get_packets_transmitted () { return pkts_transmitted; };
-
-      uint64_t get_packets_dropped () { return pkts_dropped; };
-
-      uint64_t get_data_dropped () { return pkts_dropped * data; };
-
-      uint64_t get_payload_dropped () { return pkts_dropped * payload; };
+      uint64_t get_data_dropped () { return bytes_dropped; };
 
       uint64_t get_nsleeps() { return nsleeps; };
 
@@ -47,9 +43,9 @@ namespace spip {
 
       unsigned payload;
 
-      uint64_t pkts_transmitted;
+      uint64_t bytes_transmitted;
 
-      uint64_t pkts_dropped;
+      uint64_t bytes_dropped;
 
       uint64_t nsleeps;
 
