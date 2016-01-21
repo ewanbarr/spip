@@ -7,9 +7,9 @@
 
 #define UDP_FORMAT_PACKET_NSAMP 1024;
 
-#define UDP_PACKET_TOO_LATE 1
-#define UDP_PACKET_TOO_EARLY 2
-#define UDP_PACKET_IGNORE 3
+#define UDP_PACKET_TOO_LATE -1
+#define UDP_PACKET_TOO_EARLY -2
+#define UDP_PACKET_IGNORE -3
 
 namespace spip {
 
