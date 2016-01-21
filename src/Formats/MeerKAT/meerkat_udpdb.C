@@ -13,6 +13,7 @@
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatMeerKATSimple.h"
+#include "spip/UDPFormatMeerKATSPEAD.h"
 #include "spip/TCPSocketServer.h"
 
 #include <unistd.h>
@@ -68,7 +69,7 @@ int main(int argc, char *argv[]) try
     {
       case 'b':
         core = atoi(optarg);
-        hw_affinity.bind_to_cpu_core (core);
+        hw_affinity.bind_process_to_cpu_core (core);
         hw_affinity.bind_to_memory (core);
         break;
 
@@ -111,6 +112,8 @@ int main(int argc, char *argv[]) try
 
   if (format->compare("simple") == 0)
     udpdb->set_format (new spip::UDPFormatMeerKATSimple());
+  else if (format->compare("spead") == 0)
+    udpdb->set_format (new spip::UDPFormatMeerKATSPEAD());
   else
   {
     cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
@@ -184,36 +187,6 @@ int main(int argc, char *argv[]) try
     cerr << "meerkat_udpdb: start_control_thread (" << control_port << ")" << endl;
     udpdb->start_control_thread (control_port);
 
-/*
-    ctrl_sock = new spip::TCPSocketServer();
-
-    // open a listen sock on all interfaces for the control port
-    if (verbose)
-      cerr << "meerkat_udpdb: opening control socket on any:" << control_port << endl;
-    ctrl_sock->open ("any", control_port, 1);
-
-    int fd = -1;
-
-    // wait for a connection
-    while (!quit_threads && fd < 0)
-    {
-      if (verbose)
-        cerr << "meerkat_udpdb: ctrl_sock->accept(1)" << endl;
-      // try to accept with a 1 second timeout
-      fd = ctrl_sock->accept_client (1);
-    }
-
-    if (!quit_threads && fd > 0 )
-    {
-      char * obs = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-      ssize_t bytes_read = read (fd, obs, DADA_DEFAULT_HEADER_SIZE);
-      if (verbose)
-        cerr << "meerkat_udpdb: bytes_read=" << bytes_read << endl;
-      cerr << "meerkat_udpdb: obs=" << obs << endl;
-      ctrl_sock->close_me ();
-      strcat (header, obs);
-    }
-*/
     bool keep_receiving = true;
     while (keep_receiving)
     {
@@ -234,9 +207,7 @@ int main(int argc, char *argv[]) try
 
     cerr << "meerkat_udpdb: calling receive" << endl;
     udpdb->receive ();
-    
   }
-
 
   udpdb->close();
 
@@ -256,7 +227,7 @@ void usage()
     "  host        hostname/ip of UDP receiver\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -c port     control port for dynamic configuration\n"
-    "  -f format   UDP data format [meerkat]\n"
+    "  -f format   UDP data format [simple spead]\n"
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
     "  -p port     incoming udp port [default " << std::dec << MEERKAT_DEFAULT_UDP_PORT << "]\n"
@@ -279,49 +250,4 @@ void signal_handler(int signalValue)
 
   udpdb->stop_capture();
 }
-
-/* 
- *  Thread to print simple capture statistics
-void * stats_thread (void * arg)
-{
-  spip::UDPReceiveDB * recv = (spip::UDPReceiveDB *) arg;
-
-  uint64_t b_recv_total = 0;
-  uint64_t b_recv_curr = 0;
-  uint64_t b_recv_1sec;
-
-  uint64_t s_curr = 0;
-  uint64_t s_total = 0;
-  uint64_t s_1sec;
-
-  uint64_t p_drop_curr = 0;
-
-  float gb_recv_ps = 0;
-  float mb_recv_ps = 0;
-
-  while (!quit_threads)
-  {
-    // get a snapshot of the data as quickly as possible
-    b_recv_curr = recv->get_stats()->get_data_transmitted();
-    p_drop_curr = recv->get_stats()->get_packets_dropped();
-    s_curr = recv->get_stats()->get_nsleeps();
-
-    // calc the values for the last second
-    b_recv_1sec = b_recv_curr - b_recv_total;
-    s_1sec = s_curr - s_total;
-
-    // update the totals
-    b_recv_total = b_recv_curr;
-    s_total = s_curr;
-
-    mb_recv_ps = (double) b_recv_1sec / 1000000;
-    gb_recv_ps = (mb_recv_ps * 8)/1000;
-
-    // determine how much memory is free in the receivers
-    fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu packets\n", gb_recv_ps, s_1sec, p_drop_curr);
-
-    sleep(1);
-  }
-}
- */
 
