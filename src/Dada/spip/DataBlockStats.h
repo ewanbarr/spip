@@ -106,6 +106,7 @@ namespace spip {
       unsigned poll_time;
 
       char utc_start[20];
+      
   };
 
 }

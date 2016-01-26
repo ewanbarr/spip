@@ -13,10 +13,13 @@
 
 using namespace std;
 
+#define SAMPLES_PER_BLOCK 1024
+
 spip::UDPFormatMeerKATSimple::UDPFormatMeerKATSimple()
 {
   packet_header_size = sizeof(meerkat_simple_udp_header_t);
-  packet_data_size   = 4096;
+
+  packet_data_size   = SAMPLES_PER_BLOCK * ndim * npol;
 
   nsamp_offset = 0;
 
@@ -47,6 +50,13 @@ uint64_t spip::UDPFormatMeerKATSimple::get_samples_for_bytes (uint64_t nbytes)
   return nsamps;
 }
 
+uint64_t spip::UDPFormatMeerKATSimple::get_resolution ()
+{
+  cerr << "spip::UDPFormatMeerKATSimple::get_resolution()" << endl;
+  uint64_t nbits = nchan * SAMPLES_PER_BLOCK * npol * nbit * ndim;
+  return nbits / 8;
+}
+
 void spip::UDPFormatMeerKATSimple::set_channel_range (unsigned start, unsigned end) 
 {
   cerr << "spip::UDPFormatMeerKATSimple::set_channel_range start=" << start 
@@ -71,8 +81,9 @@ inline void spip::UDPFormatMeerKATSimple::encode_header (char * buf)
 
 inline uint64_t spip::UDPFormatMeerKATSimple::decode_header_seq (char * buf)
 {
-  memcpy ((void *) &header, buf, sizeof(uint64_t));
-  return header.seq_number;
+  decode_header (buf);
+  //memcpy ((void *) &header, buf, sizeof(uint64_t));
+  return (header.seq_number * nchan) + (header.channel_number - start_channel);
 }
 
 inline void spip::UDPFormatMeerKATSimple::decode_header (char * buf)
@@ -83,7 +94,7 @@ inline void spip::UDPFormatMeerKATSimple::decode_header (char * buf)
 
 inline int spip::UDPFormatMeerKATSimple::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
 {
-  const uint64_t sample_number = header.seq_number * 1024; 
+  const uint64_t sample_number = header.seq_number * SAMPLES_PER_BLOCK; 
   if (sample_number < start_samp)
   {
     cerr << "header.seq_number=" << header.seq_number << " header.channel_number=" << header.channel_number << endl;
@@ -105,16 +116,16 @@ inline int spip::UDPFormatMeerKATSimple::insert_packet (char * buf, char * pkt, 
 
   //cerr << "seq=" << header.seq_number << " chan=" << header.channel_number << " sample_number=" << sample_number << " channel_offset=" << channel_offset << " sample_offset=" << sample_offset << " pol0_offset=" << pol0_offset << " pol1_offset=" << pol1_offset << endl;
 
-  memcpy (buf + pol0_offset, pkt, 2048);
-  memcpy (buf + pol1_offset, pkt + 2048, 2048);
+  memcpy (buf + pol0_offset, pkt, SAMPLES_PER_BLOCK * 2);
+  memcpy (buf + pol1_offset, pkt + (SAMPLES_PER_BLOCK * 2), (SAMPLES_PER_BLOCK * 2));
 
-  return 4096;
+  return SAMPLES_PER_BLOCK * 4;
 }
 
 // generate the next packet in the cycle
 inline void spip::UDPFormatMeerKATSimple::gen_packet (char * buf, size_t bufsz)
 {
-  // cycle through each of the channels to produce a packet with 1024 
+  // cycle through each of the channels to produce a packet with SAMPLES_PER_BLOCK 
   // time samples and two polarisations
 
   // write the new header
@@ -131,13 +142,12 @@ inline void spip::UDPFormatMeerKATSimple::gen_packet (char * buf, size_t bufsz)
     header.seq_number++;
     nsamp_offset += header.nsamp;
   }
-
 }
 
 void spip::UDPFormatMeerKATSimple::print_packet_header()
 {
   uint64_t pkt_num = (header.seq_number * nchan) + (header.channel_number - start_channel);
-  uint64_t last_sample = (header.seq_number * 1024) + 1023;
+  uint64_t last_sample = (header.seq_number * SAMPLES_PER_BLOCK) + (nchan - 1);
   cerr << "pkt_num=" << pkt_num << " last_sample=" << last_sample 
        << " seq=" << header.seq_number << " chan=" << header.channel_number << endl;
 }

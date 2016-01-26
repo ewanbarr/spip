@@ -135,6 +135,8 @@ class ProcDaemon (Daemon, StreamBased):
           header = config.parseHeader (lines)
 
           utc_start = header["UTC_START"]
+          self.log (1, "UTC_START=" + header["UTC_START"])
+          self.log (1, "RESOLUTION=" + header["RESOLUTION"])
 
           # default processing commands
           fold_cmd = "dada_dbnull -s -k " + db_key_in
@@ -178,8 +180,8 @@ class ProcDaemon (Daemon, StreamBased):
             if fold:
               os.makedirs (fold_dir, 0755)
               fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -overlap -minram 4000 -x 16384 -b 1024 -L 5 -no_dyn"
-              fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn"
               fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn -skz -skzs 4 -skzm 128 -skz_no_tscr -skz_no_fscr"
+              fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn"
               #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
             if search or trans:
@@ -196,7 +198,7 @@ class ProcDaemon (Daemon, StreamBased):
           log_port = int(self.cfg["SERVER_LOG_PORT"])
 
           # setup output pipes
-          fold_log_pipe   = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
+          fold_log_pipe = LogSocket ("fold_src", "fold_src", str(self.id), "stream",
                                        log_host, log_port, int(DL))
 
           #trans_log_pipe  = LogSocket ("trans_src", "trans_src", str(self.id), "stream",
@@ -239,15 +241,15 @@ class ProcDaemon (Daemon, StreamBased):
           #  quit_event.set()
 
           #self.log (2, "joining search thread")
-        #rval = search_thread.join() 
-        #self.log (2, "search thread joined")
-        #if rval:
-        #  self.log (-2, "search thread failed")
-        #  quit_event.set()
+          #rval = search_thread.join() 
+          #self.log (2, "search thread joined")
+          #if rval:
+          #  self.log (-2, "search thread failed")
+          #  quit_event.set()
 
-        fold_log_pipe.close()
-        #trans_log_pipe.close()
-        #search_log_pipe.close()
+          fold_log_pipe.close()
+          #trans_log_pipe.close()
+          #search_log_pipe.close()
 
         self.log (1, "processing completed")
 

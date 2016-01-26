@@ -103,11 +103,17 @@ void spip::DataBlockStats::prepare ()
     cerr << "spip::DataBlockStats::prepare db->read_header()" << endl; 
   db->read_header();
 
-  if (ascii_header_get (db->get_header(), "UTC_START", "%s", utc_start) < 0)
+  if (ascii_header_get (db->get_header(), "UTC_START", "%s", utc_start) != 1)
     throw runtime_error ("could not read UTC_START from header");
 
-  if (verbose)
-    cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start << endl;
+  uint64_t resolution;
+  if (ascii_header_get(db->get_header(), "RESOLUTION", "%lu", &resolution) != 1)
+    throw runtime_error ("could not read RESOLUTION from header");
+  block_format->set_resolution (resolution);
+
+  //if (verbose)
+    cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start
+         << " RESOLUTION=" << resolution << endl;
 }
 
 void spip::DataBlockStats::set_block_format (BlockFormat * fmt)
@@ -242,7 +248,7 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
 
   block_format->prepare (nbin, ntime, nfreq);
 
-  if (verbose)
+  //if (verbose)
     cerr << "spip::DataBlockStats::monitor: db->read (" << buffer << ", " << bufsz << ")" << endl;
 
   int64_t bytes_read = db->read (buffer, bufsz);

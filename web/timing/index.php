@@ -135,14 +135,14 @@ class timing extends spip_webpage
               {
                 observation = beam.getElementsByTagName("observation")[0]
                 start = observation.getElementsByTagName("start")[0].childNodes[0].nodeValue;
-                integrated = observation.getElementsByTagName("integrated")[0].childNodes[0].nodeValue;
-                snr = observation.getElementsByTagName("snr")[0].childNodes[0].nodeValue;
+                integrated = parseFloat(observation.getElementsByTagName("integrated")[0].childNodes[0].nodeValue);
+                snr = parseFloat(observation.getElementsByTagName("snr")[0].childNodes[0].nodeValue);
                 plots = beam.getElementsByTagName("plot");
     
                 if (start = tcs_utcs[beam_name])
                 {
-                  document.getElementById(beam_name + "_integrated").innerHTML = integrated;
-                  document.getElementById(beam_name + "_snr").innerHTML = snr;
+                  document.getElementById(beam_name + "_integrated").innerHTML = integrated.toFixed(2);
+                  document.getElementById(beam_name + "_snr").innerHTML = snr.toFixed(2);
                 }
 
                 for (j=0; j<plots.length; j++)
@@ -420,7 +420,7 @@ class timing extends spip_webpage
       if ($i % $cols == 0)
         echo "  <tr>\n";
       echo "    <th>".$fields[$keys[$i]]."</th>\n";
-      echo "    <td width='100px'><span id='".$keys[$i]."'>--</span></td>\n";
+      echo "    <td><span id='".$keys[$i]."'>--</span></td>\n";
       if (($i+1) % $cols == 0)
         echo "  </tr>\n";
     }

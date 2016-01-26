@@ -101,6 +101,13 @@ int spip::UDPReceiveDB::configure (const char * config)
 
   // save the header for use on the first open block
   strncpy (header, config, strlen(config)+1);
+
+  // now write new params to header
+  uint64_t resolution = format->get_resolution();
+  cerr << "spip::UDPReceiveDB::configure resolution=" << resolution << endl;
+  if (ascii_header_set (header, "RESOLUTION", "%lu", resolution) < 0)
+    throw invalid_argument ("failed to write RESOLUTION to header");
+
 }
 
 void spip::UDPReceiveDB::prepare (std::string ip_address, int port)
@@ -207,7 +214,7 @@ void spip::UDPReceiveDB::control_thread()
       // now check command in list of header commands
       if (ascii_header_get (cmds, "COMMAND", "%s", cmd) != 1)
         throw invalid_argument ("COMMAND did not exist in header");
-      if (verbose)
+      //if (verbose)
         cerr << "control_thread: cmd=" << cmd << endl;
       if (strcmp (cmd, "START") == 0)
       {
@@ -220,19 +227,19 @@ void spip::UDPReceiveDB::control_thread()
         open ();
 
         // write header
-        if (verbose)
+        //if (verbose)
           cerr << "control_thread: control_cmd = Start" << endl;
         control_cmd = Start;
       }
       else if (strcmp (cmd, "STOP") == 0)
       {
-        if (verbose)
+        //if (verbose)
           cerr << "control_thread: control_cmd = Stop" << endl;
         control_cmd = Stop;
       }
       else if (strcmp (cmd, "QUIT") == 0)
       {
-        if (verbose)
+        //if (verbose)
           cerr << "control_thread: control_cmd = Quit" << endl;
         control_cmd = Quit;
       }
@@ -533,9 +540,9 @@ bool spip::UDPReceiveDB::receive ()
       // close open data block buffer if is is now full
       if (bytes_this_buf >= data_bufsz || need_next_block)
       {
+#ifdef _DEBUG
         cerr << bytes_this_buf << " / " << data_bufsz << " => " << 
             ((float) bytes_this_buf / (float) data_bufsz) * 100 << endl;
-#ifdef _DEBUG
         cerr << "spip::UDPReceiveDB::receive close_block bytes_this_buf=" 
              << bytes_this_buf << " bytes_per_buf=" << data_bufsz 
              << " need_next_block=" << need_next_block
@@ -569,7 +576,7 @@ bool spip::UDPReceiveDB::receive ()
 #endif
 
   // close the data block
-  // close();
+  close();
 
   if (control_state == Idle)
     return true;

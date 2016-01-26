@@ -17,7 +17,7 @@ from spip.log_socket import LogSocket
 from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL = 1
 
 ###############################################################
@@ -259,14 +259,15 @@ class TCSDaemon(Daemon):
         beam_name = self.cfg["BEAM_" + beam]
 
         # control port the this recv stream 
-        #ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
+        ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
 
         # connect to recv agent and provide observation configuration
-        #self.log(1, "issue_cmd: openSocket("+host+","+str(ctrl_port)+")")
-        #sock = sockets.openSocket (DL, host, ctrl_port, 1)
-        #if sock:
-        #  sock.send(obs_header)
-        #  sock.close()
+        self.log(1, "issue_cmd: openSocket("+host+","+str(ctrl_port)+")")
+        sock = sockets.openSocket (DL, host, ctrl_port, 1)
+        if sock:
+          self.log(1, "issue_cmd: sending obs_header")
+          sock.send(obs_header)
+          sock.close()
 
         # connect to spip_gen and issue start command for UTC
         # assumes gen host is the same as the recv host!
@@ -328,10 +329,10 @@ if __name__ == "__main__":
   # all beams, otherwise, 1 per beam
     
   if int(beam_id) == -1:
-    script = TCSServerDaemon ("tcs")
+    script = TCSServerDaemon ("spip_tcs")
     beam_id = 0
   else:
-    script = TCSBeamDaemon ("tcs", beam_id)
+    script = TCSBeamDaemon ("spip_tcs", beam_id)
 
   state = script.configure (DAEMONIZE, DL, "tcs", "tcs")
   if state != 0:

@@ -44,6 +44,12 @@ uint64_t spip::UDPFormatCustom::get_samples_for_bytes (uint64_t nbytes)
   return nsamps;
 }
 
+uint64_t spip::UDPFormatCustom::get_resolution ()
+{
+  uint64_t nbits = nchan * npol * ndim * nbit * spip::UDPFormatCustom::get_samples_per_packet();
+  return nbits / 8;
+}
+
 void spip::UDPFormatCustom::set_channel_range (unsigned start, unsigned end) 
 {
   cerr << "spip::UDPFormatCustom::set_channel_range start=" << start 

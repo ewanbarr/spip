@@ -64,6 +64,13 @@ uint64_t spip::UDPFormatMeerKATSPEAD::get_samples_for_bytes (uint64_t nbytes)
   return nsamps;
 }
 
+uint64_t spip::UDPFormatMeerKATSPEAD::get_resolution ()
+{
+  uint64_t nbits = nchan * nbytes_per_samp * npol * nbit * ndim;
+  return nbits / 8;
+}
+
+
 void spip::UDPFormatMeerKATSPEAD::set_channel_range (unsigned start, unsigned end) 
 {
   cerr << "spip::UDPFormatMeerKATSPEAD::set_channel_range start=" << start 

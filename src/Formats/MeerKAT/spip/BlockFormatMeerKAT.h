@@ -22,8 +22,6 @@ namespace spip {
 
     private:
 
-      unsigned nsamp_block;
-
   };
 
 }

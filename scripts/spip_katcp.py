@@ -88,7 +88,7 @@ class KATCPDaemon(Daemon):
       r = str(self.beams[0])
     else:
       self.log(-2, "set_katcp: no beams configured")
-    self.katcp._beam_list_result.set_value (r)
+    self.katcp._beam_list.set_value (r)
 
     r = ""
     if len(self.hosts) > 1:
@@ -97,7 +97,7 @@ class KATCPDaemon(Daemon):
       r = str(self.hosts[0])
     else:
       self.log(-2, "set_katcp: no hosts configured")
-    self.katcp._host_list_result.set_value (r)
+    self.katcp._host_list.set_value (r)
 
   #############################################################################
   # script core
@@ -112,6 +112,9 @@ class KATCPDaemon(Daemon):
       # sensors in the DeviceServer periodically
 
       time.sleep(2)
+
+      # TODO compute overall device status
+      self.katcp._device_status.set_value("ok")
 
       # connect to SPIP_LMC to retreive temperature information
       for lmc in self.lmcs:
@@ -158,20 +161,21 @@ class KATCPDaemon(Daemon):
     self.katcp._host_sensors[host]["load5"].set_value (float(xml["lmc_reply"]["system_load"]["load5"]))
     self.katcp._host_sensors[host]["load15"].set_value (float(xml["lmc_reply"]["system_load"]["load15"]))
 
-    for sensor in xml["lmc_reply"]["sensors"]["metric"]:
+    if not xml["lmc_reply"]["sensors"] == None:
+      for sensor in xml["lmc_reply"]["sensors"]["metric"]:
 
-      name = sensor["@name"]
-      value = sensor["#text"]
+        name = sensor["@name"]
+        value = sensor["#text"]
 
-      if name == "system_temp":
-        self.katcp._host_sensors[host][name].set_value (float(value))
-      elif (self.cpu_temp_pattern.match(name)):
-        (cpu, junk) = name.split("_")
-        self.katcp._host_sensors[host][name].set_value (float(value))
-      elif (self.fan_speed_pattern.match(name)):
-        self.katcp._host_sensors[host][name].set_value (float(value))
-      elif (self.power_supply_pattern.match(name)):
-        self.katcp._host_sensors[host][name].set_value (value == "ok")
+        if name == "system_temp":
+          self.katcp._host_sensors[host][name].set_value (float(value))
+        elif (self.cpu_temp_pattern.match(name)):
+          (cpu, junk) = name.split("_")
+          self.katcp._host_sensors[host][name].set_value (float(value))
+        elif (self.fan_speed_pattern.match(name)):
+          self.katcp._host_sensors[host][name].set_value (float(value))
+        elif (self.power_supply_pattern.match(name)):
+          self.katcp._host_sensors[host][name].set_value (value == "ok")
 
   def update_repack_sensors (self, host, xml):
 
@@ -245,10 +249,10 @@ class KATCPBeamDaemon (KATCPDaemon, BeamBased):
     KATCPDaemon.__init__(self, name, str(id))
     BeamBased.__init__(self, str(id), self.cfg)
 
-    self.beam_states[i+1] = {}
-    self.beam_states[i+1]["NAME"] = self.cfg["BEAM_"+str(i)]
-    self.beam_states[i+1]["SNR"] = 0
-    self.beam_states[i+1]["POWER"] = 0
+    self.beam_states[id+1] = {}
+    self.beam_states[id+1]["NAME"] = self.cfg["BEAM_"+str(id)]
+    self.beam_states[id+1]["SNR"] = 0
+    self.beam_states[id+1]["POWER"] = 0
     self.beams = self.beam_states.keys()
 
 
@@ -271,24 +275,34 @@ class KATCPServer (DeviceServer):
       self.script = script
       self._host_sensors = {}
       self._beam_sensors = {}
+      self._data_products = {}
+      self.script.log(2, "KATCPServer::__init__ starting DeviceServer on " + server_host + ":" + str(server_port))
       DeviceServer.__init__(self, server_host, server_port)
+
+    DEVICE_STATUSES = ["ok", "degraded", "fail"]
 
     def setup_sensors(self):
       """Setup server sensors."""
       self.script.log(2, "KATCPServer::setup_sensors()")
 
-      self._beam_list_result = Sensor.string("beam_list.result",
+      self._device_status = Sensor.discrete("device-status",
+        description="Status of entire system",
+        params=self.DEVICE_STATUSES,
+        default="ok")
+      self.add_sensor(self._device_status)
+
+      self._beam_list = Sensor.string("beam-list",
         description="list of configured beams",
         unit="",
         default="")
-      self.add_sensor(self._beam_list_result)
+      self.add_sensor(self._beam_list)
 
       # setup host based sensors   
-      self._host_list_result  = Sensor.string("host_list.result",
+      self._host_list= Sensor.string("host-list",
         description="list of configured servers",
         unit="",
         default="")
-      self.add_sensor(self._host_list_result)
+      self.add_sensor(self._host_list)
 
       self.script.log(2, "KATCPServer::setup_sensors lmcs="+str(self.script.lmcs))
       for lmc in self.script.lmcs:
@@ -302,9 +316,11 @@ class KATCPServer (DeviceServer):
     # add sensors based on the reply from the specified host
     def setup_sensors_host (self, host, port):
 
-      self.script.log(2, "KATCPServer::setup_sensors_hosts("+host+","+port+")")
+      self.script.log(2, "KATCPServer::setup_sensors_host ("+host+","+port+")")
       sock = sockets.openSocket (DL, host, int(port), 1)
+
       if sock:
+        self.script.log(2, "KATCPServer::setup_sensors_host sock.send(" + self.script.lmc_cmd + ")") 
         sock.send (self.script.lmc_cmd + "\r\n")
         lmc_reply = sock.recv (65536)
         sock.close()
@@ -314,6 +330,7 @@ class KATCPServer (DeviceServer):
         self._host_sensors[host]["sensors"] = {}
 
         # Disk sensors
+        self.script.log(2, "KATCPServer::setup_sensors_host configuring disk sensors")
         disk_prefix = host+".disk"
         self._host_sensors[host]["disk_size"] = Sensor.float(disk_prefix+".size",
           description=host+": disk size",
@@ -329,6 +346,7 @@ class KATCPServer (DeviceServer):
         self.add_sensor(self._host_sensors[host]["disk_available"])
 
         # Server Load sensors
+        self.script.log(2, "KATCPServer::setup_sensors_host configuring load sensors")
         self._host_sensors[host]["num_cores"] = Sensor.integer (host+".num_cores",
           description=host+": disk available space",
           unit="MB",
@@ -359,39 +377,62 @@ class KATCPServer (DeviceServer):
         fan_speed_pattern = re.compile("fan[0-9,a-z]+")
         power_supply_pattern = re.compile("ps[0-9]+_status")
           
-        for sensor in xml["lmc_reply"]["sensors"]["metric"]:
-          name = sensor["@name"]
-          if name == "system_temp":
-            self._host_sensors[host][name] = Sensor.float((host+".system_temp"),
-              description=host+": system temperature",
-              unit="C",
-              params=[-20,150],
-              default=0)
-            self.add_sensor(self._host_sensors[host][name])
+        self.script.log(2, "KATCPServer::setup_sensors_host configuring other metrics")
 
-          if cpu_temp_pattern.match(name):
-            (cpu, junk) = name.split("_")
-            self._host_sensors[host][name] = Sensor.float((host+"." + name),
-              description=host+": "+ cpu +" temperature",
-              unit="C",
-              params=[-20,150],
-              default=0)
-            self.add_sensor(self._host_sensors[host][name])
+        if not xml["lmc_reply"]["sensors"] == None:
 
-          if fan_speed_pattern.match(name):
-            self._host_sensors[host][name] = Sensor.float((host+"." + name),
-              description=host+": "+name+" speed",
-              unit="RPM",
-              params=[0,20000],
-              default=0)
-            self.add_sensor(self._host_sensors[host][name])
+          for sensor in xml["lmc_reply"]["sensors"]["metric"]:
+            name = sensor["@name"]
+            if name == "system_temp":
+              self._host_sensors[host][name] = Sensor.float((host+".system_temp"),
+                description=host+": system temperature",
+                unit="C",
+                params=[-20,150],
+                default=0)
+              self.add_sensor(self._host_sensors[host][name])
 
-          if power_supply_pattern.match(name):
-            self._host_sensors[host][name] = Sensor.boolean((host+"." + name),
-              description=host+": "+name,
-              unit="",
-              default=0)
-            self.add_sensor(self._host_sensors[host][name])
+            if cpu_temp_pattern.match(name):
+              (cpu, junk) = name.split("_")
+              self._host_sensors[host][name] = Sensor.float((host+"." + name),
+                description=host+": "+ cpu +" temperature",
+                unit="C",
+                params=[-20,150],
+                default=0)
+              self.add_sensor(self._host_sensors[host][name])
+
+            if fan_speed_pattern.match(name):
+              self._host_sensors[host][name] = Sensor.float((host+"." + name),
+                description=host+": "+name+" speed",
+                unit="RPM",
+                params=[0,20000],
+                default=0)
+              self.add_sensor(self._host_sensors[host][name])
+
+            if power_supply_pattern.match(name):
+              self._host_sensors[host][name] = Sensor.boolean((host+"." + name),
+                description=host+": "+name,
+                unit="",
+                default=0)
+              self.add_sensor(self._host_sensors[host][name])
+
+            # TODO consider adding power supply sensors: e.g.
+            #   device-status-kronos1-powersupply1
+            #   device-status-kronos1-powersupply2
+            #   device-status-kronos2-powersupply1
+            #   device-status-kronos2-powersupply2
+
+            # TODO consider adding raid/disk sensors: e.g.
+            #   device-status-<host>-raid
+            #   device-status-<host>-raid-disk1
+            #   device-status-<host>-raid-disk2
+
+          self.script.log(2, "KATCPServer::setup_sensors_host done!")
+
+        else:
+          self.script.log(2, "KATCPServer::setup_sensors_host no sensors found")
+
+      else:
+        self.script.log(-2, "KATCPServer::setup_sensors_host: could not connect to LMC")
 
     # setup sensors for each beam
     def setup_sensors_beam (self, beam):
@@ -426,20 +467,19 @@ class KATCPServer (DeviceServer):
         default=0)
       self.add_sensor(self._beam_sensors[b]["integrated"])
 
-
     @request()
     @return_reply(Str())
     def request_beam_list(self, req):
       """Return the list of configured beams."""
       state, r = script.get_beam_list()
-      self._beam_list_result.set_value(r)
+      self._beam_list.set_value(r)
       return (state, r)
 
     @request()
     @return_reply(Str())
     def request_host_list(self, req):
       """Return the list of configured servers."""
-      r = self._host_list_result.value()
+      r = self._host_list.value()
       return ("ok", r)
 
     @request(Int())
@@ -464,18 +504,95 @@ class KATCPServer (DeviceServer):
       else:
         return ("fail", 0)
 
-    def request_raw_reverse(self, req, msg):
-      """
-      A raw request handler to demonstrate the calling convention if
-      @request decoraters are not used. Reverses the message arguments.
-      """
-      # msg is a katcp.Message.request object
-      reversed_args = msg.arguments[::-1]
-      # req.make_reply() makes a katcp.Message.reply using the correct request
-      # name and message ID
-      return req.make_reply(*reversed_args)
+    @request(Int())
+    @return_reply(Str())
+    def request_capture_init(self, req, data_product_id):
+      """Prepare the ingest process for data capture."""
+      if data_product_id in self._data_products:
+        # TODO instruct SPIP backend for beam to prepare
+        return ("ok", "")
+      else:
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+    @request(Int())
+    @return_reply(Str())
+    def request_capture_start(self, req, data_product_id):
+      """Start capture of SPEAD stream for the data_product_id."""
+      if data_product_id in self._data_products:
+        # TODO instruct SPIP backend for beam to start acquisition 
+        return ("ok", "")
+      else:
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+    @request(Int())
+    @return_reply(Str())
+    def request_capture_stop(self, req, data_product_id):
+      """Stop capture of SPEAD stream for the data_product_id."""
+      if data_product_id in self._data_products:
+        # TODO instruct SPIP backend for beam to stop acquisition 
+        return ("ok", "")
+      else:
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+    @request(Int())
+    @return_reply(Str())
+    def request_capture_done(self, req, data_product_id):
+      """Terminte the ingest process for the specified data_product_id."""
+      if data_product_id in self._data_products:
+        # TODO instruct SPIP backend for beam to conclude observation 
+        return ("ok", "")
+      else:
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
 
 
+    @return_reply(Str())
+    def request_data_product_configure(self, req, msg):
+      """Prepare and configure for the reception of the data_product_id."""
+
+      if len(msg.arguments) == 0:
+        return ("ok", "configured data products: TBD")
+
+      data_product_id = int(msg.arguments[0])
+
+      if len(msg.arguments) == 1:
+        if data_product_id in self._data_products:
+          configuration = str(data_product_id) + " " + \
+                          str(self._data_products[data_product_id]['antennas']) + " " + \
+                          str(self._data_products[data_product_id]['n_channels']) + " " + \
+                          str(self._data_products[data_product_id]['dump_rate']) + " " + \
+                          str(self._data_products[data_product_id]['n_beams']) + " " + \
+                          str(self._data_products[data_product_id]['cbf_source'])
+          return ("ok", configuration)
+        else:
+          return ("fail", "no configuration existed for " + str(data_product_id))
+
+      if msg.arguments[1] == "":
+        return ("ok", "deconfigured data_product " + str (data_product_id))
+
+      if len(msg.arguments) == 6:
+        # if the configuration for the specified data product matches extactly the 
+        # previous specificaiton for that data product, then no action is required
+        if data_product_id in self._data_products and \
+            self._data_products[data_product_id]['antennas'] == msg.arguments[1] and \
+            self._data_products[data_product_id]['n_channels'] == msg.arguments[2] and \
+            self._data_products[data_product_id]['dump_rate'] == msg.arguments[3] and \
+            self._data_products[data_product_id]['n_beams'] == msg.arguments[4] and \
+            self._data_products[data_product_id]['cbf_source'] == msg.arguments[5]:
+          return ("ok", "data_product configuration for " + str(data_product_id) + " matched previous")
+
+        # the data product requires configuration
+        else:
+          self._data_products[data_product_id] = {}
+          self._data_products[data_product_id]['antennas'] = msg.arguments[1]
+          self._data_products[data_product_id]['n_channels'] = msg.arguments[2]
+          self._data_products[data_product_id]['dump_rate'] = msg.arguments[3]
+          self._data_products[data_product_id]['n_beams'] = msg.arguments[4]
+          self._data_products[data_product_id]['cbf_source'] = msg.arguments[5]
+          return ("ok", "data product " + str (data_product_id) + " configured")
+
+      else:
+        return ("fail", "expected 0, 1 or 6 arguments") 
+       
 ###############################################################################
 #
 if __name__ == "__main__":
@@ -494,7 +611,7 @@ if __name__ == "__main__":
     script = KATCPServerDaemon ("katcp")
     beam_id = 0
   else:
-    script = KATCPBeamDaemon ("katcp", beam_id)
+    script = KATCPBeamDaemon ("katcp", int(beam_id))
 
   state = script.configure (DAEMONIZE, DL, "katcp", "katcp")
   if state != 0:
@@ -505,14 +622,19 @@ if __name__ == "__main__":
   try:
     server_host = sockets.getHostNameShort()
     server_port = 5000 + int(beam_id)
+
+    script.log(2, "__main__: KATCPServer(" +server_host+"," + str(server_port) + ")")
     server = KATCPServer (server_host, server_port, script)
 
+    script.log(2, "__main__: script.set_katcp()")
     script.set_katcp(server)
 
     script.log(1, "STARTING SCRIPT")
    
+    script.log(2, "__main__: server.start()")
     server.start()
 
+    script.log(2, "__main__: script.main()")
     script.main (beam_id)
 
     if server.running():

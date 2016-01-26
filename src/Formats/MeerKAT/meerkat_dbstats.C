@@ -169,36 +169,6 @@ int main(int argc, char *argv[]) try
     cerr << "meerkat_dbstats: start_control_thread (" << control_port << ")" << endl;
     dbstats->start_control_thread (control_port);
 
-/*
-    ctrl_sock = new spip::TCPSocketServer();
-
-    // open a listen sock on all interfaces for the control port
-    if (verbose)
-      cerr << "meerkat_dbstats: opening control socket on any:" << control_port << endl;
-    ctrl_sock->open ("any", control_port, 1);
-
-    int fd = -1;
-
-    // wait for a connection
-    while (!quit_threads && fd < 0)
-    {
-      if (verbose)
-        cerr << "meerkat_dbstats: ctrl_sock->accept(1)" << endl;
-      // try to accept with a 1 second timeout
-      fd = ctrl_sock->accept_client (1);
-    }
-
-    if (!quit_threads && fd > 0 )
-    {
-      char * obs = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-      ssize_t bytes_read = read (fd, obs, DADA_DEFAULT_HEADER_SIZE);
-      if (verbose)
-        cerr << "meerkat_dbstats: bytes_read=" << bytes_read << endl;
-      cerr << "meerkat_dbstats: obs=" << obs << endl;
-      ctrl_sock->close_me ();
-      strcat (header, obs);
-    }
-*/
     bool keep_monitoring = true;
     while (keep_monitoring)
     {
@@ -214,13 +184,6 @@ int main(int argc, char *argv[]) try
     cerr << "meerkat_dbstats: calling monitor" << endl;
     dbstats->monitor(stats_dir, stream);
   }
-
-/*
-  if (verbose)
-    cerr << "meerkat_dbstats: joining dbstats_thread" << endl;
-  void * result;
-  pthread_join (stats_thread_id, &result);
-*/
 
   delete dbstats;
 }

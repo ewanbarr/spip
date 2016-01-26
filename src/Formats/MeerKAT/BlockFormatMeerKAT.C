@@ -18,12 +18,10 @@ spip::BlockFormatMeerKAT::BlockFormatMeerKAT()
 {
   cerr << "spip::BlockFormatMeerKAT::BlockFormatMeerKAT()" << endl;
 
-  nchan = 1024;
+  nchan = 4096;
   npol = 2;
   ndim = 2;
   nbit = 8;
-
-  nsamp_block = 128;
 }
 
 spip::BlockFormatMeerKAT::~BlockFormatMeerKAT()
@@ -36,6 +34,7 @@ void spip::BlockFormatMeerKAT::unpack_hgft (char * buffer, uint64_t nbytes)
   const unsigned nsamp = nbytes / bytes_per_sample;
   const unsigned nsamp_per_time = nsamp / ntime;
   const unsigned nchan_per_freq = nchan / nfreq;
+  const unsigned nsamp_block = resolution / (nchan * npol * ndim * nbit / 8);
   const unsigned nblock = nsamp / nsamp_block;
 
   int8_t * in = (int8_t *) buffer;
@@ -70,7 +69,7 @@ void spip::BlockFormatMeerKAT::unpack_hgft (char * buffer, uint64_t nbytes)
 
           // detect and average the timesamples into a NPOL sets of NCHAN * 512 waterfalls
           power = (unsigned) ((re * re) + (im * im));
-          itime = isamp / nsamp_per_time;
+          itime = ((iblock * nsamp_block) + isamp) / nsamp_per_time;
           freq_time[ipol][ifreq][itime] += power;
 
           idat += 2;
@@ -87,6 +86,7 @@ void spip::BlockFormatMeerKAT::unpack_ms(char * buffer, uint64_t nbytes)
   const unsigned nsamp = nbytes / bytes_per_sample;
   const unsigned nsamp_per_time = nsamp / ntime;
   const unsigned nchan_per_freq = nchan / nfreq;
+  const unsigned nsamp_block = resolution / (nchan * npol * ndim * nbit / 8);
   const unsigned nblock = nsamp / nsamp_block;
 
   float ndat = (float) (nsamp * nchan);
@@ -100,6 +100,12 @@ void spip::BlockFormatMeerKAT::unpack_ms(char * buffer, uint64_t nbytes)
   uint64_t idat = 0;
   int re, im;
   float diff;
+
+#ifdef _DEBUG
+  cerr << "spip::BlockFormatMeerKAT::unpack_ms nsamp=" << nsamp << " nsamp_per_time=" << nsamp_per_time << endl;
+  cerr << "spip::BlockFormatMeerKAT::unpack_ms nchan_per_freq=" << nchan_per_freq << " nblock=" << nblock << end
+l;
+#endif
 
   for (unsigned iblock=0; iblock<nblock; iblock++)
   {

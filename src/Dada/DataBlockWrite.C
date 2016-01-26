@@ -87,7 +87,6 @@ void spip::DataBlockWrite::write_header (const char* header)
   if (!locked)
     throw runtime_error ("not locked as writer");
 
-  cerr << "spip::DataBlockWrite::write_header ipcbuf_get_next_write()" << endl;
   char * header_buf = ipcbuf_get_next_write (header_block);
   if (!header_buf)
     throw runtime_error ("could not get next header buffer");

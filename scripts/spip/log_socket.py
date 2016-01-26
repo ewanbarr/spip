@@ -51,7 +51,8 @@ class LogSocket(object):
 
   def log (self, level, message):
     if level <= self.dl:
-      # if the socket is currently not connected and we didn't try to connect in the last 10 seconds
+      # if the socket is currently not connected and we didn't try to 
+      # connect in the last 10 seconds
       if not self.sock:
         self.connected = False
         self.connect(1)
@@ -66,14 +67,15 @@ class LogSocket(object):
           for line in lines:
             if self.log_local:
               stderr.write (prefix + message + "\n")
-            if self.sock:
+            if self.connected and self.sock:
               self.sock.send (prefix + message + "\n")
         except socket.error as e:
           if e.errno == errno.EPIPE:
-            self.close()
+            if self.connected:
+              self.close()
           else:
             raise
-  
+ 
   def close (self):
     if self.sock:
       self.sock.close()

@@ -50,6 +50,9 @@ namespace spip {
 
       static inline void decode_header (void * buf, uint64_t * packet_number);
 
+      uint64_t get_resolution ();
+
+
     private:
 
       ska1_udp_header_t header;

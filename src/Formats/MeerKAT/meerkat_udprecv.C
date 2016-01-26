@@ -36,11 +36,7 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
-#ifdef HAVE_SPEAD2
-  string * format = new string("spead");
-#else
   string * format = new string("simple");
-#endif
 
   char * config_file = 0;
 

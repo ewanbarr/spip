@@ -179,9 +179,6 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
   {
     format->gen_packet (buf, bufsz);
 
-    // optionally we can encode semi-realistic noise into the data
-    //write_data (buf, bufsz, packet_number);
-
     uint64_t bytes_sent = sock->send();
 
     stats->increment();

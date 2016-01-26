@@ -7,25 +7,92 @@
 # 
 ###############################################################################
 
-#import os, threading, sys, time, socket, select, signal, traceback, xmltodict
-
-import sys, socket, select, traceback, errno
+import sys, socket, select, threading, traceback, errno
 from time import sleep
 
 from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils.sockets import getHostNameShort
+from spip.utils.core import system_piped,system
 from spip import config
 
 DAEMONIZE = True
-DL = 1
+DL = 2
 
+#################################################################
+# thread for executing generator
+class genThread (threading.Thread):
+
+  def __init__ (self, script, fixed_config, header, dl):
+
+    threading.Thread.__init__(self)
+    self.script = script
+    self.dl = dl
+
+    script_id = str(self.script.id)
+
+    # generate the header file to be use by GEN_BINARY
+    header_file = "/tmp/spip_" + header["UTC_START"] + "." + script_id + ".header"
+
+    header["HDR_VERSION"] = "1.0"
+
+    # include the fixed configuration
+    header.update(fixed_config)
+
+    # rate in Gb/s
+    transmit_rate = float(header["BYTES_PER_SECOND"]) * 8.0 / 1000000000.0
+
+    # TODO make this native
+    transmit_rate /= 4
+
+    self.script.log(2, "genThread: writing header to " + header_file)
+    config.writeDictToCFGFile (header, header_file)
+
+    # determine the parameters for GEN_BINARY
+    (stream_ip, stream_port) =  (self.script.cfg["STREAM_UDP_" + script_id]).split(":")
+
+    stream_core = self.script.cfg["STREAM_GEN_CORE_" + script_id]
+
+    tobs = "60"
+    if header["TOBS"] != "":
+      tobs = header["TOBS"]
+
+    self.cmd = self.script.cfg["STREAM_GEN_BINARY"] + " -b " + stream_core \
+          + " -p " + stream_port \
+          + " -r " + str(transmit_rate) \
+          + " -t " + tobs \
+          + " " + header_file + " " + stream_ip
+
+    self.script.log (2, "genThread::init cmd=" + self.cmd)
+
+  def run (self):
+
+    self.script.log (2, "genThread::run creating log_pipe")
+    log_pipe = LogSocket ("gen_src", "gen_src", str(self.script.id), "stream",
+                          self.script.cfg["SERVER_HOST"], self.script.cfg["SERVER_LOG_PORT"],
+                          int(self.dl))
+    log_pipe.connect ()
+    sleep (1)
+
+    self.script.log (2, "genThread::run START")
+    self.script.binary_list.append (self.cmd)
+    rval = system_piped (self.cmd, log_pipe.sock, self.dl <= DL)
+    self.script.log (2, "genThread::run END")
+
+    self.script.binary_list.remove (self.cmd)
+
+    log_pipe.close()
+    return rval
+
+#################################################################
+# Implementation
 class GenDaemon(Daemon,StreamBased):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
     StreamBased.__init__(self, id, self.cfg)
+    self.gen_thread = []
 
   def main (self):
 
@@ -91,89 +158,76 @@ class GenDaemon(Daemon,StreamBased):
           # an accepted connection must have generated some data
           else:
 
-            message = handle.recv(4096).strip()
-            self.log(3, "commandThread: message='" + str(message) +"'")
+            try:
+              message = handle.recv(4096).strip()
+              self.log(3, "commandThread: message='" + str(message) +"'")
             
-            #xml = xmltodict.parse (message)
-            #self.log(3, DL, "commandThread: xml='" + str(xml) +"'")
+              # and empty messages means a remote close (normally)
+              if (len(message) == 0):
+                self.log(1, "commandThread: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
 
-            if (len(message) == 0):
-              self.log(1, "commandThread: closing connection")
-              handle.close()
-              for i, x in enumerate(can_read):
-                if (x == handle):
-                  del can_read[i]
-            else:
-              #message = message.upper()
-              #self.log(3, DL, "<- " + message)
+              # handle the command (non-blocking)
+              else:
+                self.log (3, "<- " + message)
+                self.log (2, "genDaemon::handle_command()")
+                (result, response) = self.handle_command (fixed_config, message)
+                self.log (2, "genDaemon::handle_command() =" + result)
 
-              self.gen_obs (fixed_config, message)
-  
-              response = "OK"
-              self.log(3, "-> " + response)
-              xml_response = "<gen_response>" + response + "</gen_response>"
-              handle.send (xml_response)
+                self.log (3, "-> " + result + " " + response)
+                xml_response = "<gen_response>" + response + "</gen_response>"
+                handle.send (xml_response)
+
+            except socket.error as e:
+              if e.errno == errno.ECONNRESET:
+                self.log(1, "commandThread: closing connection")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
+
+      if self.gen_thread:
+        if not self.gen_thread.is_alive():
+          # join a previously launched and no longer running gen thread
+          rval = self.gen_thread.join()
+          if rval:
+            self.log (-2, "gen thread failed")
+          self.gen_thread = []
+
 
   #############################################################################
-  # Generate the UDP data stream based on parameters in the XML message
-  def gen_obs (self, fixed_config, message):
+  # Generate/Cease the UDP data stream based on parameters in the XML message
+  def handle_command (self, fixed_config, message):
 
-    self.log(1, "gen_obs: " + str(message))
+    self.log(3, "handle_command: " + str(message))
     header = config.readDictFromString(message)
 
-    # generate the header file to be use by GEN_BINARY
-    header_file = "/tmp/spip_" + header["UTC_START"] + "." + self.id + ".header"
+    # If we have a start command
+    if header["COMMAND"] == "START":
+      self.log(3, "genDaemon::handle_command header[COMMAND]==START")
+      if self.gen_thread:
+        self.log(-1, "handle_command: received START command whilst already sending")
+        return ("fail", "received START whilst sending")
 
-    header["HDR_VERSION"] = "1.0"
+      self.gen_thread = genThread (self, fixed_config, header, DL)
+      self.gen_thread.start()
 
-    # include the fixed configuration
-    header.update(fixed_config)
+    if header["COMMAND"] == "STOP":
+      self.log(3, "genDaemon::handle_command header[COMMAND]==STOP")
+      if not self.gen_thread:
+        self.log(-1, "handle_command: received STOP command whilst IDLE")
+        return ("ok", "received STOP whilst IDLE")
 
-    # rate in Gb/s
-    transmit_rate = float(header["BYTES_PER_SECOND"]) * 8.0 / 1000000000.0
+      # signal binary to exit
+      for binary in self.binary_list:
+        self.log (2, "handle_command: signaling " + binary + " to exit")
+        cmd = "pkill -f '^" + binary + "'"
+        rval, lines = self.system (cmd, 3)
 
-    transmit_rate /= 4
-
-    self.log(3, "gen_obs: writing header to " + header_file)
-    config.writeDictToCFGFile (header, header_file)
-
-    # determine the parameters for GEN_BINARY
-    (stream_ip, stream_port) =  (self.cfg["STREAM_UDP_" + str(self.id)]).split(":")
-
-    stream_core = self.cfg["STREAM_GEN_CORE_" + str(self.id)]  
-
-    tobs = "60"
-    if header["TOBS"] != "":
-      tobs = header["TOBS"]
-
-    cmd = self.cfg["STREAM_GEN_BINARY"] + " -b " + stream_core \
-          + " -p " + stream_port \
-          + " -r " + str(transmit_rate) \
-          + " -t " + tobs \
-          + " " + header_file + " " + stream_ip 
-    self.binary_list.append (cmd)
-
-    sleep(1)
-
-    log_pipe = LogSocket ("gen_src", "gen_src", str(self.id), "stream",
-                        self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
-                        int(DL))
-    log_pipe.connect()
-
-    sleep(1)
-   
-    # this should be a persistent / blocking command 
-    self.log(1, "gen_obs: [START] " + cmd)
-    rval = self.system_piped (cmd, log_pipe.sock)
-    self.log(1, "gen_obs: [END]   " + cmd)
-
-    if rval:
-      self.log (-2, cmd + " failed with return value " + str(rval))
-      self.quit_event.set()
-
-    log_pipe.close ()
-
-
+    return ("ok", "")
 
 if __name__ == "__main__":
 

@@ -22,7 +22,7 @@ from spip import config
 from spip.utils.core import system
 
 DAEMONIZE = True
-DL        = 1
+DL        = 2
 
 #################################################################
 # clientThread
@@ -242,9 +242,9 @@ class LMCDaemon (Daemon,HostBased):
         rval, smrbs = lmc_mon.getSMRBCapacity (client_streams, self.quit_event, DL)
         self.log(3, "main: " + str(smrbs))
 
-        #self.log(3, "main: getIPMISensors()")
-        #rval, sensors = lmc_mon.getIPMISensors (DL)
-        #self.log(3, "main: " + str(sensors))
+        self.log(3, "main: getIPMISensors()")
+        rval, sensors = lmc_mon.getIPMISensors (DL)
+        self.log(3, "main: " + str(sensors))
 
         counter = hw_poll
 

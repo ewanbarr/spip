@@ -32,6 +32,8 @@ namespace spip {
 
       virtual void unpack_ms (char * buffer, uint64_t nbytes) = 0;
 
+      void set_resolution (uint64_t _resolution) { resolution = _resolution; };
+
     protected:
 
       unsigned ndim;
@@ -51,6 +53,8 @@ namespace spip {
       unsigned bits_per_sample;
 
       unsigned bytes_per_sample;
+
+      uint64_t resolution;
 
       std::vector <float>sums;
 

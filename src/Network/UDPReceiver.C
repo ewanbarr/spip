@@ -127,6 +127,7 @@ void spip::UDPReceiver::receive ()
 
     packet_number = format->decode_header_seq (buf);
 
+    format->print_packet_header ();
     //format->decode_header (buf);
 
     stats->increment_bytes(got);

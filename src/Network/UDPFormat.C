@@ -23,8 +23,10 @@ using namespace std;
 
 spip::UDPFormat::UDPFormat()
 {
+  // some defaults
   npol = 2;
   ndim = 2;
+  nbit = 8;
   packet_header_size = 8;
   packet_data_size   = 1024;
 

@@ -43,6 +43,8 @@ namespace spip {
 
       virtual void print_packet_header () = 0;
 
+      virtual uint64_t get_resolution () = 0;
+
       unsigned get_samples_per_packet () { return UDP_FORMAT_PACKET_NSAMP; };
 
       unsigned get_header_size () { return packet_header_size; } ;
@@ -64,6 +66,8 @@ namespace spip {
       unsigned ndim;
 
       unsigned npol;
+
+      unsigned nbit;
 
       unsigned nsamp_per_block;
 

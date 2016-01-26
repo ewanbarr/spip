@@ -35,6 +35,8 @@ namespace spip {
 
       uint64_t get_samples_for_bytes (uint64_t nbytes);
 
+      uint64_t get_resolution ();
+
       void set_channel_range (unsigned start, unsigned end);
 
 
