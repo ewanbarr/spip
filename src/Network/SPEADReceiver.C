@@ -80,7 +80,7 @@ int spip::SPEADReceiver::configure (const char * config)
     throw invalid_argument ("END_CHANNEL did not exist in header");
 
   // TODO parameterize this
-  heap_size = 262144;
+  heap_size = 2097152;
 }
 
 void spip::SPEADReceiver::prepare (std::string ip_address, int port)
@@ -119,10 +119,12 @@ bool spip::SPEADReceiver::receive ()
   stream.emplace_reader<spead2::recv::udp_reader>(endpoint, spead2::recv::udp_reader::default_max_size, 128 * 1024 * 1024);
 
   keep_receiving = true;
-  bool have_metadata = true;
+  bool have_metadata = false;
+
+  cerr << "spip::SPEADReceiver::receive waiting for meta-data" << endl;
 
   // retrieve the meta-data from the stream first
-  while (keep_receiving && have_metadata)
+  while (keep_receiving && (!have_metadata))
   {
     try
     {
@@ -137,7 +139,8 @@ bool spip::SPEADReceiver::receive ()
       const auto &items = fh.get_items();
       for (const auto &item : items)
       {
-        if (item.id == SPEAD_CBF_RAW_SAMPLES || item.id == SPEAD_CBF_RAW_TIMESTAMP)
+        // ignore items with TIMESTAMPS or CBF_RAW ids
+        if (item.id == SPEAD_CBF_RAW_TIMESTAMP || item.id >= 0x5000)
         {
           // just ignore raw CBF packets until header is received
         }
@@ -154,6 +157,10 @@ bool spip::SPEADReceiver::receive ()
       }
 
       have_metadata = bf_config.valid();
+#ifdef _DEBUG
+      cerr << "=== meta data now contains: ===========" << endl;
+      bf_config.print_config();
+#endif
 
     }
     catch (spead2::ringbuffer_stopped &e)
@@ -197,16 +204,13 @@ bool spip::SPEADReceiver::receive ()
       cerr << "spip::SPEADReceiver::receive waiting for data heap" << endl;
 #endif
       spead2::recv::heap fh = stream.pop();
-#ifdef _DEBUG
-      cerr << "spip::SPEADReceiver::receive received data heap with ID=" << fh.get_cnt() << " size=" << iteendl;
-#endif
-
       const auto &items = fh.get_items();
 
 #ifdef _DEBUG
-      cerr << "heap ID=" << fh.get_cnt() << " size=" << items.size() << endl;
+      cerr << "spip::SPEADReceiver::receive received data heap with ID=" << fh.get_cnt() << " size=" << items.size() << endl;
 #endif
-      
+
+
       ptr = 0;
       timestamp = 0;
       raw_id = -1;
@@ -226,10 +230,9 @@ bool spip::SPEADReceiver::receive ()
 /*
         cerr << "spip::SPEADReceiver::receive item[" << i << "] ID 0x" << std::hex << items[i].id << std::dec << " length=" << items[i].length << endl;
 */
-        if (items[i].id == SPEAD_CBF_RAW_SAMPLES)
+        if (items[i].id >= SPEAD_CBF_RAW_SAMPLES)
         {
           raw_id = i;
-          timestamp = fh.get_cnt();
         }
         else if (items[i].id == SPEAD_CBF_RAW_TIMESTAMP)
         {
@@ -245,8 +248,9 @@ bool spip::SPEADReceiver::receive ()
         }
       }
 
-     if (raw_id >= 0)
-     {
+      // if the heap contained a CBF_RAW item
+      if (raw_id >= 0)
+      {
         if (nreceived == 0 && start_adc_sample == 0)
           start_adc_sample = timestamp;
 
