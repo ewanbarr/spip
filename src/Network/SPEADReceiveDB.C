@@ -273,18 +273,18 @@ bool spip::SPEADReceiveDB::receive ()
   {
     try
     {
-//#ifdef _DEBUG
+#ifdef _DEBUG
       cerr << "spip::SPEADReceiveDB::receive waiting for meta-data heap" << endl;
-//#endif
+#endif
       spead2::recv::heap fh = stream.pop();
-//#ifdef _DEBUG
+#ifdef _DEBUG
       cerr << "spip::SPEADReceiveDB::receive received meta-data heap with ID=" << fh.get_cnt() << endl;
-//#endif
+#endif
 
       const auto &items = fh.get_items();
       for (const auto &item : items)
       {
-        if (item.id == SPEAD_CBF_RAW_SAMPLES || item.id == SPEAD_CBF_RAW_TIMESTAMP)
+        if (item.id >= SPEAD_CBF_RAW_SAMPLES || item.id == SPEAD_CBF_RAW_TIMESTAMP)
         {
           // just ignore raw CBF packets until header is received
         }
@@ -299,7 +299,6 @@ bool spip::SPEADReceiveDB::receive ()
       {
         bf_config.parse_descriptor (descriptor);
       }
-      bf_config.print_config();
       have_metadata = bf_config.valid();
     }
 
@@ -308,6 +307,8 @@ bool spip::SPEADReceiveDB::receive ()
       keep_receiving = false;
     }
   }
+
+  bf_config.print_config();
 
   // block accounting 
   const unsigned bytes_per_heap = bf_config.get_bytes_per_heap();
@@ -390,14 +391,13 @@ bool spip::SPEADReceiveDB::receive ()
 
         const auto &items = fh.get_items();
         int raw_id = -1;
-        timestamp = -1;
+        timestamp = 0;
 
         for (unsigned i=0; i<items.size(); i++)
         {
-          if (items[i].id == SPEAD_CBF_RAW_SAMPLES)
+          if (items[i].id >= SPEAD_CBF_RAW_SAMPLES)
           {
             raw_id = i;
-            timestamp = fh.get_cnt();
           }
           else if (items[i].id == SPEAD_CBF_RAW_TIMESTAMP)
           {
@@ -415,12 +415,12 @@ bool spip::SPEADReceiveDB::receive ()
 
         //cerr << "raw_id=" << raw_id << " timestamp=" << timestamp << " start_adc_sample=" << start_adc_sample << endl;
 
-        // if a starting ADC sample was provided not provided in the configuration
-        if (start_adc_sample == -1)
+        // if a starting ADC sample was not provided in the configuration
+        if (start_adc_sample == -1 && timestamp > 0)
           start_adc_sample = timestamp;
 
         // if a RAW CBF heap has been received and is valid
-        if (raw_id >= 0 && timestamp >= 0 && timestamp >= start_adc_sample)
+        if (raw_id >= 0 && timestamp > 0 && timestamp >= start_adc_sample)
         {
           // the number of ADC samples since the start of this observation
           uint64_t adc_sample = (uint64_t) (timestamp - start_adc_sample);
@@ -429,7 +429,9 @@ bool spip::SPEADReceiveDB::receive ()
           uint64_t bf_sample = adc_sample / adc_to_bf_sampling_ratio;
           uint64_t heap = bf_sample / samples_per_heap;
 
-          //cerr << "adc_sample=" <<adc_sample << " bf_sample=" << bf_sample << " heap=" << heap << " [" << curr_heap << " - " << next_heap << "]" << endl;
+#ifdef _DEBUG
+          cerr << "adc_sample=" <<adc_sample << " bf_sample=" << bf_sample << " heap=" << heap << " [" << curr_heap << " - " << next_heap << "]" << endl;
+#endif
 
           // if this heap belongs in the current block
           if (heap >= curr_heap && heap < next_heap)
@@ -437,6 +439,9 @@ bool spip::SPEADReceiveDB::receive ()
             uint64_t byte_offset = (heap - curr_heap) * bytes_per_heap;
             memcpy (block + byte_offset, items[raw_id].ptr, items[raw_id].length);
             heaps_this_buf++;
+
+            if (heap + 1 == next_heap)
+              need_next_block = true;
           }
           else if (heap < curr_heap)
           {
@@ -445,12 +450,11 @@ bool spip::SPEADReceiveDB::receive ()
           else if (heap >= next_heap)
           {
             need_next_block = true;
-            cerr << "WARN : heap=" << heap << " next_heap=" << next_heap << endl;
+            cerr << "WARN : heap=" << heap << " > next_heap=" << next_heap << endl;
             // TODO we should keep this heap if possible
           }
           else
             cerr << "WARNING else case!" << endl;
-        
         }
       }
       catch (spead2::ringbuffer_stopped &e)
