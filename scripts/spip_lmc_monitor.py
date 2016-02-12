@@ -166,26 +166,26 @@ if __name__ == "__main__":
 
   quit_event = threading.Event()
 
-  spip.logMsg(2, test_dl, "getting disk capcity for /")
+  core.logMsg(2, test_dl, "getting disk capcity for /")
   rval, disks = getDiskCapacity ("/", 3)
-  spip.logMsg(2, test_dl, "rval="+str(rval))
-  spip.logMsg(2, test_dl, "disks="+str(disks))
+  core.logMsg(2, test_dl, "rval="+str(rval))
+  core.logMsg(2, test_dl, "disks="+str(disks))
 
-  spip.logMsg(2, test_dl, "reading SMRB info")
+  core.logMsg(2, test_dl, "reading SMRB info")
   stream_ids = [0]
   rval, smrbs = getSMRBCapacity (stream_ids, quit_event, test_dl)
-  spip.logMsg(2, test_dl, "rval="+str(rval))
-  spip.logMsg(2, test_dl, "smrbs="+str(smrbs))
+  core.logMsg(2, test_dl, "rval="+str(rval))
+  core.logMsg(2, test_dl, "smrbs="+str(smrbs))
 
-  spip.logMsg(2, test_dl, "reading load info")
+  core.logMsg(2, test_dl, "reading load info")
   rval, loads = getLoads (test_dl)
-  spip.logMsg(2, test_dl, "rval="+str(rval))
-  spip.logMsg(2, test_dl, "loads="+str(loads))
+  core.logMsg(2, test_dl, "rval="+str(rval))
+  core.logMsg(2, test_dl, "loads="+str(loads))
 
-  spip.logMsg(2, test_dl, "reading IPMI sensor info")
+  core.logMsg(2, test_dl, "reading IPMI sensor info")
   rval, sensors = getIPMISensors (test_dl)
-  spip.logMsg(2, test_dl, "rval="+str(rval))
-  spip.logMsg(2, test_dl, "sensors="+str(sensors))
+  core.logMsg(2, test_dl, "rval="+str(rval))
+  core.logMsg(2, test_dl, "sensors="+str(sensors))
 
   sys.exit(0)
     

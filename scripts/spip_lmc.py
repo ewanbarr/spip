@@ -22,7 +22,7 @@ from spip import config
 from spip.utils.core import system
 
 DAEMONIZE = True
-DL        = 2
+DL        = 1
 
 #################################################################
 # clientThread
@@ -229,7 +229,12 @@ class LMCDaemon (Daemon,HostBased):
     # monitor / control loop
     while not self.quit_event.isSet():
 
+      self.log(3, "Main Loop: counter="+str(counter))
+
       while (counter == 0):
+
+        self.log(2, "Refreshing monitoring points")
+
         self.log(3, "main: getDiskCapacity ()")
         rval, disks = lmc_mon.getDiskCapacity (disks_to_monitor, DL)
         self.log(3, "main: " + str(disks))
@@ -266,7 +271,7 @@ class LMCDaemon (Daemon,HostBased):
         for handle in did_read:
           if (handle == sock):
             (new_conn, addr) = sock.accept()
-            self.log(1, "main: accept connection from "+repr(addr))
+            self.log(2, "main: accept connection from "+repr(addr))
             # add the accepted connection to can_read
             can_read.append(new_conn)
             # new_conn.send("Welcome to the LMC interface\r\n")
@@ -277,7 +282,7 @@ class LMCDaemon (Daemon,HostBased):
               raw = handle.recv(4096)
             except socket.error, e:
               if e.errno == errno.ECONNRESET:
-                self.log(1, "main: closing connection")
+                self.log(2, "main: closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
@@ -286,10 +291,10 @@ class LMCDaemon (Daemon,HostBased):
                 raise e
             else: 
               message = raw.strip()
-              self.log(1, "main: message='" + message+"'")
+              self.log(2, "main: message='" + message+"'")
 
               if len(message) == 0:
-                self.log(1, "main: closing connection")
+                self.log(2, "main: closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
@@ -320,6 +325,27 @@ class LMCDaemon (Daemon,HostBased):
                     response += "<available units='MB'>" + disks[disk]["available"] + "</available>"
                     response += "</disk>"
 
+                  for stream in smrbs.keys():
+                    for key in smrbs[stream].keys():
+                      smrb = smrbs[stream][key]
+                      response += "<smrb stream='" + str(stream) + "' key='" + str(key) + "'>"
+                      response += "<header_block nbufs='"+str(smrb['hdr']['nbufs'])+"'>"+ str(smrb['hdr']['full'])+"</header_block>"
+                      response += "<data_block nbufs='"+str(smrb['data']['nbufs'])+"'>"+ str(smrb['data']['full'])+"</data_block>"
+                      #response += "<header_block>"
+                      #response += "<nbufs>" + str(smrb['hdr']['nbufs']) + "</nbufs>"
+                      #response += "<full>" + str(smrb['hdr']['full']) + "</full>"
+                      #response += "<clear>" + str(smrb['hdr']['clear']) + "</clear>"
+                      #response += "<written>" + str(smrb['hdr']['written']) + "</written>"
+                      #response += "<read>" + str(smrb['hdr']['read']) + "</read>"
+                      #response += "</header_block>"
+                      #response += "<data_block>"
+                      #response += "<nbufs>" + str(smrb['data']['nbufs']) + "</nbufs>"
+                      #response += "<full>" + str(smrb['data']['full']) + "</full>"
+                      #response += "<clear>" + str(smrb['data']['clear']) + "</clear>"
+                      #response += "<written>" + str(smrb['data']['written']) + "</written>"
+                      #response += "<read>" + str(smrb['data']['read']) + "</read>"
+                      #response += "</data_block>"
+                      response += "</smrb>"
                   
                   response += "<system_load ncore='"+loads["ncore"]+"'>"
                   response += "<load1>" + loads["1min"] + "</load1>"
@@ -341,7 +367,7 @@ class LMCDaemon (Daemon,HostBased):
 
                 handle.send(response + "\r\n")
 
-        counter -= 1
+      counter -= 1
 
 
     def conclude (self):
