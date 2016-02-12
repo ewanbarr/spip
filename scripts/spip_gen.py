@@ -44,7 +44,7 @@ class genThread (threading.Thread):
     transmit_rate = float(header["BYTES_PER_SECOND"]) * 8.0 / 1000000000.0
 
     # TODO make this native
-    transmit_rate /= 4
+    transmit_rate /= 2
 
     self.script.log(2, "genThread: writing header to " + header_file)
     config.writeDictToCFGFile (header, header_file)
