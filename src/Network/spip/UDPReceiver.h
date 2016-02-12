@@ -8,6 +8,10 @@
 
 #include <cstdlib>
 
+#ifdef  HAVE_VMA
+#include <mellanox/vma_extra.h>
+#endif
+
 namespace spip {
 
   class UDPReceiver {
@@ -36,6 +40,14 @@ namespace spip {
       UDPFormat * format;
 
       UDPStats * stats;
+
+#ifdef HAVE_VMA
+      struct vma_api_t *vma_api;
+
+      struct vma_packets_t* pkts;
+#else
+      char vma_api;
+#endif
 
       unsigned nchan;
 

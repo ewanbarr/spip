@@ -18,9 +18,18 @@ using namespace std;
 
 spip::UDPReceiver::UDPReceiver()
 {
-  //format = new UDPFormat();
   format = 0;
   verbose = 0;
+
+#ifdef HAVE_VMA
+  vma_api = vma_get_api();
+  if (!vma_api)
+    cerr << "spip::UDPReceiveDB::UDPReceiveDB VMA support compiled, but VMA not available" << endl;
+  pkts = NULL;
+#else
+  vma_api = 0;
+#endif
+
 }
 
 spip::UDPReceiver::~UDPReceiver()
@@ -81,68 +90,114 @@ void spip::UDPReceiver::set_format (spip::UDPFormat * fmt)
 // receive UDP packets for the specified time at the specified data rate
 void spip::UDPReceiver::receive ()
 {
-  uint64_t packet_number = 0;
-  int64_t prev_packet_number = -1;
-
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
-  size_t bufsz = sock->get_bufsz();
+  size_t sock_bufsz = sock->get_bufsz();
 
-  uint64_t total_bytes_recvd = 0;
+  int bytes_received, bytes_dropped;
 
-  char have_packet;
+  bool keep_receiving = true;
+  bool have_packet = false;
   size_t got;
-  char cont = 1;
-  uint64_t nsleeps;
+  uint64_t nsleeps = 0;
 
-  socklen_t size = sizeof(struct sockaddr);
   struct sockaddr_in client_addr;
+  struct sockaddr * addr = (struct sockaddr *) &client_addr;
+  socklen_t addr_size = sizeof(struct sockaddr);
 
-  while (cont)
+#ifdef HAVE_VMA
+  int flags;
+#endif
+
+  while (keep_receiving)
   {
-    have_packet = 0;
-    nsleeps = 0;
-    while (!have_packet && cont)
+    if (vma_api)
     {
-      got = recvfrom (fd, buf, bufsz, 0, (struct sockaddr *)&client_addr, &size);
-      if (got > 64)
+#ifdef HAVE_VMA
+      if (pkts)
       {
-        have_packet = 1;
+        vma_api->free_packets(fd, pkts->pkts, pkts->n_packet_num);
+        pkts = NULL;
       }
-      else if (got == -1)
+      while (!have_packet && keep_receiving)
       {
-        nsleeps++;
-        if (nsleeps > 1000)
+        flags = 0;
+        got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
+        if (got  > 32)
         {
-          stats->sleeps(nsleeps);
-          nsleeps = 0;
+          if (flags & MSG_VMA_ZCOPY)
+          {
+            pkts = (struct vma_packets_t*) buf;
+            struct vma_packet_t *pkt = &pkts->pkts[0];
+            buf = (char *) pkt->iov[0].iov_base;
+          }
+          have_packet = true;
+        }
+        else if (got == -1)
+        {
+          nsleeps++;
+          if (nsleeps > 1000)
+          {
+            stats->sleeps(1000);
+            nsleeps -= 1000;
+          }
+        }
+        else
+        {
+          cerr << "control_state = Stopping VMA" << endl;
+          keep_receiving = false;
         }
       }
-      else
+#endif
+    }
+    else
+    {
+      while (!have_packet && keep_receiving)
       {
-        cerr << "spip::UDPReceiver::receive recvfrom failed got=" << got << endl;
-        cont = 0;
+        got = (int) recvfrom (fd, buf, sock_bufsz, 0, addr, &addr_size);
+        if (got > 32)
+        {
+          have_packet = true;
+        }
+        else if (got == -1)
+        {
+          nsleeps++;
+          if (nsleeps > 1000)
+          {
+            stats->sleeps(1000);
+            nsleeps -= 1000;
+          }
+        }
+        else
+        {
+          cerr << "spip::UDPReceiver::receive error expected " << sock_bufsz
+               << " B, received " << got << " B" <<  endl;
+          keep_receiving = false;
+        }
       }
     }
 
-    packet_number = format->decode_header_seq (buf);
-
-    format->print_packet_header ();
-    //format->decode_header (buf);
-
-    stats->increment_bytes(got);
-
-    if (packet_number != (1 + prev_packet_number) && (packet_number > 0))
+    if (have_packet)
     {
-      cerr << "DROP: prev=" << prev_packet_number << " curr=" << packet_number << endl;
-      format->print_packet_header ();
-      stats->dropped();
+      // decode the header so that the format knows what to do with the packet
+      bytes_received = format->decode_header (buf);
+      
+      // check to see if any bytes have been dropped, based on the reception of this packet
+      bytes_dropped = format->check_packet ();
+      
+      stats->increment_bytes (bytes_received);
+      stats->dropped_bytes (bytes_dropped);
+
+      if (bytes_dropped && verbose)
+      {
+        cerr << "DROP: " << bytes_dropped << " B" << endl;
+        if (verbose > 1)
+          format->print_packet_header ();
+      }
+
+      stats->sleeps(nsleeps);
+      have_packet = false;
     }
-
-    stats->sleeps(nsleeps);
-
-    prev_packet_number = packet_number;
-    total_bytes_recvd += format->get_data_size();
   }
 }
 
