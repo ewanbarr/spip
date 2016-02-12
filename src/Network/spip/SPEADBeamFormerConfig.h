@@ -119,7 +119,7 @@ namespace spip {
 
       std::vector<std::string> input_labels;
     
-      char raw_samples_desc;
+      unsigned int raw_samples_id;
 
       char raw_timestamp_desc;
 

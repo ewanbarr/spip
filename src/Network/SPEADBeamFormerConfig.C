@@ -44,14 +44,14 @@ void spip::SPEADBeamFormerConfig::reset ()
   centre_freq = 0;
   adc_sample_rate = 0;
   n_ants = 0;
-  bandwidth = 0;
+  bandwidth = 856000000;
   adc_bits = 0;
   n_bengs = 0;
   xeng_acc_len = 0;
   beng_out_bits_per_sample = 0;
   beam_weights.resize (0);
   input_labels.resize (0);
-  raw_samples_desc = 0;
+  raw_samples_id = 0;
   raw_timestamp_desc = 0;
 }
 
@@ -147,8 +147,8 @@ void spip::SPEADBeamFormerConfig::parse_item (const spead2::recv::item &item)
 
 void spip::SPEADBeamFormerConfig::parse_descriptor (const spead2::descriptor &d)
 {
-  if (d.id == SPEAD_CBF_RAW_SAMPLES)
-    raw_samples_desc = 1;
+  if (d.name == "bf_raw")
+    raw_samples_id = d.id;
   if (d.id == SPEAD_CBF_RAW_TIMESTAMP)
     raw_timestamp_desc = 1;
 }
@@ -156,12 +156,14 @@ void spip::SPEADBeamFormerConfig::parse_descriptor (const spead2::descriptor &d)
 
 bool spip::SPEADBeamFormerConfig::valid ()
 {
-  return (n_chans > 0 &&
+  bool config_valid = (n_chans > 0 &&
           feng_pkt_len > 0 &&
           adc_sample_rate > 0 &&
-          bandwidth > 0 &&
+          //bandwidth > 0 &&
           sync_time > 0 &&
           scale_factor_timestamp > 0);
+  return config_valid;
+
 /*
   return (n_chans > 0 && sync_time > 0 && rx_udp_port > 0 &&
           requant_bits > 0 && fft_shift > 0 && feng_pkt_len > 0 &&
