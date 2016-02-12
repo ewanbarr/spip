@@ -17,7 +17,7 @@ from spip.daemons.daemon import Daemon
 from spip.utils import sockets
 
 DAEMONIZE = True
-DL     = 2
+DL     = 1
 
 class LogsDaemon(Daemon):
 
