@@ -6,19 +6,19 @@ libspipnet_headers = spip/Socket.h spip/UDPSocket.h spip/UDPSocketReceive.h spip
                      spip/UDPFormat.h spip/TCPSocket.h spip/TCPSocketServer.h
 
 libspipnet_la_SOURCES = Socket.C C UDPSocket.C UDPSocketReceive.C UDPSocketSend.C \
-												UDPGenerator.C UDPReceiver.C UDPStats.C UDPReceiveDB.C \
-												UDPFormat.C TCPSocket.C TCPSocketServer.C
+                        UDPGenerator.C UDPReceiver.C UDPStats.C UDPReceiveDB.C \
+                        UDPFormat.C TCPSocket.C TCPSocketServer.C
 
 AM_CXXFLAGS = @PSRDADA_CFLAGS@ -I$(top_builddir)/src/Dada \
-	-I$(top_builddir)/src/Affinity \
-	-I/opt/cross/include -std=c++0x
+  -I$(top_builddir)/src/Affinity \
+  -I/opt/cross/include -std=c++0x
 
 #AM_LDFLAGS = @SPEAD2_LIBS@
 
 if HAVE_SPEAD2
 
 libspipnet_la_SOURCES += SPEADReceiveDB.C SPEADReceiver.C SPEADBeamFormerConfig.C \
-												SPEADReceiverMerge.C
+                         SPEADReceiverMerge.C SPEADReceiveMergeDB.C
 
 AM_CXXFLAGS += @SPEAD2_CFLAGS@
 
