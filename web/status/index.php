@@ -22,7 +22,9 @@ class status extends spip_webpage
     $this->config = spip::get_config();
 
     $this->topology = array();
-    for ($i=0; $i<$this->config["NUM_STREAM"]; $i++)
+    $this->num_stream = $this->config["NUM_STREAM"];
+
+    for ($i=0; $i<$this->num_stream; $i++)
     {
       list ($host, $beam, $subband) = explode (":", $this->config["STREAM_".$i]);
 
@@ -30,6 +32,26 @@ class status extends spip_webpage
         $this->topology[$host] = array();
       array_push ($this->topology[$host], $beam.":".$subband.":".$i);
     }
+
+    $inst_id = $this->config["DATA_BLOCK_PREFIX"];
+
+    $this->smrbs = array();
+    $db_ids = explode(" ", $this->config["DATA_BLOCK_IDS"]);
+    for ($i=0; $i<$this->num_stream; $i++)
+    {
+      $this->smrbs[$i] = array();
+      for ($j=0; $j<count($db_ids); $j++)
+      {
+        array_push ($this->smrbs[$i], $this->getDBKey ($inst_id, $i, $this->num_stream, $db_ids[$j]));
+      }
+    }
+  }
+
+  function getDBKey($inst_id, $stream_id, $num_stream, $db_id)
+  {
+    $index = ($db_id * $num_stream) + $stream_id;
+    $db_key = $inst_id.sprintf("%03x",(2 * $index));
+    return $db_key;
   }
 
   function javaScriptCallback()
@@ -97,6 +119,26 @@ class status extends spip_webpage
                 document.getElementById(load_value).innerHTML = load1.toFixed(2);
               }
 
+              var smrbs = lmc.getElementsByTagName("smrb");
+              for (j=0; j<smrbs.length; j++)
+              {
+                var smrb = smrbs[j];
+                var stream = smrb.getAttribute("stream")
+                var key = smrb.getAttribute("key")
+                var data_block = smrb.getElementsByTagName("data_block")[0];
+
+                var nbufs = parseFloat(data_block.getAttribute("nbufs"));
+                var nfull = parseFloat(data_block.childNodes[0].nodeValue);
+                var percent = Math.floor(100 * (nfull / nbufs));
+                
+                var smrb_pb = eval("stream" + stream + "_" + key);
+                smrb_pb.setPercentage(percent)
+
+                var smrb_value = "stream" + stream + "_" + key + "_value";
+                document.getElementById(smrb_value).innerHTML = nfull.toFixed(0) + " of " + nbufs.toFixed(0)
+              }
+
+
               var metrics = lmc.getElementsByTagName("metric");
               for (j=0; j<metrics.length; j++)
               {
@@ -143,6 +185,13 @@ class status extends spip_webpage
       spip_webpage::renderProgressBarObject ($host."_load");
       spip_webpage::renderProgressBarObject ($host."_disk");
     }
+    for ($i=0; $i<$this->num_stream; $i++)
+    {
+      foreach ($this->smrbs[$i] as $smrb)
+      {
+        spip_webpage::renderProgressBarObject ("stream".$i."_".$smrb);
+      }
+    }
     echo "}, false);\n";
     echo "</script>\n";
   }
@@ -162,6 +211,7 @@ class status extends spip_webpage
     echo "<td><b>Beam</b></td>\n";
     echo "<td><b>Sub-band</b></td>\n";
     echo "<td><b>Stream</b></td>\n";
+    echo "<td colspan='".count($this->smrbs[0])."'><b>SMRBs</b></td>\n";
     echo "</tr>\n";
 
     $hosts = array_keys($this->topology);
@@ -198,6 +248,15 @@ class status extends spip_webpage
         echo "<td>".$subband."</td>\n";
         echo "<td>".$stream."</td>\n";
 
+        # render the SMRBs for this stream
+        $smrbs = $this->smrbs[$stream];
+        for ($j=0; $j<count($smrbs); $j++)
+        {
+          echo "<td>\n";
+          spip_webpage::renderProgressBar("stream".$stream."_".$smrbs[$j]);
+          echo "<span id='stream".$stream."_".$smrbs[$j]."_value'></span>\n";
+          echo "</td>\n";
+        }
         echo "</tr>\n";
       }
     }
