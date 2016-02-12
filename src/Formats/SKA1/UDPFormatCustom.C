@@ -78,9 +78,16 @@ inline uint64_t spip::UDPFormatCustom::decode_header_seq (char * buf)
   return header.seq_number;
 }
 
-inline void spip::UDPFormatCustom::decode_header (char * buf)
+inline unsigned spip::UDPFormatCustom::decode_header (char * buf)
 {
   memcpy ((void *) &header, buf, sizeof(header));
+  return packet_data_size;
+}
+
+inline int spip::UDPFormatCustom::check_packet ()
+{
+  // TODO implement!
+  return 0;
 }
 
 inline int spip::UDPFormatCustom::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)

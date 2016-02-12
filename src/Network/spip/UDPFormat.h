@@ -37,7 +37,9 @@ namespace spip {
 
       virtual uint64_t decode_header_seq (char * buf) = 0;
 
-      virtual void decode_header (char * buf) = 0;
+      virtual unsigned decode_header (char * buf) = 0;
+
+      virtual int check_packet () = 0;
 
       virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
 

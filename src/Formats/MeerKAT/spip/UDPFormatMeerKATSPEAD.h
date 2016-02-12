@@ -96,8 +96,9 @@ namespace spip {
       inline void encode_header (char * buf);
 
       inline uint64_t decode_header_seq (char * buf);
-      inline void decode_header (char * buf);
+      inline unsigned decode_header (char * buf);
 
+      inline int check_packet ();
       inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
 
       void print_item_pointer (spead_item_pointer_t item);
@@ -116,7 +117,7 @@ namespace spip {
 
       spead2::recv::packet_header header;
 
-      uint64_t obs_start_sample;
+      int64_t obs_start_sample;
 
       uint64_t nsamp_per_sec;
 
@@ -125,6 +126,8 @@ namespace spip {
       unsigned nbytes_per_samp;
 
       unsigned avg_pkt_size;
+
+      unsigned heap_size;
 
       unsigned pkts_per_heap;
 
@@ -136,9 +139,13 @@ namespace spip {
 
       uint64_t curr_heap_number;
 
+      uint64_t curr_heap_bytes;
+
       unsigned nbytes_per_heap;
 
       unsigned timestamp_to_samples;
+
+      bool first_heap;
 
   };
 

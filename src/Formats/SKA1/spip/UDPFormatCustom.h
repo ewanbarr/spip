@@ -72,8 +72,9 @@ namespace spip {
       inline void encode_header (char * buf);
 
       inline uint64_t decode_header_seq (char * buf);
-      inline void decode_header (char * buf);
+      inline unsigned decode_header (char * buf);
 
+      inline int check_packet ();
       inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
 
       void print_packet_header ();

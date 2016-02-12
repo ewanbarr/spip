@@ -83,14 +83,22 @@ inline uint64_t spip::UDPFormatMeerKATSimple::decode_header_seq (char * buf)
 {
   decode_header (buf);
   //memcpy ((void *) &header, buf, sizeof(uint64_t));
-  return (header.seq_number * nchan) + (header.channel_number - start_channel);
+  //return (header.seq_number * nchan) + (header.channel_number - start_channel);
+  return 0;
 }
 
-inline void spip::UDPFormatMeerKATSimple::decode_header (char * buf)
+inline unsigned spip::UDPFormatMeerKATSimple::decode_header (char * buf)
 {
   memcpy ((void *) &header, buf, sizeof(header));
+  return packet_data_size;
 }
 
+inline int spip::UDPFormatMeerKATSimple::check_packet ()
+{
+  prev_packet_number = curr_packet_number;
+  curr_packet_number = (header.seq_number * nchan) + (header.channel_number - start_channel);
+  return (curr_packet_number - (prev_packet_number + 1)) * packet_data_size;
+}
 
 inline int spip::UDPFormatMeerKATSimple::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
 {
