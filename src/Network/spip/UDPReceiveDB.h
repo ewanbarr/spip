@@ -53,6 +53,17 @@ namespace spip {
 
       void stop_capture () { control_cmd = Quit; };
 
+      static void * stats_thread_wrapper (void * obj)
+      {
+        ((UDPReceiveDB*) obj )->stats_thread ();
+      }
+
+      void start_stats_thread ();
+
+      void stop_stats_thread ();
+
+      void stats_thread ();
+
       UDPStats * get_stats () { return stats; };
 
       uint64_t get_data_bufsz () { return db->get_data_bufsz(); };
@@ -70,6 +81,8 @@ namespace spip {
       UDPFormat * format;
 
       UDPStats * stats;
+
+      pthread_t stats_thread_id;
 
       DataBlockWrite * db;
 

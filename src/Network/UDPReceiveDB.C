@@ -128,7 +128,7 @@ void spip::UDPReceiveDB::prepare (std::string ip_address, int port)
   //if (!vma_api)
   {
     cerr << "spip::UDPReceiveDB::prepare resize_kernel_buffer()" << endl;
-    sock->resize_kernel_buffer (128*1024*1024);
+    sock->resize_kernel_buffer (32*1024*1024);
   }
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
@@ -168,8 +168,8 @@ void spip::UDPReceiveDB::control_thread()
 
   if (control_port < 0)
   {
-    cerr << "ERROR: no control port specified" << endl;
-    return;
+    cerr << "WARNING: no control port, using 32132" << endl;
+    control_port = 32132;
   }
 
   cerr << "spip::UDPReceiveDB::control_thread creating TCPSocketServer" << endl;
@@ -186,7 +186,7 @@ void spip::UDPReceiveDB::control_thread()
   char * cmds = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
   char * cmd  = (char *) malloc (32);
 
-  control_cmd = None;
+  //control_cmd = None;
 
   // wait for a connection
   while (control_cmd != Quit && fd < 0)
@@ -253,6 +253,69 @@ void spip::UDPReceiveDB::control_thread()
 #endif
 }
 
+
+void spip::UDPReceiveDB::start_stats_thread ()
+{
+  pthread_create (&stats_thread_id, NULL, stats_thread_wrapper, this);
+}
+
+void spip::UDPReceiveDB::stop_stats_thread ()
+{
+  control_cmd = Stop;
+  void * result;
+  pthread_join (stats_thread_id, &result);
+}
+
+/* 
+ *  Thread to print simple capture statistics
+ */
+void spip::UDPReceiveDB::stats_thread()
+{
+  uint64_t b_recv_total = 0;
+  uint64_t b_recv_curr = 0;
+  uint64_t b_recv_1sec;
+
+  uint64_t s_curr = 0;
+  uint64_t s_total = 0;
+  uint64_t s_1sec;
+
+  uint64_t b_drop_curr = 0;
+
+  float gb_recv_ps = 0;
+  float mb_recv_ps = 0;
+
+  cerr << "spip::UDPReceiveDB::stats_thread starting polling" << endl;
+
+  while (control_cmd != Stop)
+  {
+    while (control_state == Active)
+    {
+      // get a snapshot of the data as quickly as possible
+      b_recv_curr = stats->get_data_transmitted();
+      b_drop_curr = stats->get_data_dropped();
+      s_curr = stats->get_nsleeps();
+
+      // calc the values for the last second
+      b_recv_1sec = b_recv_curr - b_recv_total;
+      s_1sec = s_curr - s_total;
+
+      // update the totals
+      b_recv_total = b_recv_curr;
+      s_total = s_curr;
+
+      mb_recv_ps = (double) b_recv_1sec / 1000000;
+      gb_recv_ps = (mb_recv_ps * 8)/1000;
+
+      // determine how much memory is free in the receivers
+      fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
+      sleep (1);
+    }
+
+    sleep(1);
+  }
+}
+
+
 // compute the data statisics since the last update
 void spip::UDPReceiveDB::update_stats()
 {
@@ -280,7 +343,7 @@ void spip::UDPReceiveDB::update_stats()
     double gb_drop_ps = (mb_drop_ps * 8)/1000;
 
     if (control_state == Active)
-      cerr << "In: " << mb_recv_ps << "Gb/s\tDropped:" << mb_drop_ps << " Mb/s" << endl;
+      cerr << "In: " << gb_recv_ps << "Gb/s\tDropped:" << mb_drop_ps << " Mb/s" << endl;
   }
 
   // update the totals
@@ -365,6 +428,8 @@ bool spip::UDPReceiveDB::receive ()
   uint64_t bytes_this_buf = 0;
   uint64_t offset;
 
+  int bytes_received, bytes_dropped;
+
 #ifdef _DEBUG
   cerr << "spip::UDPReceiveDB::receive sock_bufsz=" << sock_bufsz << endl;
   cerr << "spip::UDPReceiveDB::receive data_size=" << data_size << endl;
@@ -392,17 +457,13 @@ bool spip::UDPReceiveDB::receive ()
       {
         flags = 0;
         got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
-        if (got  > 64)
+        if (got  > 32)
         {
           if (flags & MSG_VMA_ZCOPY) 
           {
             pkts = (struct vma_packets_t*) buf;
             struct vma_packet_t *pkt = &pkts->pkts[0];
-            format->decode_header_seq ((char *) pkt->iov[0].iov_base);
-          }
-          else
-          {
-            format->decode_header_seq (buf);  
+            buf = (char *) (pkt->iov[0].iov_base);
           }
           have_packet = true;
         }
@@ -433,7 +494,7 @@ bool spip::UDPReceiveDB::receive ()
       while (!have_packet && keep_receiving)
       {
         got = (int) recvfrom (fd, buf, sock_bufsz, 0, addr, &addr_size);
-        if (got > 64)
+        if (got > 32)
         {
           have_packet = true;
         }
@@ -455,8 +516,6 @@ bool spip::UDPReceiveDB::receive ()
           keep_receiving = false;
         }
       }
-      if (have_packet)
-        format->decode_header_seq (buf);
     }
 
     if (control_cmd == Stop)
@@ -473,7 +532,7 @@ bool spip::UDPReceiveDB::receive ()
       control_state = Active;
     }
 
-    if (control_state == Active)
+    if (control_state == Active && have_packet)
     {
       // open a new data block buffer if necessary
       if (!db->is_block_open())
@@ -499,8 +558,21 @@ bool spip::UDPReceiveDB::receive ()
         bytes_this_buf = 0;
       }
 
+      // decode the header so that the format knows what to do with the packet
+      bytes_received = format->decode_header (buf);
+
+      // check to see if any bytes have been dropped, based on the reception of this packet
+      bytes_dropped = format->check_packet ();
+
       // copy the current packet into the appropriate place in the buffer
       result = format->insert_packet (block, payload, curr_sample, next_sample);
+
+      if (bytes_dropped)
+      {
+        stats->dropped_bytes (bytes_dropped);
+        cerr << "dropped " << bytes_dropped <<" bytes " << endl;
+        format->print_packet_header();
+      }
 
       // positive result indicates bytes inserted
       if (result > 0)
@@ -512,8 +584,8 @@ bool spip::UDPReceiveDB::receive ()
       else if (result == UDP_PACKET_TOO_EARLY)
       {
 #ifdef _DEBUG
-        //cerr << "result == UDP_PACKET_TOO_EARLY" << endl;
-        //format->print_packet_header();
+        cerr << "result == UDP_PACKET_TOO_EARLY" << endl;
+        format->print_packet_header();
 #endif
         need_next_block = true;
       }

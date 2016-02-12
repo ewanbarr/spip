@@ -181,9 +181,11 @@ int main(int argc, char *argv[]) try
   // assume that the config includes a header param
   strncpy (header, config, strlen(config) + 1);
 
-  // open a listening socket for observation parameters
+  udpdb->start_stats_thread ();
+
   if (control_port > 0)
   {
+    // open a listening socket for observation parameters
     cerr << "meerkat_udpdb: start_control_thread (" << control_port << ")" << endl;
     udpdb->start_control_thread (control_port);
 
@@ -209,6 +211,7 @@ int main(int argc, char *argv[]) try
     udpdb->receive ();
   }
 
+  udpdb->stop_stats_thread ();
   udpdb->close();
 
   delete udpdb;
