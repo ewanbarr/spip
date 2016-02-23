@@ -12,10 +12,7 @@ AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Util
 
 LDADD = libkat7.la \
-	$(top_builddir)/src/Affinity/libspipaffinity.la \
-	$(top_builddir)/src/Network/libspipnet.la \
-	$(top_builddir)/src/Util/libspiputil.la \
-	-L/opt/cross/lib
+	$(top_builddir)/src/Affinity/libspipaffinity.la
 
 if HAVE_PSRDADA
 
@@ -26,6 +23,10 @@ bin_PROGRAMS = kat7_dbstats
 kat7_dbstats_SOURCES = kat7_dbstats.C
 
 endif
+
+LDADD +=$(top_builddir)/src/Network/libspipnet.la \
+				$(top_builddir)/src/Util/libspiputil.la \
+				-L/opt/cross/lib
 
 
 AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@

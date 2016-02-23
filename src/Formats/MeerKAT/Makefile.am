@@ -13,10 +13,7 @@ AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Util
 
 LDADD = libmeerkat.la \
-	$(top_builddir)/src/Affinity/libspipaffinity.la \
-	$(top_builddir)/src/Network/libspipnet.la \
-	$(top_builddir)/src/Util/libspiputil.la \
-	-L/opt/cross/lib
+	$(top_builddir)/src/Affinity/libspipaffinity.la
 
 if HAVE_PSRDADA
 
@@ -41,6 +38,10 @@ bin_PROGRAMS += meerkat_speaddb
 endif
 
 endif
+
+LDADD += $(top_builddir)/src/Network/libspipnet.la \
+				$(top_builddir)/src/Util/libspiputil.la \
+				-L/opt/cross/lib
 
 AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
 LDADD += @PSRDADA_LIBS@ @HWLOC_LIBS@ @SPEAD2_LIBS@
