@@ -2,9 +2,9 @@
 #ifndef __UDPReceiveDB_h
 #define __UDPReceiveDB_h
 
-#include "dada_def.h"
 #include "config.h"
 
+#include "spip/AsciiHeader.h"
 #include "spip/UDPSocketReceive.h"
 #include "spip/UDPFormat.h"
 #include "spip/UDPStats.h"
@@ -94,7 +94,7 @@ namespace spip {
 
       ControlState control_state;
 
-      char * header;
+      AsciiHeader header;
 
 #ifdef HAVE_VMA
       struct vma_api_t *vma_api;

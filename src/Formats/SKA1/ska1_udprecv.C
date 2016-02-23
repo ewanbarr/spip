@@ -5,10 +5,7 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "futils.h"
-#include "dada_affinity.h"
-
+#include "spip/AsciiHeader.h"
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiver.h"
 #include "spip/UDPFormatCustom.h"
@@ -32,7 +29,7 @@ int main(int argc, char *argv[])
 {
   spip::UDPReceiver * recv = new spip::UDPReceiver();
 
-  char * header_file = 0;
+  spip::AsciiHeader header;
 
   // Host/IP to receive packets on 
   char * host;
@@ -108,34 +105,19 @@ int main(int argc, char *argv[])
  
   signal(SIGINT, signal_handler);
  
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
-
   // header the this data stream
-  header_file = strdup (argv[optind]);
+  if (header.load_from_file (argv[optind]) < 0)
+  {
+    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    return (EXIT_FAILURE);
+  }
 
   // local address/host to listen on
   host = strdup(argv[optind+1]);
 
-  char * header = (char *) malloc (sizeof(char) * DADA_DEFAULT_HEADER_SIZE);
-  if (header_file == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "ska1_udprecv: reading header from " << header_file << endl;
-  if (fileread (header_file, header, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (header);
-    fprintf (stderr, "ERROR: could not read ASCII header from %s\n", header_file);
-    return (EXIT_FAILURE);
-  }
-
   if (verbose)
     cerr << "ska1_udprecv: configuring based on header" << endl;
-  recv->configure (header);
+  recv->configure (header.raw());
 
   if (verbose)
     cerr << "ska1_udprecv: listening for packets on " << host << ":" << port << endl;

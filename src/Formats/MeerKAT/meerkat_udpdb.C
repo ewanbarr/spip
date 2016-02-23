@@ -5,15 +5,12 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "futils.h"
-#include "dada_affinity.h"
-#include "ascii_header.h"
-
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatMeerKATSimple.h"
+#ifdef HAVE_SPEAD2
 #include "spip/UDPFormatMeerKATSPEAD.h"
+#endif
 #include "spip/TCPSocketServer.h"
 
 #include <unistd.h>
@@ -40,7 +37,7 @@ int main(int argc, char *argv[]) try
 
   string * format = new string("simple");
 
-  char * config_file = 0;
+  spip::AsciiHeader config;
 
   // Host/IP to receive packets on 
   char * host;
@@ -112,8 +109,10 @@ int main(int argc, char *argv[]) try
 
   if (format->compare("simple") == 0)
     udpdb->set_format (new spip::UDPFormatMeerKATSimple());
+#ifdef HAVE_SPEAD2
   else if (format->compare("spead") == 0)
     udpdb->set_format (new spip::UDPFormatMeerKATSPEAD());
+#endif
   else
   {
     cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
@@ -131,39 +130,26 @@ int main(int argc, char *argv[]) try
  
   signal(SIGINT, signal_handler);
 
-  // header the this data stream
-  config_file = strdup (argv[optind]);
+  // config for the this data stream
+  if (config.load_from_file (argv[optind]) < 0)
+  {
+    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    return (EXIT_FAILURE);
+  }
 
   // local address/host to listen on
   host = strdup(argv[optind+1]);
 
-  char * config = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-  if (config == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for config buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "meerkat_udpdb: reading config from " << config_file << endl;
-  if (fileread (config_file, config, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (config);
-    fprintf (stderr, "ERROR: could not read config from %s\n", config_file);
-    return (EXIT_FAILURE);
-  }
-
   uint64_t data_bufsz = udpdb->get_data_bufsz();
-  if (ascii_header_set (config, "RESOLUTION", "%lu", data_bufsz) < 0)
+  if (config.set("RESOLUTION", "%lu", data_bufsz) < 0)
   {
-    free (config);
     fprintf (stderr, "ERROR: could not write RESOLUTION=%lu to config\n", data_bufsz);
     return (EXIT_FAILURE);
   }
 
   if (verbose)
     cerr << "meerkat_udpdb: configuring using fixed config" << endl;
-  udpdb->configure (config);
+  udpdb->configure (config.raw());
 
   if (verbose)
     cerr << "meerkat_udpdb: listening for UDP packets on " 
@@ -171,15 +157,8 @@ int main(int argc, char *argv[]) try
   udpdb->prepare (std::string(host), port);
 
   // prepare a header which combines config with observation parameters
-  char * header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-  if (header == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  // assume that the config includes a header param
-  strncpy (header, config, strlen(config) + 1);
+  spip::AsciiHeader header;
+  header.load_from_str (config.raw());
 
   udpdb->start_stats_thread ();
 
@@ -202,7 +181,7 @@ int main(int argc, char *argv[]) try
   {
     if (verbose)
       cerr << "meerkat_udpdb: writing header to data block" << endl;
-    udpdb->open (header);
+    udpdb->open (header.raw());
 
     cerr << "meerkat_udpdb: issuing start command" << endl;
     udpdb->start_capture ();
@@ -230,7 +209,11 @@ void usage()
     "  host        hostname/ip of UDP receiver\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -c port     control port for dynamic configuration\n"
+#ifdef HAVE_SPEAD2
     "  -f format   UDP data format [simple spead]\n"
+#else
+    "  -f format   UDP data format [simple]\n"
+#endif
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
     "  -p port     incoming udp port [default " << std::dec << MEERKAT_DEFAULT_UDP_PORT << "]\n"

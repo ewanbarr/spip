@@ -5,10 +5,10 @@
  *
  ***************************************************************************/
 
+#include "spip/AsciiHeader.h"
 #include "spip/UDPReceiver.h"
 #include "sys/time.h"
 
-#include "ascii_header.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -39,22 +39,22 @@ spip::UDPReceiver::~UDPReceiver()
 
 int spip::UDPReceiver::configure (const char * header)
 {
-  if (ascii_header_get (header, "NCHAN", "%u", &nchan) != 1)
+  if (spip::AsciiHeader::header_get (header, "NCHAN", "%u", &nchan) != 1)
     throw invalid_argument ("NCHAN did not exist in header");
 
-  if (ascii_header_get (header, "NBIT", "%u", &nbit) != 1)
+  if (spip::AsciiHeader::header_get (header, "NBIT", "%u", &nbit) != 1)
     throw invalid_argument ("NBIT did not exist in header");
 
-  if (ascii_header_get (header, "NPOL", "%u", &npol) != 1)
+  if (spip::AsciiHeader::header_get (header, "NPOL", "%u", &npol) != 1)
     throw invalid_argument ("NPOL did not exist in header");
 
-  if (ascii_header_get (header, "NDIM", "%u", &ndim) != 1)
+  if (spip::AsciiHeader::header_get (header, "NDIM", "%u", &ndim) != 1)
     throw invalid_argument ("NDIM did not exist in header");
 
-  if (ascii_header_get (header, "TSAMP", "%f", &tsamp) != 1)
+  if (spip::AsciiHeader::header_get (header, "TSAMP", "%f", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in header");
 
-  if (ascii_header_get (header, "BW", "%f", &bw) != 1)
+  if (spip::AsciiHeader::header_get (header, "BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
 
   channel_bw = bw / nchan;

@@ -5,10 +5,7 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "futils.h"
-#include "dada_affinity.h"
-
+#include "spip/AsciiHeader.h"
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiveDB.h"
 #include "spip/UDPFormatCustom.h"
@@ -37,7 +34,7 @@ int main(int argc, char *argv[]) try
 
   string format = "standard";
 
-  char * header_file = 0;
+  spip::AsciiHeader header;
 
   // Host/IP to receive packets on 
   char * host;
@@ -118,31 +115,18 @@ int main(int argc, char *argv[]) try
  
   signal(SIGINT, signal_handler);
 
-  // header the this data stream
-  header_file = strdup (argv[optind]);
+  if (header.load_from_file (argv[optind]) < 0)
+  {
+    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    return (EXIT_FAILURE);
+  }
 
   // local address/host to listen on
   host = strdup(argv[optind+1]);
 
-  char * header = (char *) malloc (sizeof(char) * DADA_DEFAULT_HEADER_SIZE);
-  if (header_file == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "ska1_udpdb: reading header from " << header_file << endl;
-  if (fileread (header_file, header, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (header);
-    fprintf (stderr, "ERROR: could not read ASCII header from %s\n", header_file);
-    return (EXIT_FAILURE);
-  }
-
   if (verbose)
     cerr << "ska1_udpdb: configuring based on header" << endl;
-  udpdb->configure (header);
+  udpdb->configure (header.raw());
 
   if (verbose)
     cerr << "ska1_udpdb: listening for packets on " << host << ":" << port << endl;
@@ -150,7 +134,7 @@ int main(int argc, char *argv[]) try
 
   if (verbose)
     cerr << "ska1_udpdb: writing header to data block" << endl;
-  udpdb->open (header);
+  udpdb->open (header.raw());
 
   if (verbose)
     cerr << "ska1_udpdb: starting stats thread" << endl;

@@ -5,10 +5,8 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "futils.h"
-#include "dada_affinity.h"
 
+#include "spip/AsciiHeader.h"
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPReceiver.h"
 #include "spip/UDPFormatMeerKATSimple.h"
@@ -38,7 +36,7 @@ int main(int argc, char *argv[])
 {
   string * format = new string("simple");
 
-  char * config_file = 0;
+  spip::AsciiHeader config;
 
   // Host/IP to receive packets on 
   char * host;
@@ -122,30 +120,18 @@ int main(int argc, char *argv[])
   signal(SIGINT, signal_handler);
  
   // config file for this data stream
-  config_file = strdup (argv[optind]);
+  if (config.load_from_file (argv[optind]) < 0)
+  {
+    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    return (EXIT_FAILURE);
+  }
 
   // local address/host to listen on
   host = strdup(argv[optind+1]);
 
-  char * config = (char *) malloc (sizeof(char) * DADA_DEFAULT_HEADER_SIZE);
-  if (config_file == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for config buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "meerkat_udprecv: reading config from " << config_file << endl;
-  if (fileread (config_file, config, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (config);
-    fprintf (stderr, "ERROR: could not read ASCII config from %s\n", config_file);
-    return (EXIT_FAILURE);
-  }
-
   if (verbose)
     cerr << "meerkat_udprecv: configuring using fixed config" << endl;
-  udprecv->configure (config);
+  udprecv->configure (config.raw());
 
   if (verbose)
     cerr << "meerkat_udprecv: listening for packets on " << host << ":" 

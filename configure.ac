@@ -42,6 +42,7 @@ AC_CONFIG_FILES([Makefile
   src/Formats/MeerKAT/Makefile
   src/Formats/KAT7/Makefile
   src/Dada/Makefile
+  src/Util/Makefile
   scripts/Makefile
   scripts/spip/Makefile
   scripts/spip/threads/Makefile

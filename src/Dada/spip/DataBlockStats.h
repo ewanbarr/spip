@@ -4,7 +4,7 @@
 
 #include "dada_def.h"
 
-#include "BlockFormat.h"
+#include "spip/BlockFormat.h"
 #include "spip/DataBlockView.h"
 
 #include <iostream>

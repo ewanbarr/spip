@@ -6,11 +6,11 @@
  ***************************************************************************/
 
 #include "spip/TCPSocketServer.h"
+#include "spip/AsciiHeader.h"
 #include "spip/UDPReceiveDB.h"
 #include "sys/time.h"
 
-#include "ascii_header.h"
-
+#include <unistd.h>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -37,7 +37,6 @@ spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
 
   format = 0;
   control_port = -1;
-  header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
 
 #ifdef HAVE_VMA
   vma_api = vma_get_api(); 
@@ -62,22 +61,22 @@ spip::UDPReceiveDB::~UDPReceiveDB()
 
 int spip::UDPReceiveDB::configure (const char * config)
 {
-  if (ascii_header_get (config, "NCHAN", "%u", &nchan) != 1)
+  if (spip::AsciiHeader::header_get (config, "NCHAN", "%u", &nchan) != 1)
     throw invalid_argument ("NCHAN did not exist in header");
 
-  if (ascii_header_get (config, "NBIT", "%u", &nbit) != 1)
+  if (spip::AsciiHeader::header_get (config, "NBIT", "%u", &nbit) != 1)
     throw invalid_argument ("NBIT did not exist in header");
 
-  if (ascii_header_get (config, "NPOL", "%u", &npol) != 1)
+  if (spip::AsciiHeader::header_get (config, "NPOL", "%u", &npol) != 1)
     throw invalid_argument ("NPOL did not exist in header");
 
-  if (ascii_header_get (config, "NDIM", "%u", &ndim) != 1)
+  if (spip::AsciiHeader::header_get (config, "NDIM", "%u", &ndim) != 1)
     throw invalid_argument ("NDIM did not exist in header");
 
-  if (ascii_header_get (config, "TSAMP", "%f", &tsamp) != 1)
+  if (spip::AsciiHeader::header_get (config, "TSAMP", "%f", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in header");
 
-  if (ascii_header_get (config, "BW", "%f", &bw) != 1)
+  if (spip::AsciiHeader::header_get (config, "BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
 
   channel_bw = bw / nchan;
@@ -86,9 +85,9 @@ int spip::UDPReceiveDB::configure (const char * config)
   bytes_per_second = bits_per_second / 8;
 
   unsigned start_chan, end_chan;
-  if (ascii_header_get (config, "START_CHANNEL", "%u", &start_chan) != 1)
+  if (spip::AsciiHeader::header_get (config, "START_CHANNEL", "%u", &start_chan) != 1)
     throw invalid_argument ("START_CHANNEL did not exist in header");
-  if (ascii_header_get (config, "END_CHANNEL", "%u", &end_chan) != 1)
+  if (spip::AsciiHeader::header_get (config, "END_CHANNEL", "%u", &end_chan) != 1)
     throw invalid_argument ("END_CHANNEL did not exist in header");
 
   if (!format)
@@ -100,12 +99,12 @@ int spip::UDPReceiveDB::configure (const char * config)
   format->set_nsamp_per_block (nsamp_per_block);
 
   // save the header for use on the first open block
-  strncpy (header, config, strlen(config)+1);
+  header.load_from_str (config);
 
   // now write new params to header
   uint64_t resolution = format->get_resolution();
   cerr << "spip::UDPReceiveDB::configure resolution=" << resolution << endl;
-  if (ascii_header_set (header, "RESOLUTION", "%lu", resolution) < 0)
+  if (header.set("RESOLUTION", "%lu", resolution) < 0)
     throw invalid_argument ("failed to write RESOLUTION to header");
 
 }
@@ -183,7 +182,7 @@ void spip::UDPReceiveDB::control_thread()
   int fd = -1;
   int verbose = 1;
 
-  char * cmds = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
+  char * cmds = (char *) malloc (DEFAULT_HEADER_SIZE);
   char * cmd  = (char *) malloc (32);
 
   //control_cmd = None;
@@ -203,7 +202,7 @@ void spip::UDPReceiveDB::control_thread()
     {
       if (verbose > 1)
         cerr << "control_thread : reading data from socket" << endl;
-      ssize_t bytes_read = read (fd, cmds, DADA_DEFAULT_HEADER_SIZE);
+      ssize_t bytes_read = read (fd, cmds, DEFAULT_HEADER_SIZE);
 
       if (verbose)
         cerr << "control_thread: bytes_read=" << bytes_read << endl;
@@ -212,14 +211,15 @@ void spip::UDPReceiveDB::control_thread()
       fd = -1;
 
       // now check command in list of header commands
-      if (ascii_header_get (cmds, "COMMAND", "%s", cmd) != 1)
+      if (spip::AsciiHeader::header_get (cmds, "COMMAND", "%s", cmd) != 1)
         throw invalid_argument ("COMMAND did not exist in header");
       //if (verbose)
         cerr << "control_thread: cmd=" << cmd << endl;
       if (strcmp (cmd, "START") == 0)
       {
-        strcat (header, cmds);
-        if (ascii_header_del (header, "COMMAND") < 0)
+        // append cmds to header
+        header.append_from_str (cmds);
+        if (header.del ("COMMAND") < 0)
           throw runtime_error ("Could not remove COMMAND from header");
 
         if (verbose)
@@ -356,17 +356,17 @@ void spip::UDPReceiveDB::update_stats()
 
 void spip::UDPReceiveDB::open ()
 {
-  open (header);
+  open (header.raw());
 }
 
 // write the ascii header to the datablock, then
-void spip::UDPReceiveDB::open (const char * header)
+void spip::UDPReceiveDB::open (const char * header_str)
 {
   // open the data block for writing  
   db->open();
 
   // write the header
-  db->write_header (header);
+  db->write_header (header_str);
 }
 
 void spip::UDPReceiveDB::close ()

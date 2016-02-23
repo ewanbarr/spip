@@ -150,17 +150,6 @@ int main(int argc, char *argv[]) try
     cerr << "meerkat_dbstats: configuring using fixed config" << endl;
   dbstats->configure (config);
 
-  // prepare a header which combines config with observation parameters
-  char * header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-  if (header == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  // assume that the config includes a header param
-  strncpy (header, config, strlen(config) + 1);
-
   dbstats->prepare();
 
   // open a listening socket for observation parameters

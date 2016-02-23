@@ -5,11 +5,8 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "futils.h"
-#include "dada_affinity.h"
-#include "ascii_header.h"
-
+#include "spip/AsciiHeader.h"
+#include "spip/HardwareAffinity.h"
 #include "spip/DataBlockStats.h"
 #include "spip/TCPSocketServer.h"
 #include "spip/BlockFormatKAT7.h"
@@ -36,13 +33,14 @@ int main(int argc, char *argv[]) try
 {
   string key = "dada";
 
-  char * config_file = 0;
+  spip::AsciiHeader config;
 
   // tcp control port to receive configuration
   int control_port = -1;
 
   // core on which to bind thread operations
   int core = -1;
+  spip::HardwareAffinity hw_affinity;
 
   string stats_dir = "";
 
@@ -59,6 +57,8 @@ int main(int argc, char *argv[]) try
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_process_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'c':
@@ -95,10 +95,6 @@ int main(int argc, char *argv[]) try
     }
   }
 
-  // bind CPU computation to specific core
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
-  
   // create a DataBlockStats processor to read from the DB
   if (verbose)
     cerr << "kat7_dbstats: creating DataBlockStats with " << key << endl;
@@ -116,47 +112,23 @@ int main(int argc, char *argv[]) try
  
   signal(SIGINT, signal_handler);
 
-  // header the this data stream
-  config_file = strdup (argv[optind]);
-
-  char * config = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-  if (config == NULL)
+  // config the this data stream
+  if (config.load_from_file (argv[optind]) < 0)
   {
-    fprintf (stderr, "ERROR: could not allocate memory for config buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "kat7_dbstats: reading config from " << config_file << endl;
-  if (fileread (config_file, config, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (config);
-    fprintf (stderr, "ERROR: could not read config from %s\n", config_file);
+    cerr << "ERROR: could not read ASCII config from " << argv[optind] << endl;
     return (EXIT_FAILURE);
   }
 
   uint64_t data_bufsz = dbstats->get_data_bufsz();
-  if (ascii_header_set (config, "RESOLUTION", "%lu", data_bufsz) < 0)
+  if (config.set ("RESOLUTION", "%lu", data_bufsz) < 0)
   {
-    free (config);
     fprintf (stderr, "ERROR: could not write RESOLUTION=%lu to config\n", data_bufsz);
     return (EXIT_FAILURE);
   }
 
   if (verbose)
     cerr << "kat7_dbstats: configuring using fixed config" << endl;
-  dbstats->configure (config);
-
-  // prepare a header which combines config with observation parameters
-  char * header = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
-  if (header == NULL)
-  {
-    fprintf (stderr, "ERROR: could not allocate memory for header buffer\n");
-    return (EXIT_FAILURE);
-  }
-
-  // assume that the config includes a header param
-  strncpy (header, config, strlen(config) + 1);
+  dbstats->configure (config.raw());
 
   dbstats->prepare();
 

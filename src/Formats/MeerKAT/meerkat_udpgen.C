@@ -5,10 +5,7 @@
  *
  ****************************************************************************/
 
-#include "dada_def.h"
-#include "dada_affinity.h"
-#include "futils.h"
-
+#include "spip/AsciiHeader.h"
 #include "spip/HardwareAffinity.h"
 #include "spip/UDPGenerator.h"
 #include "spip/UDPFormatMeerKATSimple.h"
@@ -34,7 +31,7 @@ int main(int argc, char *argv[])
 {
   string * format = new string("simple");
 
-  char * header_file = 0;
+  spip::AsciiHeader header;
 
   char * src_host = 0;
 
@@ -123,31 +120,18 @@ int main(int argc, char *argv[])
 
   signal(SIGINT, signal_handler);
 
-  // header the this data stream
-  header_file = strdup (argv[optind]);
+  if (header.load_from_file (argv[optind]) < 0)
+  {
+    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    return (EXIT_FAILURE);
+  }
 
   // destination host
   dest_host = strdup(argv[optind+1]);
 
-  char * header = (char *) malloc (sizeof(char) * DADA_DEFAULT_HEADER_SIZE);
-  if (header_file == NULL)
-  {
-    cerr << "ERROR: could not allocate memory for header buffer" << endl;
-    return (EXIT_FAILURE);
-  }
-
-  if (verbose)
-    cerr << "meerkat_udpgen: reading header from " << header_file << endl;
-  if (fileread (header_file, header, DADA_DEFAULT_HEADER_SIZE) < 0)
-  {
-    free (header);
-    cerr << "ERROR: could not read ASCII header from " << header_file << endl;
-    return (EXIT_FAILURE);
-  }
-
   if (verbose)
     cerr << "meerkat_udpgen: configuring based on header" << endl;
-  gen->configure (header);
+  gen->configure (header.raw());
 
   if (verbose)
     cerr << "meerkat_udpgen: allocating signal" << endl;
@@ -180,8 +164,6 @@ int main(int argc, char *argv[])
 
   delete gen;
 
-  free (header);
-  free (header_file);
   free (dest_host);
 
   return 0;

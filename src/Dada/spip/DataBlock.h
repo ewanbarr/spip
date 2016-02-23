@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <string>
 
+#include "dada_def.h"
+
 namespace spip
 {
   class DataBlock 
