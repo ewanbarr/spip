@@ -5,107 +5,50 @@
 # 
 ###############################################################################
 
-import threading, socket, errno
+from socketed_thread import SocketedThread
+
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
-from select import select
 
-class ReportingThread (threading.Thread):
+class ReportingThread (SocketedThread):
 
   def __init__ (self, script, host, port):
-    threading.Thread.__init__(self)
-    self.script = script
-    self.host = host
-    self.port = port
+    SocketedThread.__init__(self, script, host, port)
 
   def run (self):
+    SocketedThread.run(self)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+  def process_message_on_handle (self, handle):
 
-    self.script.log (1, "ReportingThread listening on " + self.host + ":" + str(self.port))
-    sock.bind((self.host, int(self.port)))
-    sock.listen(1)
+    raw = handle.recv(4096)
+    message = raw.strip()
+    self.script.log (2, "ReportingThread: message="+str(message))
 
-    can_read = [sock]
-    can_write = []
-    can_error = []
+    if len(message) == 0:
+      handle.close()
+      for i, x in enumerate(self.can_read):
+        if (x == handle):
+          del self.can_read[i]
 
-    while not self.script.quit_event.isSet():
-
-      timeout = 1
-
-      did_read = []
-      did_write = []
-      did_error = []
-
-
+    else:
       try:
-        # wait for some activity on the control socket
-        self.script.log (3, "ReportingThread: select")
-        did_read, did_write, did_error = select(can_read, can_write, can_error, timeout)
-        self.script.log (3, "ReportingThread: read="+str(len(did_read))+" write="+
-                   str(len(did_write))+" error="+str(len(did_error)))
-      except select.error as e:
-        if e[0] == errno.EINTR:
-          self.script.log(0, "SIGINT received during select, exiting")
-          self.script.quit_event.set()
-        else:
-          raise
+       xml = parse(message)
+      except ExpatError as e:
+        handle.send ("<xml>Malformed XML message</xml>\r\n")
+        handle.close()
+        for i, x in enumerate(self.can_read):
+          if (x == handle):
+            del self.can_read[i]
 
-      if (len(did_read) > 0):
-        for handle in did_read:
-          if (handle == sock):
-            (new_conn, addr) = sock.accept()
-            self.script.log (2, "ReportingThread: accept connection from "+repr(addr))
+      self.script.log(3, "<- " + str(xml))
 
-            # add the accepted connection to can_read
-            can_read.append(new_conn)
+      retain, reply = self.parse_message (xml)
 
-          # an accepted connection must have generated some data
-          else:
-            try:
-              raw = handle.recv(4096)
-              message = raw.strip()
-
-              if len(message) == 0:
-                handle.close()
-                for i, x in enumerate(can_read):
-                  if (x == handle):
-                    del can_read[i]
-
-              else:
-                self.script.log (2, "ReportingThread message='" + message+"'")
-                try:
-                  xml = parse(message)
-                except ExpatError as e:
-                  handle.send ("<xml>Malformed XML message</xml>\r\n")
-                  handle.close()
-                  for i, x in enumerate(can_read):
-                    if (x == handle):
-                      del can_read[i]
-
-                self.script.log(3, "<- " + str(xml))
-
-                retain, reply = self.parse_message (xml)
-
-                handle.send (reply)
-                if not retain:
-                  handle.close()
-                  for i, x in enumerate(can_read):
-                    if (x == handle):
-                      del can_read[i]
-
-            except socket.error as e:
-              if e.errno == errno.ECONNRESET:
-                self.script.log (2, "ReportingThread closing connection")
-                handle.close()
-                for i, x in enumerate(can_read):
-                  if (x == handle):
-                    del can_read[i]
-              else:
-                raise
-
-  def parse_message(self, xml):
-    return "ok"
+      handle.send (reply)
+      if not retain:
+        self.script.log (2, "ReportingThread: closing connection")
+        handle.close()
+        for i, x in enumerate(self.can_read):
+          if (x == handle):
+                del self.can_read[i]
 

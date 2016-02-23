@@ -11,7 +11,7 @@
 # spip_lmc - 
 #
 
-import os, socket, threading, sys, errno, traceback, select, xmltodict
+import os, socket, threading, sys, errno, traceback, select, xmltodict, subprocess
 from time import sleep
 import spip_lmc_monitor as lmc_mon
 
@@ -73,25 +73,28 @@ class clientThread (threading.Thread):
           sleep(to_sleep)
           to_sleep = 0
 
-        self.parent.log(2, self.prefix + "launching daemons of rank " + rank)
+        self.parent.log(1, self.prefix + "launching daemons of rank " + rank)
         for daemon in daemons[rank]:
           self.states[daemon] = False
           cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix
           self.parent.log(1, self.prefix + cmd)
-          rval, lines = self.parent.system (cmd)
-          self.parent.log(2, self.prefix + str(rval) + " lines=" + str(lines))
+          proc = subprocess.Popen (cmd, shell=True)
+          rval = proc.wait()
+          # rval, lines = self.parent.system (cmd)
+          # self.parent.log(1, self.prefix + str(rval) + " lines=" + str(lines))
+          self.parent.log(1, self.prefix + str(rval))
           if rval:
-            for line in lines:
-              self.parent.log(-2, prefix + line)
+            #for line in lines:
+            #  self.parent.log(-2, prefix + line)
             self.parent.quit_event.set() 
-          else:
-            for line in lines:
-              self.parent.log(2, prefix + line)
+          #else:
+            #for line in lines:
+            #  self.parent.log(2, prefix + line)
 
-        self.parent.log (2, prefix + "launched daemons of rank " + rank)
+        self.parent.log (1, prefix + "launched daemons of rank " + rank)
         sleep(1)
 
-      self.parent.log(2, prefix + "launched all daemons")
+      self.parent.log(1, prefix + "launched all daemons")
 
       # here we would monitor the daemons in each stream and 
       # process control commands specific to the stream
@@ -197,7 +200,7 @@ class LMCDaemon (Daemon,HostBased):
       server_thread.start()
       self.log(1, "main: client_thread[-1] started")
 
-    sleep(1)
+    sleep(5)
 
     # start a control thread for each stream
     for stream in client_streams:

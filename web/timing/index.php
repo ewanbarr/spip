@@ -58,6 +58,14 @@ class timing extends spip_webpage
 ?>
     <script type='text/javascript'>
 
+      function get_node_value(node)
+      {
+        if (node.childNodes.length > 0)
+          return node.childNodes[0].nodeValue;
+        else
+          return "--";
+      }
+
       function handle_timing_request(t_xml_request)
       {
         if (t_xml_request.readyState == 4)
@@ -69,37 +77,39 @@ class timing extends spip_webpage
           {
             var xmlObj = xmlDoc.documentElement;
 
-            // process the TCS state first
-            var tcs_state = xmlObj.getElementsByTagName("tcs_state")[0];
-            var beams = tcs_state.getElementsByTagName("beam");
-
-            var i, j, k;      
+            var h, i, j, k;      
             var source, name, ra, dec;
             var params, observer, pid, mode, start, elapsed, tobs
             var observation, integrated, snr;
 
-            for (i=0; i<beams.length; i++)
+            // process the TCS state first
+            var tcs_states = xmlObj.getElementsByTagName("tcs_state");
+            for (h=0; h<tcs_states.length; h++)
             {
-              beam = beams[i];
-              var beam_name  = beam.getAttribute("name");
-              var beam_state = beam.getAttribute("state");
+              var tcs_state = tcs_states[h];
+              var beams = tcs_state.getElementsByTagName("beam");
 
-              document.getElementById(beam_name + "_state").innerHTML = "Beam " + beam_name + ": " + beam_state
-
-              if (beam_state == "Recording")
+              for (i=0; i<beams.length; i++)
               {
+                beam = beams[i];
+                var beam_name  = beam.getAttribute("name");
+                var beam_state = beam.getAttribute("state");
+
+                document.getElementById(beam_name + "_state").innerHTML = "Beam " + beam_name + ": " + beam_state
+
                 source = beam.getElementsByTagName("source")[0];
-                name   = source.getElementsByTagName("name")[0].childNodes[0].nodeValue;
-                ra     = source.getElementsByTagName("ra")[0].childNodes[0].nodeValue;
-                dec    = source.getElementsByTagName("dec")[0].childNodes[0].nodeValue;
+                name   = get_node_value(source.getElementsByTagName("name")[0]);
+                ra     = get_node_value(source.getElementsByTagName("ra")[0]);
+                dec    = get_node_value(source.getElementsByTagName("dec")[0]);
     
                 params   = beam.getElementsByTagName("observation_parameters")[0];
-                observer = params.getElementsByTagName("observer")[0].childNodes[0].nodeValue;
-                pid      = params.getElementsByTagName("pid")[0].childNodes[0].nodeValue;
-                mode     = params.getElementsByTagName("mode")[0].childNodes[0].nodeValue;
-                start    = params.getElementsByTagName("utc_start")[0].childNodes[0].nodeValue;
-                elapsed  = params.getElementsByTagName("elapsed_time")[0].childNodes[0].nodeValue;
-                tobs     = params.getElementsByTagName("expected_length")[0].childNodes[0].nodeValue;
+                observer = get_node_value(params.getElementsByTagName("observer")[0]);
+                pid      = get_node_value(params.getElementsByTagName("pid")[0]);
+                mode     = get_node_value(params.getElementsByTagName("mode")[0]);
+                tobs     = get_node_value(params.getElementsByTagName("expected_length")[0]);
+
+                start    = get_node_value(params.getElementsByTagName("utc_start")[0]);
+                elapsed  = get_node_value(params.getElementsByTagName("elapsed_time")[0]);
 
                 document.getElementById(beam_name + "_source").innerHTML = name;
                 document.getElementById(beam_name + "_ra").innerHTML = ra;
@@ -111,17 +121,16 @@ class timing extends spip_webpage
                 document.getElementById(beam_name + "_elapsed").innerHTML = elapsed;
                 document.getElementById(beam_name + "_tobs").innerHTML = tobs;
 
-                tcs_utcs[beam_name] = start
-              }
-              else
-              {
-                tcs_utcs[beam_name] = ""
+                if (beam_state == "Recording")
+                  tcs_utcs[beam_name] = start
+                else
+                  tcs_utcs[beam_name] = ""
               }
             }
 
             var repack_state = xmlObj.getElementsByTagName("repack_state")[0];
             var beams = repack_state.getElementsByTagName("beam");
-  
+    
             for (i=0; i<beams.length; i++)
             {
               var beam = beams[i];
@@ -273,20 +282,40 @@ class timing extends spip_webpage
     }
 
     # get all information from TCS too
-    $host = $this->config["TCS_INTERFACE_HOST"];
-    $port = $this->config["TCS_REPORT_PORT"];
-
-    $tcs_socket = new spip_socket();
-    if ($tcs_socket->open ($host, $port, 0) == 0)
+    $tcses = array();
+    if ($this->config["INDEPENDENT_BEAMS"] == "true")
     {
-      $tcs_socket->write ($xml_req."\r\n");
-      list ($rval, $reply) = $tcs_socket->read();
-      $xml .= rtrim($reply);
-      $tcs_socket->close();
+      foreach ($this->beams as $ibeam => $beam)
+      {
+        array_push ($tcses, $beam["host"].":".($this->config["TCS_REPORT_PORT"] + $ibeam));
+      }
     }
     else
     {
-      $xml .= "<tcs_state></tcs_state>";
+      array_push ($tcses, $this->config["SERVER_HOST"].":".$this->config["TCS_REPORT_PORT"]);
+    }
+  
+    $xml_req  = XML_DEFINITION;
+    $xml_req .= "<tcs_state_request>";
+    $xml_req .= "<requestor>timing page</requestor>";
+    $xml_req .= "<type>state</type>";
+    $xml_req .= "</tcs_state_request>";
+
+    foreach ($tcses as $tcs)
+    {
+      $tcs_socket = new spip_socket();
+      list ($host, $port) = explode(":", $tcs);
+      if ($tcs_socket->open ($host, $port, 0) == 0)
+      {
+        $tcs_socket->write ($xml_req."\r\n");
+        list ($rval, $reply) = $tcs_socket->read();
+        $xml .= rtrim($reply);
+        $tcs_socket->close();
+      }
+      else
+      {
+        $xml .= "<tcs_state></tcs_state>";
+      }
     }
 
     $xml .= "</timing_update>";

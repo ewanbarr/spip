@@ -15,15 +15,102 @@ from katcp.kattypes import (Str, Int, Float, Bool, Timestamp, Discrete,
 import os, threading, sys, socket, select, signal, traceback, xmltodict
 import errno, time, random, re
 
+from xmltodict import parse
+from xml.parsers.expat import ExpatError
+
 from spip import config
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
+from spip.threads.socketed_thread import SocketedThread
 
 DAEMONIZE = False
 DL = 2
+
+###############################################################
+# PubSub daemon
+class PubSubThread(SocketedThread):
+
+  def __init__ (self, script, id):
+    self.script = script
+    host = sockets.getHostNameShort()
+    port = int(script.cfg["MEERKAT_PUBSUB_PORT"]) + int(id)
+    SocketedThread.__init__(self, script, host, port)
+
+  def run (self):
+    SocketedThread.run(self)
+
+  def process_message_on_handle (self, handle):
+
+    # TODO here we will need to process the JSON Websockets 
+    # formatted data as per the CAM specification which is 
+    # TBD. For now, assume SPIP Test Interface format
+    retain = False
+    raw = handle.recv(4096)
+    message = raw.strip()
+    self.script.log (2, "PubSubThread: message="+str(message))
+
+    if len(message) == 0:
+      handle.close()
+      for i, x in enumerate(self.can_read):
+        if (x == handle):
+          del self.can_read[i]
+
+    else:
+      try:
+        xml = parse(message)
+      except ExpatError as e:
+        handle.send ("<xml>Malformed XML message</xml>\r\n")
+        handle.close()
+        for i, x in enumerate(self.can_read):
+          if (x == handle):
+            del self.can_read[i]
+
+      # for each bema that the messages corresponds to
+      for ibeam in range(int(xml['obs_cmd']['beam_configuration']['nbeam'])):
+
+        # check that the beam is active for the message
+        if xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)] == "on":
+
+          # get the name of the beam
+          beam_name = self.script.cfg["BEAM_" + str(ibeam)]
+
+          self.script.beam_configs[beam_name]["lock"].acquire()
+
+          self.script.beam_configs[beam_name]["SOURCE"] = xml['obs_cmd']['source_parameters']['name']['#text']
+          self.script.beam_configs[beam_name]["RA"] = xml['obs_cmd']['source_parameters']['ra']['#text']
+          self.script.beam_configs[beam_name]["DEC"] = xml['obs_cmd']['source_parameters']['dec']['#text']
+
+          self.script.beam_configs[beam_name]["OBSERVER"] = str(xml['obs_cmd']['observation_parameters']['observer'])
+          self.script.beam_configs[beam_name]["PID"] = str(xml['obs_cmd']['observation_parameters']['project_id'])
+          self.script.beam_configs[beam_name]["MODE"] = xml['obs_cmd']['observation_parameters']['mode']
+          self.script.beam_configs[beam_name]["PROC_FILE"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
+
+          self.script.beam_configs[beam_name]["UTC_START"] = xml['obs_cmd']['observation_parameters']['utc_start']
+          self.script.beam_configs[beam_name]["OBS_OFFSET"] = "0"
+          self.script.beam_configs[beam_name]["TOBS"] = xml['obs_cmd']['observation_parameters']['tobs']
+
+          self.script.beam_configs[beam_name]["PERFORM_FOLD"] = "1"
+          self.script.beam_configs[beam_name]["PERFORM_SEARCH"] = "0"
+          self.script.beam_configs[beam_name]["PERFORM_TRANS"] = "0"
+
+          self.script.beam_configs[beam_name]["lock"].release()
+
+      response = "ok"
+      reply = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
+              "<pubsub_response>" + response + "</pubsub_response>"
+
+      self.script.log(3, "<- " + str(xml))
+      handle.send (reply)
+      if not retain:
+        self.script.log (2, "PubSubThread: closing connection")
+        handle.close()
+        for i, x in enumerate(self.can_read):
+          if (x == handle):
+                del self.can_read[i]
+
 
 ###############################################################
 # KATCP daemon
@@ -32,6 +119,9 @@ class KATCPDaemon(Daemon):
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
     self.beam_states = {}
+    self.beam_configs = {}
+    self.tcs_hosts = {}
+    self.tcs_ports = {}
     self.beams = []
     self.hosts = []
     self.katcp = []
@@ -151,6 +241,56 @@ class KATCPDaemon(Daemon):
         self.log (-2, "KATCP server was not running, exiting")
         self.quit_event.set()
 
+  #############################################################################
+  # return valid XML configuration for specified beam
+  def get_xml_config_for_beams (self, b):
+
+    xml =  "<?xml version='1.0' encoding='ISO-8859-1'?>"
+    xml += "<obs_cmd>"
+    xml +=   "<command>init</command>"
+    xml +=   "<beam_configuration>"
+    xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
+    xml +=     "<beam_name>" + b + "</beam_name>"
+    xml +=   "</beam_configuration>"
+
+    xml +=   "<source_parameters>"
+    xml +=     "<name epoch='J2000'>" + self.beam_configs[b]["source"] + "</name>"
+    xml +=     "<ra units='hh:mm:ss'>" + self.beam_configs[b]["ra"] + "</ra>"
+    xml +=     "<dec units='hh:mm:ss'>" + self.beam_configs[b]["dec"] + "</dec>"
+    xml +=   "</source_parameters>"
+
+    xml +=   "<observation_parameters>\n";
+    xml +=     "<observer>" + self.beam_configs[b]["observer"] + "</observer>"
+    xml +=     "<project_id>" + self.beam_configs[b]["project_id"] + "</project_id>"
+    xml +=     "<tobs>" + self.beam_configs[b]["tobs"] + "</tobs>"
+    xml +=     "<mode>" + self.beam_configs[b]["mode"] + "</mode>"
+    xml +=     "<processing_file>" + self.beam_configs[b]["processing_file"] + "</processing_file>"
+    xml +=     "<utc_start></utc_start>"
+    xml +=     "<utc_stop></utc_stop>"
+    xml +=   "</observation_parameters>"
+    xml += "</obs_cmd>"
+
+    return xml
+
+  def get_xml_start_cmd (self, b):
+
+    xml  = "<?xml version='1.0' encoding='ISO-8859-1'?>"
+    xml += "<obs_cmd>"
+    xml += "<command>start</command>"
+    xml += "</obs_cmd>"
+
+    return xml
+
+  def get_xml_stop_cmd (self, b):
+
+    xml  = "<?xml version='1.0' encoding='ISO-8859-1'?>"
+    xml += "<obs_cmd>"
+    xml += "<command>stop</command>"
+    xml += "</obs_cmd>"
+
+    return xml
+
+
   def update_lmc_sensors (self, host, xml):
 
     self.katcp._host_sensors[host]["disk_size"].set_value (float(xml["lmc_reply"]["disk"]["size"]["#text"]))
@@ -237,10 +377,42 @@ class KATCPServerDaemon (KATCPDaemon, ServerBased):
     # when only a single KATCP instance, maintain SNRs
     # for all beams
     for i in range(int(self.cfg["NUM_BEAM"])):
-      self.beam_states[i+1] = {}
-      self.beam_states[i+1]["NAME"] = self.cfg["BEAM_"+str(i)]
-      self.beam_states[i+1]["SNR"] = 0
-      self.beam_states[i+1]["POWER"] = 0
+      b = self.cfg["BEAM_" + str(i)]
+      self.beam_states[b] = {}
+      self.beam_states[b]["NAME"] = b
+      self.beam_states[b]["SNR"] = 0
+      self.beam_states[b]["POWER"] = 0
+
+      self.beam_configs[b] = {}
+      self.beam_configs[b]["lock"] = threading.Lock()
+      self.beam_configs[b]["SOURCE"] = ""
+      self.beam_configs[b]["RA"] = ""
+      self.beam_configs[b]["DEC"] = ""
+      self.beam_configs[b]["PID"] = ""
+      self.beam_configs[b]["OBSERVER"] = ""
+      self.beam_configs[b]["UTC_START"] = ""
+      self.beam_configs[b]["TOBS"] = ""
+      self.beam_configs[b]["MODE"] = ""
+      self.beam_configs[b]["PERFORM_FOLD"] = "0"
+      self.beam_configs[b]["PERFORM_SEARCH"] = "0"
+      self.beam_configs[b]["PERFORM_TRANS"] = "0"
+
+      # if each beam is used independently of the others
+      if self.cfg["INDEPENDENT_BEAMS"] == "true":
+        # find the lowest number stream for the beam
+        lowest_stream = int(self.cfg["NUM_STREAM"])
+        for j in range(int(self.cfg["NUM_STREAM"])):
+          (host, beam, subband) = self.cfg["STREAM_" + str(j)].split(":")
+          if (beam == b and j < lowest_stream):
+            lowest_stream = j
+            self.tcs_hosts[b] = host
+            self.tcs_ports[b] = int(self.cfg["TCS_INTERFACE_PORT"]) + i
+        if lowest_stream == int(self.cfg["NUM_STREAM"]):
+          self.log(-2, "KATCPServerDaemon::__init__ could not match beam to stream")
+      else:
+        self.tcs_hosts[b] = self.cfg["TCS_INTERFACE_HOST"]
+        self.tcs_ports[b] = self.cfg["TCS_INTERFACE_PORT"]
+
     self.beams = self.beam_states.keys()
 
 class KATCPBeamDaemon (KATCPDaemon, BeamBased):
@@ -249,12 +421,36 @@ class KATCPBeamDaemon (KATCPDaemon, BeamBased):
     KATCPDaemon.__init__(self, name, str(id))
     BeamBased.__init__(self, str(id), self.cfg)
 
-    self.beam_states[id+1] = {}
-    self.beam_states[id+1]["NAME"] = self.cfg["BEAM_"+str(id)]
-    self.beam_states[id+1]["SNR"] = 0
-    self.beam_states[id+1]["POWER"] = 0
+    b = id + 1
+
+    self.beam_states[b] = {}
+    self.beam_states[b]["NAME"] = self.cfg["BEAM_"+str(id)]
+    self.beam_states[b]["SNR"] = 0
+    self.beam_states[b]["POWER"] = 0
     self.beams = self.beam_states.keys()
 
+    self.beam_configs[b] = {}
+    self.beam_configs[b]["lock"] = threading.Lock()
+    self.beam_configs[b]["SOURCE"] = ""
+    self.beam_configs[b]["RA"] = ""
+    self.beam_configs[b]["DEC"] = ""
+    self.beam_configs[b]["PID"] = ""
+    self.beam_configs[b]["OBSERVER"] = ""
+    self.beam_configs[b]["UTC_START"] = ""
+    self.beam_configs[b]["TOBS"] = ""
+    self.beam_configs[b]["MODE"] = ""
+    self.beam_configs[b]["PERFORM_FOLD"] = "0"
+    self.beam_configs[b]["PERFORM_SEARCH"] = "0"
+    self.beam_configs[b]["PERFORM_TRANS"] = "0"
+
+    # if each beam is used independently of the others
+    if self.cfg["INDEPENDENT_BEAMS"] == "true":
+      self.tcs_hosts[b] = self.cfg["TCS_INTERFACE_HOST_" + str(id)]
+      self.tcs_ports[b] = self.cfg["TCS_INTERFACE_PORT_" + str(id)]
+    else:
+      self.tcs_hosts[b] = self.cfg["TCS_INTERFACE_HOST"]
+      self.tcs_ports[b] = self.cfg["TCS_INTERFACE_PORT"]
+  
 
 ##############################################################
 # Actual KATCP server implementation
@@ -276,6 +472,8 @@ class KATCPServer (DeviceServer):
       self._host_sensors = {}
       self._beam_sensors = {}
       self._data_products = {}
+
+
       self.script.log(2, "KATCPServer::__init__ starting DeviceServer on " + server_host + ":" + str(server_port))
       DeviceServer.__init__(self, server_host, server_port)
 
@@ -509,7 +707,15 @@ class KATCPServer (DeviceServer):
     def request_capture_init(self, req, data_product_id):
       """Prepare the ingest process for data capture."""
       if data_product_id in self._data_products:
-        # TODO instruct SPIP backend for beam to prepare
+        # TODO - assume data_product_id is beam name
+        host = self.script.tcs_hosts[data_product_id]
+        port = self.script.tcs_ports[data_product_id]
+        sock = sockets.openSocket (DL, host, gen_port, 1)
+        if sock:
+          xml = self.get_xml_config_for_beams (data_product_id)
+          sock.send(xml)
+          sock.close()
+
         return ("ok", "")
       else:
         return ("fail", "data product " + str (data_product_id) + " was not configured")
@@ -519,7 +725,15 @@ class KATCPServer (DeviceServer):
     def request_capture_start(self, req, data_product_id):
       """Start capture of SPEAD stream for the data_product_id."""
       if data_product_id in self._data_products:
-        # TODO instruct SPIP backend for beam to start acquisition 
+        # TODO assume data_product_id is beam name
+        host = self.script.tcs_hosts[data_product_id]
+        port = self.script.tcs_ports[data_product_id]
+        sock = sockets.openSocket (DL, host, gen_port, 1)
+        if sock:
+          xml = self.get_xml_start_cmd (data_product_id)
+          sock.send(xml)
+          sock.close()
+
         return ("ok", "")
       else:
         return ("fail", "data product " + str (data_product_id) + " was not configured")
@@ -529,7 +743,15 @@ class KATCPServer (DeviceServer):
     def request_capture_stop(self, req, data_product_id):
       """Stop capture of SPEAD stream for the data_product_id."""
       if data_product_id in self._data_products:
-        # TODO instruct SPIP backend for beam to stop acquisition 
+        # TODO assume data_product_id is beam name
+        host = self.script.tcs_hosts[data_product_id]
+        port = self.script.tcs_ports[data_product_id]
+        sock = sockets.openSocket (DL, host, gen_port, 1)
+        if sock:
+          xml = self.get_xml_stop_cmd (data_product_id)
+          sock.send(xml)
+          sock.close()
+
         return ("ok", "")
       else:
         return ("fail", "data product " + str (data_product_id) + " was not configured")
@@ -543,7 +765,6 @@ class KATCPServer (DeviceServer):
         return ("ok", "")
       else:
         return ("fail", "data product " + str (data_product_id) + " was not configured")
-
 
     @return_reply(Str())
     def request_data_product_configure(self, req, msg):
@@ -571,7 +792,7 @@ class KATCPServer (DeviceServer):
 
       if len(msg.arguments) == 6:
         # if the configuration for the specified data product matches extactly the 
-        # previous specificaiton for that data product, then no action is required
+        # previous specification for that data product, then no action is required
         if data_product_id in self._data_products and \
             self._data_products[data_product_id]['antennas'] == msg.arguments[1] and \
             self._data_products[data_product_id]['n_channels'] == msg.arguments[2] and \
@@ -634,12 +855,17 @@ if __name__ == "__main__":
     script.log(2, "__main__: server.start()")
     server.start()
 
+    pubsub_thread = PubSubThread (script, beam_id)
+    pubsub_thread.start()
+
     script.log(2, "__main__: script.main()")
     script.main (beam_id)
 
     if server.running():
       server.stop()
     server.join()
+
+    pubsub_thread.join()
 
   except:
 

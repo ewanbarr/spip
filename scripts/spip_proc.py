@@ -88,7 +88,9 @@ class ProcDaemon (Daemon, StreamBased):
     gpu_id = self.cfg["GPU_ID_" + str(self.id)]
     prev_utc_start = ""
 
-    (cfreq, bw, nchan) = self.cfg["SUBBAND_CONFIG_" + stream_id].split(":")
+    (host, beam, subband) = self.cfg["STREAM_" + stream_id].split(":")
+
+    (cfreq, bw, nchan) = self.cfg["SUBBAND_CONFIG_" + subband].split(":")
 
     # wait up to 10s for the SMRB to be created
     smrb_wait = 10
@@ -105,7 +107,7 @@ class ProcDaemon (Daemon, StreamBased):
 
     if rval:
       self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
-                  "key=" + db_key)
+                  "key=" + db_key_in)
       self.quit_event.set()
 
     else:

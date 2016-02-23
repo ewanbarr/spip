@@ -1,5 +1,7 @@
 <?PHP
 
+include_once ("spip.lib.php");
+
 class spip_webpage 
 {
   var $css = array("/spip/spip.css");
@@ -12,9 +14,9 @@ class spip_webpage
   var $logo_text = "";
   var $sidebar_width = "250";
 
-  function spip_webpage() 
+  function spip_webpage () 
   {
-
+    $this->config = spip::get_config();
   }
 
   function javaScriptCallBack()
@@ -137,7 +139,7 @@ function handleDirect($child_class)
     echo "    <div id='hdr-box2' class='box'></div>\n";
     echo "    <div id='hdr-box3' class='box'></div>\n";
     echo "    <div id='hdr-box4' class='box'></div>\n";
-    echo "    <h1>KAT7 - Swinburne Pulsar Instrumentation Package</h1>\n";
+    echo "    <h1>".$obj->config["INSTRUMENT"]." - Swinburne Pulsar Instrumentation Package</h1>\n";
     echo "  </div>\n";
 
     // print the main navigation panel

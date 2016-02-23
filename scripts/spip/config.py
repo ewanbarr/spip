@@ -94,12 +94,15 @@ def getStreamConfigFixed (site, cfg, id):
   config["NDIM"]  = cfg["NDIM"]
   config["TSAMP"] = cfg["TSAMP"]
 
-  (freq, bw, nchan) = cfg["SUBBAND_CONFIG_" + str(id)].split(":")
+  # determine subband for this stream
+  (host, beam, subband) = cfg["STREAM_" + str(id)].split(":")
+
+  (freq, bw, nchan) = cfg["SUBBAND_CONFIG_" + str(subband)].split(":")
   config["FREQ"] = freq
   config["BW"] = bw
   config["NCHAN"] = nchan
 
-  (start_chan, end_chan) = cfg["SUBBAND_CHANS_" + str(id)].split(":")
+  (start_chan, end_chan) = cfg["SUBBAND_CHANS_" + str(subband)].split(":")
   config["START_CHANNEL"] = start_chan
   config["END_CHANNEL"]   = end_chan
 

@@ -45,7 +45,7 @@ class monThread (threading.Thread):
     try:
       script.log (2, "monThread: launching")
 
-      script.log(1, "monThread: opening mon socket")
+      script.log(2, "monThread: opening mon socket")
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
       port = SMRBDaemon.getDBMonPort(self.id)
@@ -82,7 +82,7 @@ class monThread (threading.Thread):
           for handle in did_read:
             if (handle == sock):
               (new_conn, addr) = sock.accept()
-              script.log(1, "monThread: accept connection from " + 
+              script.log(2, "monThread: accept connection from " + 
                           repr(addr))
               can_read.append(new_conn)
 
@@ -91,7 +91,7 @@ class monThread (threading.Thread):
               message = message.strip()
               script.log(3, "monThread: message='" + message+"'")
               if (len(message) == 0):
-                script.log(1, "monThread: closing connection")
+                script.log(2, "monThread: closing connection")
                 handle.close()
                 for i, x in enumerate(can_read):
                   if (x == handle):
