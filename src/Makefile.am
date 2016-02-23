@@ -1,8 +1,15 @@
 
+SUBDIRS = Affinity Dada Network Util . Formats
+
 lib_LTLIBRARIES = libspip.la
 
-libspip_headers = spip.h
+libspip_la_SOURCES = spip.C
 
-libspip_la_SOURCES = spip.c
+libspip_la_headers = spip.h
 
-SUBDIRS = Affinity Dada Network Util Formats/SKA1 Formats/MeerKAT Formats/KAT7
+libspip_la_LIBADD = \
+	Affinity/libspipaffinity.la \
+  Dada/libspipdada.la \
+	Network/libspipnet.la \
+	Util/libspiputil.la
+

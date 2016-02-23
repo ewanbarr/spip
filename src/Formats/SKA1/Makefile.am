@@ -1,5 +1,5 @@
 
-lib_LTLIBRARIES = libska1.la
+noinst_LTLIBRARIES = libska1.la
 
 libska1_headers = spip/UDPFormatCustom.h
 
@@ -13,19 +13,15 @@ AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Util
 
 LDADD = libska1.la \
-  $(top_builddir)/src/Affinity/libspipaffinity.la \
-	$(top_builddir)/src/Network/libspipnet.la \
-	$(top_builddir)/src/Util/libspiputil.la \
-	-L/opt/cross/lib -lpthread
-
-
-AM_CXXFLAGS += @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
-LDADD += @HWLOC_LIBS@ @SPEAD2_LIBS@
+  $(top_builddir)/src/libspip.la \
+	-lpthread
 
 if HAVE_PSRDADA
 
 bin_PROGRAMS += ska1_udpdb
-AM_CXXFLAGS += -I$(top_builddir)/src/Dada @PSRDADA_CFLAGS@
-LDADD += $(top_builddir)/src/Dada/libspipdada.la @PSRDADA_LIBS@
+AM_CXXFLAGS += -I$(top_builddir)/src/Dada
 
 endif
+
+AM_CXXFLAGS += @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@ @PSRDADA_CFLAGS@
+LDADD += @HWLOC_LIBS@ @SPEAD2_LIBS@ @PSRDADA_LIBS@

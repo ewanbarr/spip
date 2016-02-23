@@ -11,7 +11,7 @@ AC_INIT([SPIP], [0.0.1], [andrew.jameson@gmail.com])
 #AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
 # Set this file to one that is in your directory
-AC_CONFIG_SRCDIR([src/spip.c])
+AC_CONFIG_SRCDIR([src/spip.C])
 AC_PROG_LIBTOOL
 AC_DISABLE_SHARED
 
@@ -38,6 +38,7 @@ AC_CONFIG_FILES([Makefile
   src/Makefile
   src/Affinity/Makefile
   src/Network/Makefile
+  src/Formats/Makefile
   src/Formats/SKA1/Makefile
   src/Formats/MeerKAT/Makefile
   src/Formats/KAT7/Makefile

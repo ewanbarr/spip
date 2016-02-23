@@ -1,4 +1,4 @@
-lib_LTLIBRARIES = libspipaffinity.la
+noinst_LTLIBRARIES = libspipaffinity.la
 
 libspipaffinity_headers = spip/HardwareAffinity.h
 

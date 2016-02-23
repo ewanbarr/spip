@@ -1,0 +1,3 @@
+
+SUBDIRS = SKA1 MeerKAT KAT7
+

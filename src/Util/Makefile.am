@@ -1,5 +1,5 @@
 
-lib_LTLIBRARIES = libspiputil.la
+noinst_LTLIBRARIES = libspiputil.la
 
 libspiputil_headers = spip/AsciiHeader.h spip/BlockFormat.h
 
