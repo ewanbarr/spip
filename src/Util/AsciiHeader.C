@@ -15,6 +15,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 
 #define STRLEN 4096
 

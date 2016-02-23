@@ -16,7 +16,7 @@ LDADD = libska1.la \
   $(top_builddir)/src/Affinity/libspipaffinity.la \
 	$(top_builddir)/src/Network/libspipnet.la \
 	$(top_builddir)/src/Util/libspiputil.la \
-	-L/opt/cross/lib 
+	-L/opt/cross/lib -lpthread
 
 
 AM_CXXFLAGS += @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@

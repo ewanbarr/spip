@@ -41,7 +41,7 @@ endif
 
 LDADD += $(top_builddir)/src/Network/libspipnet.la \
 				$(top_builddir)/src/Util/libspiputil.la \
-				-L/opt/cross/lib
+				-L/opt/cross/lib -lpthread
 
 AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @SPEAD2_CFLAGS@
 LDADD += @PSRDADA_LIBS@ @HWLOC_LIBS@ @SPEAD2_LIBS@
