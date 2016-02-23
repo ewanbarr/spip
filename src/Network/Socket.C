@@ -54,7 +54,6 @@ void spip::Socket::resize (size_t new_bufsz)
 {
   if (new_bufsz > bufsz)
   {
-    cerr << "spip::Socket::resize old=" << bufsz << " new=" << new_bufsz << endl;
     if (buf)
       free (buf);
     bufsz = new_bufsz;

@@ -24,7 +24,8 @@ const char * spip::AsciiHeader::whitespace = " \t\n";
 
 spip::AsciiHeader::AsciiHeader()
 {
-  AsciiHeader(DEFAULT_HEADER_SIZE);
+  header_size = DEFAULT_HEADER_SIZE;
+  header = (char *) malloc (header_size);
 }
 
 spip::AsciiHeader::AsciiHeader(size_t nbytes)
@@ -32,7 +33,6 @@ spip::AsciiHeader::AsciiHeader(size_t nbytes)
   header_size = nbytes;
   header = (char *) malloc (header_size);
 }
-
 
 spip::AsciiHeader::~AsciiHeader()
 {
@@ -44,7 +44,8 @@ void spip::AsciiHeader::resize (size_t new_size)
 {
   if (new_size > header_size)
   {
-    new_size = ((new_size / DEFAULT_HEADER_SIZE) * DEFAULT_HEADER_SIZE);
+    if (new_size % DEFAULT_HEADER_SIZE)
+      new_size = (((new_size / DEFAULT_HEADER_SIZE) + 1) * DEFAULT_HEADER_SIZE);
     header = (char *) realloc (header, new_size);
     if (!header)
       throw runtime_error ("could not allocate memory for header");
@@ -56,7 +57,10 @@ int spip::AsciiHeader::load_from_file (const char * filename)
 {
   size_t file_size = spip::AsciiHeader::filesize (filename);
   if (file_size > header_size)
+  {
+    cerr << "spip::AsciiHeader::load_from_file resizing" << endl;
     resize (file_size);
+  }
   if (spip::AsciiHeader::fileread (filename, header, header_size) < 0)
     throw runtime_error ("could not read header from file");
 }

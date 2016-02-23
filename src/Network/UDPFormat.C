@@ -101,7 +101,6 @@ void spip::UDPFormat::generate_noise_buffer (int nbits)
   int32_t * buffer32 = (int32_t *) noise_buffer;
 
   // seed the random number generator
-  cerr << "seeding random noise buffer with " << time(0) << endl;
   srand(time(0));
 
   for (unsigned i=0; i < size; i++)

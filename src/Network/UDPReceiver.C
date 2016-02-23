@@ -24,7 +24,7 @@ spip::UDPReceiver::UDPReceiver()
 #ifdef HAVE_VMA
   vma_api = vma_get_api();
   if (!vma_api)
-    cerr << "spip::UDPReceiveDB::UDPReceiveDB VMA support compiled, but VMA not available" << endl;
+    cerr << "spip::UDPReceiver::UDPReceiver VMA support compiled, but VMA not available" << endl;
   pkts = NULL;
 #else
   vma_api = 0;
@@ -65,6 +65,9 @@ int spip::UDPReceiver::configure (const char * header)
 
 void spip::UDPReceiver::prepare (std::string ip_address, int port)
 {
+  if (verbose)
+    cerr << "spip::UDPReceiver::prepare()" << endl;
+
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
 
@@ -78,6 +81,8 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
   sock->resize_kernel_buffer (64*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
+  if (verbose)
+    cerr << "spip::UDPReceiver::prepare finished" << endl;
 }
 
 void spip::UDPReceiver::set_format (spip::UDPFormat * fmt)
@@ -90,6 +95,9 @@ void spip::UDPReceiver::set_format (spip::UDPFormat * fmt)
 // receive UDP packets for the specified time at the specified data rate
 void spip::UDPReceiver::receive ()
 {
+  if (verbose)
+    cerr << "spip::UDPReceiver::receive()" << endl;
+
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
   size_t sock_bufsz = sock->get_bufsz();

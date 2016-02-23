@@ -37,15 +37,11 @@ void spip::UDPSocket::open (int port)
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
     throw runtime_error ("Could not set SO_REUSEADDR socket option");
 
-  cerr << "spip::UDPSocket::open setting up port" << endl;
-
   // fill in the udp socket struct with class, listening IP, port
   bzero(&(udp_sock.sin_zero), 8);
   udp_sock.sin_family = AF_INET;
   udp_sock.sin_port = htons(port);
 
-  //cerr << "spip::UDPSocket::open setting blocking" << endl;
   // by default all sockets are blocking
-  //set_block();
-  cerr << "spip::UDPSocket::open DONE!" << endl;
+  set_block();
 }

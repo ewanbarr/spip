@@ -33,6 +33,8 @@ namespace spip {
 
       UDPStats * get_stats () { return stats; };
 
+      char verbose;
+
     protected:
 
       UDPSocketReceive * sock;
@@ -67,7 +69,6 @@ namespace spip {
 
       unsigned bytes_per_second;
 
-      char verbose;
   };
 
 }

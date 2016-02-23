@@ -32,17 +32,13 @@ spip::UDPSocketReceive::~UDPSocketReceive ()
 
 void spip::UDPSocketReceive::open (string ip_address, int port)
 {
-  cerr << "spip::UDPSocketReceive::open ip_address=" << ip_address << endl;
   // open the socket FD
-  cerr << "spip::UDPSocketReceive::open spip::UDPSocket::open()" << endl;
   spip::UDPSocket::open (port);
 
   if (ip_address.compare("any") == 0)
     udp_sock.sin_addr.s_addr = htonl (INADDR_ANY);
   else
     udp_sock.sin_addr.s_addr = inet_addr (ip_address.c_str());
-
-  cerr << "spip::UDPSocketReceive::open bind()" << endl;
 
   // bind socket to file descriptor
   if (bind(fd, (struct sockaddr *)&udp_sock, sizeof(udp_sock)) == -1) 

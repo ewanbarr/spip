@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 
   int core = -1;
 
-  int verbose = 0;
+  char verbose = 0;
 
   opterr = 0;
   int c;
@@ -92,6 +92,10 @@ int main(int argc, char *argv[])
 
   // create a UDP Receiver
   udprecv = new spip::UDPReceiver();
+  udprecv->verbose = verbose;
+
+  if (verbose)
+    cerr << "meerkat_udprecv: configuring format to be " << format << endl;
 
   if (format->compare("simple") == 0)
     udprecv->set_format (new spip::UDPFormatMeerKATSimple());
@@ -118,7 +122,10 @@ int main(int argc, char *argv[])
   }
 
   signal(SIGINT, signal_handler);
- 
+
+  if (verbose)
+    cerr << "meerkat_udprecv: Loading configuration from " << argv[optind] << endl;
+
   // config file for this data stream
   if (config.load_from_file (argv[optind]) < 0)
   {
@@ -129,16 +136,16 @@ int main(int argc, char *argv[])
   // local address/host to listen on
   host = strdup(argv[optind+1]);
 
-  if (verbose)
+  if (udprecv->verbose)
     cerr << "meerkat_udprecv: configuring using fixed config" << endl;
   udprecv->configure (config.raw());
 
-  if (verbose)
+  if (udprecv->verbose)
     cerr << "meerkat_udprecv: listening for packets on " << host << ":" 
          << port << endl;
   udprecv->prepare (std::string(host), port);
 
-  if (verbose)
+  if (udprecv->verbose)
     cerr << "meerkat_udprecv: starting stats thread" << endl;
   pthread_t stats_thread_id;
   int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) recv);
@@ -148,13 +155,13 @@ int main(int argc, char *argv[])
     return (EXIT_FAILURE);
   }
 
-  if (verbose)
+  if (udprecv->verbose)
     cerr << "meerkat_udprecv: receiving" << endl;
   udprecv->receive ();
 
   quit_threads = 1;
 
-  if (verbose)
+  if (udprecv->verbose)
     cerr << "meerkat_udprecv: joining stats_thread" << endl;
   void * result;
   pthread_join (stats_thread_id, &result);
