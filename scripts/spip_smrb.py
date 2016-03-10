@@ -144,6 +144,7 @@ class SMRBDaemon(Daemon,StreamBased):
     db_ids = self.cfg["DATA_BLOCK_IDS"].split(" ")
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
     num_stream = self.cfg["NUM_STREAM"]
+    numa_node = self.cfg["STREAM_NUMA_" + self.id]
     db_keys = []
 
     for db_id in db_ids:
@@ -165,7 +166,7 @@ class SMRBDaemon(Daemon,StreamBased):
         if rval != 0:
           self.log (-2, "Could not destroy existing datablock")
 
-      cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread
+      cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread + " -c " + numa_node 
       if page:
         cmd += " -p -l"
       rval, lines = self.system (cmd)

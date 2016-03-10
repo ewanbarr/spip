@@ -16,7 +16,7 @@ from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.utils import sockets
 
-DAEMONIZE = True
+DAEMONIZE = False
 DL     = 1
 
 class LogsDaemon(Daemon):

@@ -6,6 +6,7 @@
 *.deps
 *.libs
 *.pyc
+aclocal.m4
 compile
 config.guess
 config.sub
@@ -47,6 +48,7 @@ src/Formats/SKA1/ska1_udpdb
 src/Formats/MeerKAT/meerkat_dbstats
 src/Formats/MeerKAT/meerkat_udpdb
 src/Formats/MeerKAT/meerkat_udpgen
+src/Formats/MeerKAT/meerkat_simdb
 src/Formats/MeerKAT/meerkat_speaddb
 src/Formats/MeerKAT/meerkat_speadrecv
 src/Formats/MeerKAT/meerkat_speadrecvmerge

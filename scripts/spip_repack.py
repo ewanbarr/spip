@@ -146,18 +146,19 @@ class RepackDaemon(Daemon):
 
     while (not self.quit_event.isSet()):
 
+      processed_this_loop = 0
+
       # check each beam for folded archives to process    
       for beam in self.beams:
 
         beam_dir = self.processing_dir + "/" + beam
-        self.log (2, "main: beam=" + beam + " beam_dir=" + beam_dir)
+        self.log (3, "main: beam=" + beam + " beam_dir=" + beam_dir)
 
         if not os.path.exists(beam_dir):
           os.makedirs(beam_dir, 0755)
 
         # get a list of all the recent observations
         cmd = "find " + beam_dir + " -mindepth 2 -maxdepth 2 -type d"
-        self.log (2, "main: " + cmd)
         rval, observations = self.system (cmd, 3)
 
         # for each observation      
@@ -174,21 +175,17 @@ class RepackDaemon(Daemon):
           obs_dir = beam_dir + "/" + observation
           out_dir = self.archived_dir + "/" + beam + "/" + utc + "/" + source + "/" + str(self.out_cfreq)
 
-          self.log (2, "main: chekcing out_dir=" + out_dir)
           if not os.path.exists(out_dir):
             os.makedirs(out_dir, 0755)
 
           # if we have only 1 sub-band, then files can be processed immediately
           archives = {}
           for subband in self.subbands:
-            self.log (2, "processing subband=" + str(subband))
+            self.log (3, "processing subband=" + str(subband))
             
             cmd = "find " + obs_dir + "/" + subband["cfreq"] + " -mindepth 1 -maxdepth 1 " + \
                   "-type f -name '" + archives_glob + "' -printf '%f\\n'"
-            
-            self.log (2, "main: " + cmd)
-            rval, files = self.system (cmd)
-            time.sleep(2)
+            rval, files = self.system (cmd, 3)
 
             for file in files:
               if not file in archives:
@@ -200,6 +197,8 @@ class RepackDaemon(Daemon):
           files.sort()
 
           for file in files:
+
+            processed_this_loop += 1
 
             self.log (1, observation + ": processing " + file)
 
@@ -254,11 +253,14 @@ class RepackDaemon(Daemon):
               self.log (-1, "failed to finalise observation: " + response)
             else:
               for subband in self.subbands: 
+                os.rename (fin_dir + "/" + subband["cfreq"] + "/obs.header",
+                           fin_dir + "/" + "obs.header." + subband["cfreq"])
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
 
-      self.log (2, "time.sleep(1)")
-      time.sleep(1)
+      if processed_this_loop == 0:
+        self.log (3, "time.sleep(1)")
+        time.sleep(1)
 
   #
   # process and file in the directory, adding file to 
@@ -273,30 +275,30 @@ class RepackDaemon(Daemon):
 
     # copy the input file to output dir
     cmd = "cp " + input_file + " " + output_file
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
 
     # add the archive to the 
     if not os.path.exists(freq_file):
       cmd = "cp " + input_file + " " + freq_file
-      rval, lines = self.system (cmd)
+      rval, lines = self.system (cmd, 3)
       if rval:
         return (rval, "failed to copy archive to freq.sum")
     else:
       cmd = "psradd -T -o " + freq_file + " " + freq_file + " " + input_file
-      rval, lines = self.system (cmd)
+      rval, lines = self.system (cmd, 3)
       if rval:
         return (rval, "failed add archive to freq.sum")
 
     if os.path.exists (band_file):
       os.remove (band_file)
     cmd = "cp " + input_file + " " + band_file
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
     if rval:
       return (rval, "failed to copy recent band file")
 
 
     cmd = "pam -m -F " + input_file
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
     if rval:
       return (rval, "failed add Fscrunch archive")
 
@@ -307,7 +309,7 @@ class RepackDaemon(Daemon):
         return (-1, "failed rename Fscrunched archive to time.sum: " + str(e))
     else:
       cmd = "psradd -o " + time_file + " " + time_file + " " + input_file
-      rval, lines = self.system (cmd)
+      rval, lines = self.system (cmd, 3)
       if rval:
         return (rval, "failed add Fscrunched archive to time.sum")
       try:
@@ -327,7 +329,7 @@ class RepackDaemon(Daemon):
     input_files = in_dir + "/*/" + file
 
     cmd = "psradd -R -o " + interim_file + " " + input_files
-    rval, observations = self.system (cmd)
+    rval, observations = self.system (cmd, 3)
     if rval:
       return (rval, "failed to add sub-band archives to interim file")
 
@@ -337,7 +339,7 @@ class RepackDaemon(Daemon):
     
     # remove in the input sub-banded files
     cmd = "rm -f " + input_files
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
     if rval:
       return (rval, "failed to delete input files")
 
@@ -352,33 +354,33 @@ class RepackDaemon(Daemon):
     timestamp = times.getCurrentTime() 
 
     cmd = "psrplot -p freq " + freq_file + " -jp -D -/png"
-    rval, freq_raw = self.system_raw (cmd)
+    rval, freq_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create freq plot")
 
     cmd = "psrplot -p time " + time_file + " -jp -D -/png"
-    rval, time_raw = self.system_raw (cmd)
+    rval, time_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create time plot")
 
     cmd = "psrplot -p flux -jF " + freq_file + " -jp -D -/png"
-    rval, flux_raw = self.system_raw (cmd)
+    rval, flux_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create time plot")
 
     cmd = "psrplot -pb -x -lpol=0,1 -N2,1 -c above:c= " + band_file + " -D -/png"
-    rval, bandpass_raw = self.system_raw (cmd)
+    rval, bandpass_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create time plot")
 
     cmd = "psrstat -jFDp -c snr " + freq_file + " | awk -F= '{printf(\"%f\",$2)}'"
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
     if rval < 0:
       return (rval, "failed to extract snr from freq.sum")
     snr = lines[0]
 
     cmd = "psrstat -c length " + time_file + " | awk -F= '{printf(\"%f\",$2)}'"
-    rval, lines = self.system (cmd)
+    rval, lines = self.system (cmd, 3)
     if rval < 0:
       return (rval, "failed to extract time from time.sum")
     length = lines[0]

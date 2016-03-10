@@ -54,59 +54,81 @@ class stat extends spip_webpage
             var xmlObj = xmlDoc.documentElement;
 
             // process the TCS state first
-            var stat_state = xmlObj.getElementsByTagName("stat_state")[0];
-            var streams = stat_state.getElementsByTagName("stream");
-
-            var i, j, k;      
-            for (i=0; i<streams.length; i++)
+            var stat_states = xmlObj.getElementsByTagName("stat_state");
+            for (h=0; h<stat_states.length; h++)
             {
-              var stream = streams[i];
+              var stat_state = stat_states[h];
+              var streams = stat_state.getElementsByTagName("stream");
 
-              var stream_id = stream.getAttribute("id");
-              var beam_name = stream.getAttribute("beam_name");
-              var active    = stream.getAttribute("active");
-
-              var plots = Array();
-
-              if (active == "True")
+              var i, j, k;      
+              for (i=0; i<streams.length; i++)
               {
-                var polarisations = stream.getElementsByTagName("polarisation");
-                for (j=0; j<polarisations.length; j++)
+                var stream = streams[i];
+
+                var stream_id = stream.getAttribute("id");
+                var beam_name = stream.getAttribute("beam_name");
+                var active    = stream.getAttribute("active");
+
+                var plots = Array();
+
+                if (active == "True")
                 {
-                  polarisation = polarisations[j];
-                  pol_name = polarisation.getAttribute("name")
-
-                  var dimensions = polarisation.getElementsByTagName ("dimension");
-                  for (k=0; k<dimensions.length; k++)
+                  var polarisations = stream.getElementsByTagName("polarisation");
+                  for (j=0; j<polarisations.length; j++)
                   {
-                    var dimension = dimensions[k];
-                    var dim_name = dimension.getAttribute("name")
-                    var hg_mean   = parseFloat(dimension.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue);
-                    var hg_stddev = parseFloat(dimension.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue);
-                    var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;
-                    var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
-          
-                    document.getElementById(hg_mean_id).innerHTML = hg_mean.toFixed(2);
-                    document.getElementById(hg_stddev_id).innerHTML = hg_stddev.toFixed(2);
-                  }
+                    polarisation = polarisations[j];
+                    pol_name = polarisation.getAttribute("name")
 
-                  plots = polarisation.getElementsByTagName("plot");
-                  for (k=0; k<plots.length; k++)
-                  {
-                    var plot = plots[k]
-                    var plot_type = plot.getAttribute("type")  
-                    var plot_timestamp = plot.getAttribute("timestamp")  
-  
-                    var plot_id = stream_id + "_" + plot_type + "_" + pol_name
-                    var plot_ts = stream_id + "_" + plot_type + "_" + pol_name + "_ts"
-
-                    // if the image has been updated, reacquire it
-                    //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
-                    if (plot_timestamp != document.getElementById(plot_ts).value)
+                    var dimensions = polarisation.getElementsByTagName ("dimension");
+                    for (k=0; k<dimensions.length; k++)
                     {
-                      url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
-                      document.getElementById(plot_id).src = url;
-                      document.getElementById(plot_ts).value = plot_timestamp;
+                      var dimension = dimensions[k];
+                      var dim_name = dimension.getAttribute("name")
+                      var hg_mean   = parseFloat(dimension.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue);
+                      var hg_stddev = parseFloat(dimension.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue);
+                      var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;
+                      var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
+            
+                      document.getElementById(hg_mean_id).innerHTML = hg_mean.toFixed(2);
+                      document.getElementById(hg_stddev_id).innerHTML = hg_stddev.toFixed(2);
+                    }
+
+                    plots = polarisation.getElementsByTagName("plot");
+                    for (k=0; k<plots.length; k++)
+                    {
+                      var plot = plots[k]
+                      var plot_type = plot.getAttribute("type")  
+                      var plot_timestamp = plot.getAttribute("timestamp")  
+    
+                      var plot_id = stream_id + "_" + plot_type + "_" + pol_name
+                      var plot_ts = stream_id + "_" + plot_type + "_" + pol_name + "_ts"
+
+                      // if the image has been updated, reacquire it
+                      //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
+                      if (plot_timestamp != document.getElementById(plot_ts).value)
+                      {
+                        url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
+                        document.getElementById(plot_id).src = url;
+                        document.getElementById(plot_ts).value = plot_timestamp;
+                      }
+                    }
+                  }
+                }
+                else
+                {
+                  // assume 2 pols and 2 dims [TODO fix]
+                  var polarisations = Array("0", "1");
+                  var dimensions = Array("real", "imag");
+                  for (j=0; j<polarisations.length; j++)
+                  {
+                    pol_name = polarisations[j];
+                    for (k=0; k<dimensions.length; k++)
+                    {
+                      dim_name = dimensions[k];
+                      var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;  
+                      var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
+                      document.getElementById(hg_mean_id).innerHTML = "--";
+                      document.getElementById(hg_stddev_id).innerHTML = "--";
                     }
                   }
                 }
@@ -180,7 +202,6 @@ class stat extends spip_webpage
     }
     $xml = "<stat_update>";
 
-    $stat_socket = new spip_socket();
     
     $xml_req  = XML_DEFINITION;
     $xml_req .= "<stat_request>";
@@ -190,6 +211,8 @@ class stat extends spip_webpage
 
     foreach ($this->streams as $istream => $stream)
     {
+      $stat_socket = new spip_socket();
+
       $host = $stream["host"];
       $port = $this->config["STREAM_STAT_PORT"] + $istream;
 

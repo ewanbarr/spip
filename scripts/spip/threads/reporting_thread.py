@@ -9,6 +9,7 @@ from socketed_thread import SocketedThread
 
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
+import socket
 
 class ReportingThread (SocketedThread):
 
@@ -44,9 +45,16 @@ class ReportingThread (SocketedThread):
 
       retain, reply = self.parse_message (xml)
 
-      handle.send (reply)
-      if not retain:
-        self.script.log (2, "ReportingThread: closing connection")
+      if retain:
+        bytes_sent = handle.send (reply)
+        self.script.log (2, "ReportingThread: sent " + str(bytes_sent) + " bytes")
+      else:
+        bytes_sent = handle.sendall (reply)
+        self.script.log (2, "ReportingThread: sent " + str(bytes_sent) + " bytes")
+
+        self.script.log (3, "ReportingThread: handle.shutdown()")
+        handle.shutdown(socket.SHUT_RDWR)
+        self.script.log (3, "ReportingThread: handle.close()")
         handle.close()
         for i, x in enumerate(self.can_read):
           if (x == handle):

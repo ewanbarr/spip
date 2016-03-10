@@ -50,6 +50,7 @@ class ProcReportingThread (ReportingThread):
   def __init__ (self, script, id):
     host = getHostNameShort()
     port = int(script.cfg["STREAM_PROC_PORT"]) + int(id)
+    script.log (0, "ProcReportingThread: listening on " + host + ":" + str(port))
     ReportingThread.__init__(self, script, host, port)
 
   def parse_message (self, xml):
@@ -66,13 +67,15 @@ class ProcDaemon (Daemon, StreamBased):
 
   def main (self):
 
+    stream_id = self.id
+
     # get the data block keys
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
     db_id_in  = self.cfg["PROCESSING_DATA_BLOCK"]
     db_id_out = self.cfg["SEND_DATA_BLOCK"]
     num_stream = self.cfg["NUM_STREAM"]
+    cpu_core = self.cfg["STREAM_PROC_CORE_" + stream_id]
 
-    stream_id = self.id
     db_key_in = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_in)
     db_key_out = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id_out)
 
@@ -185,6 +188,11 @@ class ProcDaemon (Daemon, StreamBased):
               fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn -skz -skzs 4 -skzm 128 -skz_no_tscr -skz_no_fscr"
               fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn"
               #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
+
+              fold_cmd = "numactl -C " + cpu_core + " -- " + fold_cmd
+
+              header_file = fold_dir + "/obs.header"
+              config.writeDictToCFGFile (header, header_file)
 
             if search or trans:
               os.makedirs (search_dir, 0755)

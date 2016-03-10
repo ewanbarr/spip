@@ -184,44 +184,48 @@ class TCSDaemon(Daemon):
 
           b = xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)]['@name']
 
-          if command == "configure":
+          # if the beam in the XML command is one of the beams managed by
+          # this instance of spip_tcs
+          if b in self.beam_states.keys():
 
-            self.log(2, "parse_obs_cmd: received confiuration for beam " + b)
-            self.beam_states[b]["lock"].acquire()
+            if command == "configure":
 
-            self.beam_states[b]["source"] = xml['obs_cmd']['source_parameters']['name']['#text']
-            self.beam_states[b]["ra"]     = xml['obs_cmd']['source_parameters']['ra']['#text']
-            self.beam_states[b]["dec"]    = xml['obs_cmd']['source_parameters']['dec']['#text']
+              self.log(2, "parse_obs_cmd: received confiuration for beam " + b)
+              self.beam_states[b]["lock"].acquire()
 
-            self.beam_states[b]["observer"] = str(xml['obs_cmd']['observation_parameters']['observer'])
-            self.beam_states[b]["pid"] = str(xml['obs_cmd']['observation_parameters']['project_id'])
-            self.beam_states[b]["mode"] = xml['obs_cmd']['observation_parameters']['mode']
-            self.beam_states[b]["proc_file"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
+              self.beam_states[b]["source"] = xml['obs_cmd']['source_parameters']['name']['#text']
+              self.beam_states[b]["ra"]     = xml['obs_cmd']['source_parameters']['ra']['#text']
+              self.beam_states[b]["dec"]    = xml['obs_cmd']['source_parameters']['dec']['#text']
 
-            self.beam_states[b]["tobs"] = str(xml['obs_cmd']['observation_parameters']['tobs'])
+              self.beam_states[b]["observer"] = str(xml['obs_cmd']['observation_parameters']['observer'])
+              self.beam_states[b]["pid"] = str(xml['obs_cmd']['observation_parameters']['project_id'])
+              self.beam_states[b]["mode"] = xml['obs_cmd']['observation_parameters']['mode']
+              self.beam_states[b]["proc_file"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
 
-            self.beam_states[b]["utc_start"] = None
-            self.beam_states[b]["utc_stop"]  = None
-            self.beam_states[b]["state"]     = "Configured"
+              self.beam_states[b]["tobs"] = str(xml['obs_cmd']['observation_parameters']['tobs'])
 
-            self.beam_states[b]["lock"].release()
+              self.beam_states[b]["utc_start"] = None
+              self.beam_states[b]["utc_stop"]  = None
+              self.beam_states[b]["state"]     = "Configured"
 
-          elif command == "start":
+              self.beam_states[b]["lock"].release()
 
-            self.beam_states[b]["lock"].acquire()
-            self.beam_states[b]["state"] = "Starting"
-            self.beam_states[b]["utc_stop"] = xml['obs_cmd']['observation_parameters']['utc_stop']
-            self.beam_states[b]["lock"].release()
+            elif command == "start":
 
-          elif command == "stop":
+              self.beam_states[b]["lock"].acquire()
+              self.beam_states[b]["state"] = "Starting"
+              self.beam_states[b]["utc_start"] = xml['obs_cmd']['observation_parameters']['utc_start']
+              self.beam_states[b]["lock"].release()
 
-            self.beam_states[b]["lock"].acquire()
-            self.beam_states[b]["state"] = "Stopping"
-            self.beam_states[b]["utc_start"] = xml['obs_cmd']['observation_parameters']['utc_start']
-            self.beam_states[b]["lock"].release()
+            elif command == "stop":
+  
+              self.beam_states[b]["lock"].acquire()
+              self.beam_states[b]["state"] = "Stopping"
+              self.beam_states[b]["utc_stop"] = xml['obs_cmd']['observation_parameters']['utc_stop']
+              self.beam_states[b]["lock"].release()
 
-          else:
-            self.log(-1, "parse_obs_cmd: unrecognized command " + command)
+            else:
+              self.log(-1, "parse_obs_cmd: unrecognized command " + command)
 
     except KeyError as e:
       return (False, "none", "Could not find key " + str(e))
@@ -236,63 +240,69 @@ class TCSDaemon(Daemon):
     for ibeam in range(int(xml['obs_cmd']['beam_configuration']['nbeam'])):
       if xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)]['#text'] == "on":
         b = xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)]['@name']
+        if b in self.beam_states.keys():
+          obs = {}
 
-        obs = {}
+          self.beam_states[b]["lock"].acquire()
+          obs["COMMAND"] = "START"
+          obs["SOURCE"] = self.beam_states[b]["source"]
+          obs["RA"] = self.beam_states[b]["ra"]
+          obs["DEC"] = self.beam_states[b]["dec"]
+          obs["TOBS"] = self.beam_states[b]["tobs"]
+          obs["OBSERVER"] = self.beam_states[b]["observer"]
+          obs["PID"] = self.beam_states[b]["pid"]
+          obs["MODE"] = self.beam_states[b]["mode"]
+          if self.beam_states[b]["utc_start"] == None:
+            self.beam_states[b]["utc_start"] = times.getUTCTime()
+          obs["UTC_START"] = self.beam_states[b]["utc_start"]
 
-        self.beam_states[b]["lock"].acquire()
-        obs["COMMAND"] = "START"
-        obs["SOURCE"] = self.beam_states[b]["source"]
-        obs["RA"] = self.beam_states[b]["ra"]
-        obs["DEC"] = self.beam_states[b]["dec"]
-        obs["TOBS"] = self.beam_states[b]["tobs"]
-        obs["OBSERVER"] = self.beam_states[b]["observer"]
-        obs["PID"] = self.beam_states[b]["pid"]
-        obs["MODE"] = self.beam_states[b]["mode"]
-        if self.beam_states[b]["utc_start"] == None:
-          self.beam_states[b]["utc_start"] = times.getUTCTime()
-        obs["UTC_START"] = self.beam_states[b]["utc_start"]
-        self.beam_states[b]["lock"].release()
+          # TODO Think about these two
+          obs["OBS_OFFSET"] = "0"
+          obs["CALFREQ"] = "1"
 
-        obs["PERFORM_FOLD"] = "1"
-        obs["PERFORM_SEARCH"] = "0"
-        obs["PERFORM_TRANS"] = "0"
+          self.beam_states[b]["lock"].release()
 
-        # convert to a single ascii string
-        obs_header = config.writeDictToString (obs)
+          obs["PERFORM_FOLD"] = "1"
+          obs["PERFORM_SEARCH"] = "0"
+          obs["PERFORM_TRANS"] = "0"
 
-        self.log(1, "issue_start_cmd: beam=" + b)
+          # convert to a single ascii string
+          obs_header = config.writeDictToString (obs)
 
-        # work out which streams correspond to these beams
-        for istream in range(int(self.cfg["NUM_STREAM"])):
-          (host, beam, subband) = self.cfg["STREAM_"+str(istream)].split(":")
-          self.log(1, "issue_start_cmd: host="+host+"beam="+beam+"subband="+subband)
+          self.log(1, "issue_start_cmd: beam=" + b)
 
-          # connect to streams for this beam only
-          if beam == b:
+          # work out which streams correspond to these beams
+          for istream in range(int(self.cfg["NUM_STREAM"])):
+            (host, beam_idx, subband) = self.cfg["STREAM_"+str(istream)].split(":")
+            beam = self.cfg["BEAM_" + beam_idx]
+            self.log(1, "issue_start_cmd: host="+host+"beam="+beam+"subband="+subband)
 
-            # control port the this recv stream 
-            ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
+            # connect to streams for this beam only
+            if beam == b:
 
-            # connect to recv agent and provide observation configuration
-            self.log(1, "issue_start_cmd: openSocket("+host+","+str(ctrl_port)+")")
-            sock = sockets.openSocket (DL, host, ctrl_port, 1)
-            if sock:
-              self.log(1, "issue_start_cmd: sending obs_header")
-              sock.send(obs_header)
-              sock.close()
+              # control port the this recv stream 
+              ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
 
-            # connect to spip_gen and issue start command for UTC
-            # assumes gen host is the same as the recv host!
-            gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
-            sock = sockets.openSocket (DL, host, gen_port, 1)
-            if sock:
-              sock.send(obs_header)
-              sock.close()
+              # connect to recv agent and provide observation configuration
+              self.log(1, "issue_start_cmd: openSocket("+host+","+str(ctrl_port)+")")
+              sock = sockets.openSocket (DL, host, ctrl_port, 1)
+              if sock:
+                self.log(1, "issue_start_cmd: sending obs_header")
+                sock.send(obs_header)
+                sock.close()
 
-        # update the dict of observing info for this beam
-        self.beam_states[b]["lock"].acquire()
-        self.beam_states[b]["state"]     = "Recording"
-        self.beam_states[b]["lock"].release()
+              # connect to spip_gen and issue start command for UTC
+              # assumes gen host is the same as the recv host!
+              gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
+              sock = sockets.openSocket (DL, host, gen_port, 1)
+              if sock:
+                sock.send(obs_header)
+                sock.close()
+
+          # update the dict of observing info for this beam
+          self.beam_states[b]["lock"].acquire()
+          self.beam_states[b]["state"]     = "Recording"
+          self.beam_states[b]["lock"].release()
 
   ###############################################################################
   # issue_stop_cmd
@@ -302,52 +312,54 @@ class TCSDaemon(Daemon):
     for ibeam in range(int(xml['obs_cmd']['beam_configuration']['nbeam'])):
       if xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)]['#text'] == "on":
         b = xml['obs_cmd']['beam_configuration']['beam_state_' + str(ibeam)]['@name']
+        if b in self.beam_states.keys():
 
-        self.log(1, "issue_stop_cmd: beam=" + b)
-        obs = {}
+          self.log(1, "issue_stop_cmd: beam=" + b)
+          obs = {}
 
-        self.beam_states[b]["lock"].acquire()
-        self.beam_states[b]["state"] = "Stopping"
-        obs["COMMAND"] = "STOP"
-        if self.beam_states[b]["utc_stop"] == None:
-          self.beam_states[b]["utc_stop"] = times.getUTCTime()
-        obs["UTC_STOP"] = self.beam_states[b]["utc_stop"]
-        self.beam_states[b]["lock"].release()
+          self.beam_states[b]["lock"].acquire()
+          self.beam_states[b]["state"] = "Stopping"
+          obs["COMMAND"] = "STOP"
+          if self.beam_states[b]["utc_stop"] == None:
+            self.beam_states[b]["utc_stop"] = times.getUTCTime()
+          obs["UTC_STOP"] = self.beam_states[b]["utc_stop"]
+          self.beam_states[b]["lock"].release()
 
-        # convert to a single ascii string
-        obs_header = config.writeDictToString (obs)
+          # convert to a single ascii string
+          obs_header = config.writeDictToString (obs)
 
-        # work out which streams correspond to these beams
-        for istream in range(int(self.cfg["NUM_STREAM"])):
-          (host, beam, subband) = self.cfg["STREAM_"+str(istream)].split(":")
-          self.log(1, "issue_stop_cmd: host="+host+"beam="+beam+"subband="+subband)
+          # work out which streams correspond to these beams
+          for istream in range(int(self.cfg["NUM_STREAM"])):
+            (host, beam_idx, subband) = self.cfg["STREAM_"+str(istream)].split(":")
+            beam = self.cfg["BEAM_" + beam_idx]
+            self.log(1, "issue_stop_cmd: host="+host+"beam="+beam+"subband="+subband)
 
-          # connect to streams for this beam only
-          if beam == b:
+            # connect to streams for this beam only
+            if beam == b:
 
-            # control port the this recv stream 
-            ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
+              # control port the this recv stream 
+              ctrl_port = int(self.cfg["STREAM_CTRL_PORT"]) + istream
 
-            # connect to recv agent and provide observation configuration
-            self.log(1, "issue_stop_cmd: openSocket("+host+","+str(ctrl_port)+")")
-            sock = sockets.openSocket (DL, host, ctrl_port, 1)
-            if sock:
-              self.log(1, "issue_stop_cmd: sending obs_header")
-              sock.send(obs_header)
-              sock.close()
+              # connect to recv agent and provide observation configuration
+              self.log(1, "issue_stop_cmd: openSocket("+host+","+str(ctrl_port)+")")
+              sock = sockets.openSocket (DL, host, ctrl_port, 1)
+              if sock:
+                self.log(1, "issue_stop_cmd: sending obs_header")
+                sock.send(obs_header)
+                sock.close()
 
-            # connect to spip_gen and issue stop command for UTC
-            # assumes gen host is the same as the recv host!
-            gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
-            sock = sockets.openSocket (DL, host, gen_port, 1)
-            if sock:
-              sock.send(obs_header)
-              sock.close()
+              # connect to spip_gen and issue stop command for UTC
+              # assumes gen host is the same as the recv host!
+              gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
+              sock = sockets.openSocket (DL, host, gen_port, 1)
+              if sock:
+                sock.send(obs_header)
+                sock.close()
 
-        # update the dict of observing info for this beam
-        self.beam_states[b]["lock"].acquire()
-        self.beam_states[b]["state"] = "Idle"
-        self.beam_states[b]["lock"].release()
+          # update the dict of observing info for this beam
+          self.beam_states[b]["lock"].acquire()
+          self.beam_states[b]["state"] = "Idle"
+          self.beam_states[b]["lock"].release()
 
 
 class TCSServerDaemon (TCSDaemon, ServerBased):

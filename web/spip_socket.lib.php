@@ -106,9 +106,12 @@ class spip_socket
       }
       if (socket_last_error() == ECONNRESET)
       {
-        socket_close ($this->sock);
-        $this->is_open = 0;
-        return array(-1, socket_strerror(ECONNRESET));
+        if (strlen($raw_data) == 0)
+        {
+          socket_close ($this->sock);
+          $this->is_open = 0;
+          return array(-1, socket_strerror(ECONNRESET));
+        }
       }
       return array(0, $raw_data);
     }

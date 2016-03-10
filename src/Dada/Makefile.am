@@ -12,14 +12,16 @@ libspipdada_headers += \
 	spip/DataBlockRead.h \
 	spip/DataBlockWrite.h \
 	spip/DataBlockView.h \
-	spip/DataBlockStats.h
+	spip/DataBlockStats.h \
+	spip/SimReceiveDB.h
 
 libspipdada_la_SOURCES += \
 	DataBlock.C \
  	DataBlockRead.C \
 	DataBlockWrite.C \
 	DataBlockView.C \
-	DataBlockStats.C
+	DataBlockStats.C \
+  SimReceiveDB.C
 
 AM_CXXFLAGS = \
 	@PSRDADA_CFLAGS@ \

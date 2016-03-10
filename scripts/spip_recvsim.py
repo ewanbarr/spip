@@ -19,7 +19,7 @@ from spip_smrb import SMRBDaemon
 DAEMONIZE = True
 DL = 1
 
-class RecvDaemon(Daemon,StreamBased):
+class RecvSimDaemon(Daemon,StreamBased):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
@@ -31,7 +31,7 @@ class RecvDaemon(Daemon,StreamBased):
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
     num_stream = self.cfg["NUM_STREAM"]
     db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
-    cpu_core = self.cfg["STREAM_RECV_CORE_" + str(self.id)]
+    self.log(0, "db_key="+db_key)
 
     # wait up to 10s for the SMRB to be created
     smrb_wait = 10
@@ -66,20 +66,19 @@ class RecvDaemon(Daemon,StreamBased):
       config.writeDictToCFGFile (local_config, config_file)
 
       ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(self.id))
-      (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(self.id)].split(":")
+      cpu_core = self.cfg["STREAM_RECV_CORE_" + str(self.id)]  
 
       cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key \
             + " -v -b " + cpu_core \
             + " -c " + ctrl_port \
-            + " -p " + stream_port \
-            + " " + config_file + " " + stream_ip
+            + " " + config_file
       self.binary_list.append (cmd)
 
       self.log(3, "main: sleep(1)")
       sleep(1)
 
-      self.log(3, "main: log_pipe = LogSocket(recv_src))")
-      log_pipe = LogSocket ("recv_src", "recv_src", str(self.id), "stream",
+      self.log(3, "main: log_pipe = LogSocket(recvsim_src))")
+      log_pipe = LogSocket ("recvsim_src", "recvsim_src", str(self.id), "stream",
                             self.cfg["SERVER_HOST"], self.cfg["SERVER_LOG_PORT"],
                             int(DL))
 
@@ -110,8 +109,8 @@ if __name__ == "__main__":
   # this should come from command line argument
   stream_id = sys.argv[1]
 
-  script = RecvDaemon ("spip_recv", stream_id)
-  state = script.configure (DAEMONIZE, DL, "recv", "recv")
+  script = RecvSimDaemon ("spip_recvsim", stream_id)
+  state = script.configure (DAEMONIZE, DL, "recvsim", "recvsim")
   if state != 0:
     sys.exit(state)
 

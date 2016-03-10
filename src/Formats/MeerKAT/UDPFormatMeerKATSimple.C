@@ -13,7 +13,7 @@
 
 using namespace std;
 
-#define SAMPLES_PER_BLOCK 1024
+#define SAMPLES_PER_BLOCK 256 
 
 spip::UDPFormatMeerKATSimple::UDPFormatMeerKATSimple()
 {
@@ -35,7 +35,9 @@ spip::UDPFormatMeerKATSimple::UDPFormatMeerKATSimple()
 
 spip::UDPFormatMeerKATSimple::~UDPFormatMeerKATSimple()
 {
+#ifdef _DEBUG
   cerr << "spip::UDPFormatMeerKATSimple::~UDPFormatMeerKATSimple()" << endl;
+#endif
 }
 
 void spip::UDPFormatMeerKATSimple::generate_signal ()
@@ -44,28 +46,36 @@ void spip::UDPFormatMeerKATSimple::generate_signal ()
 
 uint64_t spip::UDPFormatMeerKATSimple::get_samples_for_bytes (uint64_t nbytes)
 {
+#ifdef _DEBUG
   cerr << "spip::UDPFormatMeerKATSimple::get_samples_for_bytes npol=" << npol 
        << " ndim=" << ndim << " nchan=" << nchan << endl;
+#endif
   uint64_t nsamps = nbytes / (npol * ndim * nchan);
   return nsamps;
 }
 
 uint64_t spip::UDPFormatMeerKATSimple::get_resolution ()
 {
+#ifdef _DEBUG
   cerr << "spip::UDPFormatMeerKATSimple::get_resolution()" << endl;
+#endif
   uint64_t nbits = nchan * SAMPLES_PER_BLOCK * npol * nbit * ndim;
   return nbits / 8;
 }
 
 void spip::UDPFormatMeerKATSimple::set_channel_range (unsigned start, unsigned end) 
 {
+#ifdef _DEBUG
   cerr << "spip::UDPFormatMeerKATSimple::set_channel_range start=" << start 
        << " end=" << end << endl;
+#endif
   start_channel = start;
   end_channel   = end;
   nchan = (end - start) + 1;
   header.channel_number = start;
+#ifdef _DEBUG
   cerr << "spip::UDPFormatMeerKATSimple::set_channel_range nchan=" <<  nchan << endl;
+#endif
 }
 
 inline void spip::UDPFormatMeerKATSimple::encode_header_seq (char * buf, uint64_t seq)
@@ -82,8 +92,6 @@ inline void spip::UDPFormatMeerKATSimple::encode_header (char * buf)
 inline uint64_t spip::UDPFormatMeerKATSimple::decode_header_seq (char * buf)
 {
   decode_header (buf);
-  //memcpy ((void *) &header, buf, sizeof(uint64_t));
-  //return (header.seq_number * nchan) + (header.channel_number - start_channel);
   return 0;
 }
 

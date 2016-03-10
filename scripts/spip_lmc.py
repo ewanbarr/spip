@@ -55,6 +55,7 @@ class clientThread (threading.Thread):
     daemons = {}
 
     self.parent.log(2, self.prefix + "thread running")
+    self.parent.system_lock.acquire()  
 
     try:
       ranked_daemons = self.daemon_list 
@@ -78,23 +79,18 @@ class clientThread (threading.Thread):
           self.states[daemon] = False
           cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix
           self.parent.log(1, self.prefix + cmd)
-          proc = subprocess.Popen (cmd, shell=True)
-          rval = proc.wait()
-          # rval, lines = self.parent.system (cmd)
-          # self.parent.log(1, self.prefix + str(rval) + " lines=" + str(lines))
-          self.parent.log(1, self.prefix + str(rval))
+          rval, lines = self.parent.system (cmd)
           if rval:
-            #for line in lines:
-            #  self.parent.log(-2, prefix + line)
+            for line in lines:
+              self.parent.log(-2, prefix + line)
             self.parent.quit_event.set() 
-          #else:
-            #for line in lines:
-            #  self.parent.log(2, prefix + line)
-
+          else:
+            for line in lines:
+              self.parent.log(2, prefix + line)
         self.parent.log (1, prefix + "launched daemons of rank " + rank)
-        sleep(1)
 
       self.parent.log(1, prefix + "launched all daemons")
+      self.parent.system_lock.release()  
 
       # here we would monitor the daemons in each stream and 
       # process control commands specific to the stream
@@ -114,10 +110,11 @@ class clientThread (threading.Thread):
 
       self.parent.log(1, prefix + " asking daemons to quit")
 
+
       # stop each of the daemons in reverse order
       for rank in ranks[::-1]:
 
-        # single all daemons in rank to exit
+        # signal all daemons in rank to exit
         if rank == 0:
           self.parent.log (1, prefix + " sleep(5) for rank 0 daemons")
           sleep(5)
@@ -130,6 +127,7 @@ class clientThread (threading.Thread):
 
         while daemon_running and rank_timeout > 0:
           daemon_running = 0
+          self.parent.system_lock.acquire()
           for daemon in daemons[rank]:
             cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
             rval, lines = self.parent.system (cmd, 3)
@@ -137,6 +135,7 @@ class clientThread (threading.Thread):
               daemon_running = 1
               self.parent.log(2, prefix + "daemon " + daemon + " with rank " + 
                           str(rank) + " still running")
+          self.parent.system_lock.release()
           if daemon_running:
             self.parent.log(3, prefix + "daemons " + "with rank " + str(rank) +
                         " still running")
@@ -144,9 +143,11 @@ class clientThread (threading.Thread):
 
         # if any daemons in this rank timed out, hard kill them
         if rank_timeout == 0:
+          self.parent.system_lock.acquire()
           for daemon in daemons[rank]:
             cmd = "pkill -f ''^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
             rval, lines = self.parent.system (cmd, 3)
+          self.parent.system_lock.release()
 
         # remove daemon.quit files for this rank
         for daemon in daemons[rank]:
@@ -177,6 +178,7 @@ class LMCDaemon (Daemon,HostBased):
     control_thread = []
     self.client_threads = {}
     self.server_thread = []
+    self.system_lock = threading.Lock()
 
     # find matching client streams for this host
     client_streams = []
@@ -200,7 +202,7 @@ class LMCDaemon (Daemon,HostBased):
       server_thread.start()
       self.log(1, "main: client_thread[-1] started")
 
-    sleep(5)
+    sleep(1)
 
     # start a control thread for each stream
     for stream in client_streams:
@@ -210,6 +212,7 @@ class LMCDaemon (Daemon,HostBased):
       self.log(2, "main: client_thread["+str(stream)+"].start()")
       self.client_threads[stream].start()
       self.log(2, "main: client_thread["+str(stream)+"] started!")
+
 
     # main thread
     disks_to_monitor = [self.cfg["CLIENT_DIR"]]
@@ -334,20 +337,6 @@ class LMCDaemon (Daemon,HostBased):
                       response += "<smrb stream='" + str(stream) + "' key='" + str(key) + "'>"
                       response += "<header_block nbufs='"+str(smrb['hdr']['nbufs'])+"'>"+ str(smrb['hdr']['full'])+"</header_block>"
                       response += "<data_block nbufs='"+str(smrb['data']['nbufs'])+"'>"+ str(smrb['data']['full'])+"</data_block>"
-                      #response += "<header_block>"
-                      #response += "<nbufs>" + str(smrb['hdr']['nbufs']) + "</nbufs>"
-                      #response += "<full>" + str(smrb['hdr']['full']) + "</full>"
-                      #response += "<clear>" + str(smrb['hdr']['clear']) + "</clear>"
-                      #response += "<written>" + str(smrb['hdr']['written']) + "</written>"
-                      #response += "<read>" + str(smrb['hdr']['read']) + "</read>"
-                      #response += "</header_block>"
-                      #response += "<data_block>"
-                      #response += "<nbufs>" + str(smrb['data']['nbufs']) + "</nbufs>"
-                      #response += "<full>" + str(smrb['data']['full']) + "</full>"
-                      #response += "<clear>" + str(smrb['data']['clear']) + "</clear>"
-                      #response += "<written>" + str(smrb['data']['written']) + "</written>"
-                      #response += "<read>" + str(smrb['data']['read']) + "</read>"
-                      #response += "</data_block>"
                       response += "</smrb>"
                   
                   response += "<system_load ncore='"+loads["ncore"]+"'>"
@@ -383,6 +372,7 @@ class LMCDaemon (Daemon,HostBased):
       if self.server_thread:
         self.server_thread.join()
 
+      script.log(1, "STOPPING SCRIPT")
       Daemon.conclude (self)
 
 
@@ -422,7 +412,6 @@ if __name__ == "__main__":
     traceback.print_exc(file=sys.stdout)
     print '-'*60
 
-  script.log(1, "STOPPING SCRIPT")
   script.conclude()
   sys.exit(0)
 

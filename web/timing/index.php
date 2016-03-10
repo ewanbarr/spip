@@ -128,58 +128,62 @@ class timing extends spip_webpage
               }
             }
 
-            var repack_state = xmlObj.getElementsByTagName("repack_state")[0];
-            var beams = repack_state.getElementsByTagName("beam");
-    
-            for (i=0; i<beams.length; i++)
+            var repack_states = xmlObj.getElementsByTagName("repack_state");
+            for (h=0; h<repack_states.length; h++)
             {
-              var beam = beams[i];
-
-              var beam_name = beam.getAttribute("name");
-              var active    = beam.getAttribute("active");
-
-              var plots = Array();
-
-              if (active == "True")
+              var repack_state = repack_states[h];
+              var beams = repack_state.getElementsByTagName("beam");
+              for (i=0; i<beams.length; i++)
               {
-                observation = beam.getElementsByTagName("observation")[0]
-                start = observation.getElementsByTagName("start")[0].childNodes[0].nodeValue;
-                integrated = parseFloat(observation.getElementsByTagName("integrated")[0].childNodes[0].nodeValue);
-                snr = parseFloat(observation.getElementsByTagName("snr")[0].childNodes[0].nodeValue);
-                plots = beam.getElementsByTagName("plot");
-    
-                if (start = tcs_utcs[beam_name])
-                {
-                  document.getElementById(beam_name + "_integrated").innerHTML = integrated.toFixed(2);
-                  document.getElementById(beam_name + "_snr").innerHTML = snr.toFixed(2);
-                }
+                var beam = beams[i];
 
-                for (j=0; j<plots.length; j++)
-                {
-                  var plot = plots[j]
-                  var plot_type = plots[j].getAttribute("type")  
-                  var plot_timestamp = plots[j].getAttribute("timestamp")  
-  
-                  var plot_id = beam_name + "_" + plot_type
-                  var plot_ts = beam_name + "_" + plot_type + "_ts"
+                var beam_name = beam.getAttribute("name");
+                var active    = beam.getAttribute("active");
 
-                  // if the image has been updated, reacquire it
-                  //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
-                  if (plot_timestamp != document.getElementById(plot_ts).value)
+                var plots = Array();
+
+                if (active == "True")
+                {
+                  observation = beam.getElementsByTagName("observation")[0]
+                  start = observation.getElementsByTagName("start")[0].childNodes[0].nodeValue;
+                  integrated = parseFloat(observation.getElementsByTagName("integrated")[0].childNodes[0].nodeValue);
+                  snr = parseFloat(observation.getElementsByTagName("snr")[0].childNodes[0].nodeValue);
+                  plots = beam.getElementsByTagName("plot");
+
+      
+                  if (start = tcs_utcs[beam_name])
                   {
-                    //var new_image = new Image();
-                    //new_image.id = plot_id;
-                    //new_image.src = "/spip/timing/index.php?update=true&beam_name="+
-                    //                beam_name+"&pol=0&type=plot&plot="+plot_type+"&ts="+plot_timestamp;;
-                    //new_image.onload = function() {
-                    //  var img = document.getElementById(plot_id);
-                    //  img.parentNode.insertBefore(new_image, img);
-                    //  img.parentNode.removeChild(img);
-                    //}
+                    document.getElementById(beam_name + "_integrated").innerHTML = integrated.toFixed(2);
+                    document.getElementById(beam_name + "_snr").innerHTML = snr.toFixed(2);
+                  }
 
-                    url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&pol=0&plot="+plot_type+"&ts="+plot_timestamp;
-                    document.getElementById(plot_id).src = url;
-                    document.getElementById(plot_ts).value = plot_timestamp;
+                  for (j=0; j<plots.length; j++)
+                  {
+                    var plot = plots[j]
+                    var plot_type = plots[j].getAttribute("type")  
+                    var plot_timestamp = plots[j].getAttribute("timestamp")  
+    
+                    var plot_id = beam_name + "_" + plot_type
+                    var plot_ts = beam_name + "_" + plot_type + "_ts"
+
+                    // if the image has been updated, reacquire it
+                    //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
+                    if (plot_timestamp != document.getElementById(plot_ts).value)
+                    {
+                      //var new_image = new Image();
+                      //new_image.id = plot_id;
+                      //new_image.src = "/spip/timing/index.php?update=true&beam_name="+
+                      //                beam_name+"&pol=0&type=plot&plot="+plot_type+"&ts="+plot_timestamp;;
+                      //new_image.onload = function() {
+                      //  var img = document.getElementById(plot_id);
+                      //  img.parentNode.insertBefore(new_image, img);
+                      //  img.parentNode.removeChild(img);
+                      //}
+
+                      url = "/spip/timing/index.php?update=true&beam_name="+beam_name+"&type=plot&pol=0&plot="+plot_type+"&ts="+plot_timestamp;
+                      document.getElementById(plot_id).src = url;
+                      document.getElementById(plot_ts).value = plot_timestamp;
+                    }
                   }
                 }
               }
@@ -255,8 +259,6 @@ class timing extends spip_webpage
     }
     $xml = "<timing_update>";
 
-    $repack_socket = new spip_socket();
-    
     $xml_req  = XML_DEFINITION;
     $xml_req .= "<repack_request>";
     $xml_req .= "<requestor>timing page</requestor>";
@@ -265,6 +267,8 @@ class timing extends spip_webpage
 
     foreach ($this->beams as $ibeam => $beam)
     {
+      $repack_socket = new spip_socket();
+
       $host = $beam["host"];
       $port = $this->config["STREAM_REPACK_PORT"] + $ibeam;
 
@@ -277,10 +281,9 @@ class timing extends spip_webpage
       }
       else
       {
-        $xml .= "<repack_state><beam beam_name='".$beam["name"]."' active='False'></beam></repack_state>";
+        $xml .= "<repack_state><beam name='".$beam["name"]."' active='False'></beam></repack_state>";
       }
     }
-
     # get all information from TCS too
     $tcses = array();
     if ($this->config["INDEPENDENT_BEAMS"] == "true")
@@ -329,11 +332,12 @@ class timing extends spip_webpage
   {
     $beam_name     = $get["beam_name"];
     $ibeam = -1;
-    foreach ($this->beams as $ibeam => $beam)
+    foreach ($this->beams as $ib => $beam)
     {
       if ($beam["name"] == $beam_name)
-        $ibeam = $ibeam;
+        $ibeam = $ib;
     }
+
     if ($ibeam < 0)
     {
       echo "ERROR: could not identify beam name<br/>\n";
@@ -362,6 +366,7 @@ class timing extends spip_webpage
       $repack_socket = new spip_socket(); 
       $rval = 0;
       $reply = 0;
+
       if ($repack_socket->open ($host, $port, 0) == 0)
       {
         $repack_socket->write ($xml_req."\r\n");

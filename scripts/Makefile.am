@@ -6,6 +6,7 @@ dist_bin_SCRIPTS = spip_gen.py \
 									 spip_proc.py \
 									 spip_read.py \
 									 spip_recv.py \
+									 spip_recvsim.py \
 									 spip_repack.py \
 									 spip_smrb.py \
 									 spip_stat.py \

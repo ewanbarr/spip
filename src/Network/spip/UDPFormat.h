@@ -59,6 +59,8 @@ namespace spip {
 
       void fill_noise (char * buf, size_t nbytes);
 
+      void set_noise_buffer_size (unsigned nbytes);
+
     protected:
 
       unsigned packet_header_size;

@@ -101,6 +101,12 @@ class Daemon(object):
       pid = os.fork()
       if pid > 0:
         # exit first parent
+        #sys.stdin.close()
+        #sys.stdout.close()
+        #sys.stderr.close()
+        #os.close(0)
+        #os.close(1)
+        #os.close(2)
         sys.exit(0)
     except OSError, e:
       sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
@@ -116,6 +122,12 @@ class Daemon(object):
       pid = os.fork()
       if pid > 0:
         # exit from second parent
+        #sys.stdin.close()
+        #sys.stdout.close()
+        #sys.stderr.close()
+        #os.close(0)
+        #os.close(1)
+        #os.close(2)
         sys.exit(0)
     except OSError, e:
       sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))

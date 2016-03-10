@@ -33,7 +33,7 @@ if HAVE_SPEAD2
 libspipnet_la_SOURCES += SPEADReceiveDB.C SPEADReceiver.C SPEADBeamFormerConfig.C \
                          SPEADReceiverMerge.C SPEADReceiveMergeDB.C
 
-AM_CXXFLAGS += @SPEAD2_CFLAGS@
+AM_CXXFLAGS += @BOOST_CPPFLAGS@ @SPEAD2_CFLAGS@
+LDADD += @BOOST_SYSTEM_LDFLAGS@ @SPEAD2_LIBS@
 
 endif
-

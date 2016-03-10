@@ -86,6 +86,17 @@ double spip::UDPFormat::rand_normal (double mean, double stddev)
   }
 }
 
+void spip::UDPFormat::set_noise_buffer_size (unsigned nbytes)
+{
+  noise_buffer_size = nbytes;
+
+  if (noise_buffer)
+  {
+    free (noise_buffer);
+    noise_buffer = (char *) malloc (noise_buffer_size);;
+  }
+}
+
 
 void spip::UDPFormat::generate_noise_buffer (int nbits)
 {
