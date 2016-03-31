@@ -82,7 +82,28 @@ int spip::AsciiHeader::append_from_str (const char * string)
   strcat (header, string);
 }
 
+int spip::AsciiHeader::get (const char* keyword, const char* format, ...) const
+{
+  va_list arguments;
 
+  char* value = 0;
+  int ret = 0;
+
+  /* find the keyword */
+  char* key = find (keyword);
+  if (!key)
+    return -1;
+
+  /* find the value after the keyword */
+  value = key + strcspn (key, whitespace);
+
+  /* parse the value */
+  va_start (arguments, format);
+  ret = vsscanf (value, format, arguments);
+  va_end (arguments);
+
+  return ret;
+}
 
 
 int spip::AsciiHeader::get (const char* keyword, const char* format, ...)
@@ -198,6 +219,12 @@ char* spip::AsciiHeader::find (const char* keyword)
 {
   return AsciiHeader::header_find (header, keyword);
 }
+
+char* spip::AsciiHeader::find (const char* keyword) const
+{
+  return AsciiHeader::header_find (header, keyword);
+}
+
 
 size_t spip::AsciiHeader::get_size (char * filename)
 {

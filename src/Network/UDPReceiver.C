@@ -5,11 +5,12 @@
  *
  ***************************************************************************/
 
+#include "spip/Time.h"
 #include "spip/AsciiHeader.h"
 #include "spip/UDPReceiver.h"
 #include "sys/time.h"
 
-
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <new>
@@ -18,6 +19,7 @@ using namespace std;
 
 spip::UDPReceiver::UDPReceiver()
 {
+  keep_receiving = true;
   format = 0;
   verbose = 0;
 
@@ -37,33 +39,48 @@ spip::UDPReceiver::~UDPReceiver()
   delete format;
 }
 
-int spip::UDPReceiver::configure (const char * header)
+int spip::UDPReceiver::configure (const char * config_str)
 {
-  if (spip::AsciiHeader::header_get (header, "NCHAN", "%u", &nchan) != 1)
+  header.load_from_str (config_str);
+
+  if (header.get ( "NCHAN", "%u", &nchan) != 1)
     throw invalid_argument ("NCHAN did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NBIT", "%u", &nbit) != 1)
+  if (header.get ( "NBIT", "%u", &nbit) != 1)
     throw invalid_argument ("NBIT did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NPOL", "%u", &npol) != 1)
+  if (header.get ( "NPOL", "%u", &npol) != 1)
     throw invalid_argument ("NPOL did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NDIM", "%u", &ndim) != 1)
+  if (header.get ( "NDIM", "%u", &ndim) != 1)
     throw invalid_argument ("NDIM did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "TSAMP", "%f", &tsamp) != 1)
+  if (header.get ( "TSAMP", "%lf", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "BW", "%f", &bw) != 1)
+  if (header.get ( "BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
+
+  char * buffer = (char *) malloc (128);
+  if (header.get ("DATA_HOST", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST did not exist in header");
+  data_host = string (buffer);
+  if (header.get ("DATA_PORT", "%d", &data_port) != 1)
+    throw invalid_argument ("DATA_PORT did not exist in header");
 
   channel_bw = bw / nchan;
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
+
+  if (!format)
+    throw runtime_error ("unable for configure format");
+  format->configure (header, "");
+
+  free (buffer);
 }
 
-void spip::UDPReceiver::prepare (std::string ip_address, int port)
+void spip::UDPReceiver::prepare ()
 {
   if (verbose)
     cerr << "spip::UDPReceiver::prepare()" << endl;
@@ -71,9 +88,12 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
 
-  sock->open (ip_address, port);
+  sock->open (data_host, data_port);
   
-  sock->set_block ();
+  if (vma_api)
+    sock->set_block ();
+  else
+    sock->set_nonblock ();
 
   sock->resize (format->get_header_size() + format->get_data_size());
 
@@ -83,6 +103,22 @@ void spip::UDPReceiver::prepare (std::string ip_address, int port)
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
   if (verbose)
     cerr << "spip::UDPReceiver::prepare finished" << endl;
+
+  // check if UTC_START has been set
+  char * buffer = (char *) malloc (128);
+  if (header.get ("UTC_START", "%s", buffer) == -1)
+  {
+    cerr << "spip::UDPReceiver::open no UTC_START in header" << endl;
+    time_t now = time(0);
+    spip::Time utc_start (now);
+    utc_start.add_seconds (2);
+    std::string utc_str = utc_start.get_gmtime();
+    cerr << "spip::UDPReceiver::open UTC_START=" << utc_str  << endl;
+    if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
+      throw invalid_argument ("failed to write UTC_START to header");
+  }
+
+  format->prepare (header, "");
 }
 
 void spip::UDPReceiver::set_format (spip::UDPFormat * fmt)
@@ -102,16 +138,34 @@ void spip::UDPReceiver::receive ()
   char * buf = sock->get_buf();
   size_t sock_bufsz = sock->get_bufsz();
 
-  int bytes_received, bytes_dropped;
-
-  bool keep_receiving = true;
   bool have_packet = false;
-  size_t got;
+  int got;
   uint64_t nsleeps = 0;
 
   struct sockaddr_in client_addr;
   struct sockaddr * addr = (struct sockaddr *) &client_addr;
   socklen_t addr_size = sizeof(struct sockaddr);
+
+  // virtual block
+  size_t data_bufsz = 32*1024*1024;
+  char * block = (char *) malloc (data_bufsz);
+  bool need_next_block = false;
+
+  // block accounting 
+  uint64_t curr_byte_offset = 0;
+  uint64_t next_byte_offset = data_bufsz;
+
+  // overflow buffer
+  const uint64_t overflow_bufsz = 2*1024*1024;
+  uint64_t overflow_lastbyte = 0;
+  uint64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
+  uint64_t overflowed_bytes = 0;
+  char * overflow = (char *) malloc(overflow_bufsz);
+  memset (overflow, 0, overflow_bufsz);
+
+  uint64_t bytes_this_buf = 0;
+  int64_t byte_offset;
+  unsigned bytes_received;
 
 #ifdef HAVE_VMA
   int flags;
@@ -130,7 +184,7 @@ void spip::UDPReceiver::receive ()
       while (!have_packet && keep_receiving)
       {
         flags = 0;
-        got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
+        got = vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
         if (got  > 32)
         {
           if (flags & MSG_VMA_ZCOPY)
@@ -141,18 +195,13 @@ void spip::UDPReceiver::receive ()
           }
           have_packet = true;
         }
+        // since we are blocking on UDP socket
         else if (got == -1)
         {
-          nsleeps++;
-          if (nsleeps > 1000)
-          {
-            stats->sleeps(1000);
-            nsleeps -= 1000;
-          }
+          keep_receiving = false;
         }
         else
         {
-          cerr << "control_state = Stopping VMA" << endl;
           keep_receiving = false;
         }
       }
@@ -187,24 +236,62 @@ void spip::UDPReceiver::receive ()
 
     if (have_packet)
     {
-      // decode the header so that the format knows what to do with the packet
-      bytes_received = format->decode_header (buf);
-      
-      // check to see if any bytes have been dropped, based on the reception of this packet
-      bytes_dropped = format->check_packet ();
-      
-      stats->increment_bytes (bytes_received);
-      stats->dropped_bytes (bytes_dropped);
-
-      if (bytes_dropped && verbose)
+      if (need_next_block)
       {
-        cerr << "DROP: " << bytes_dropped << " B" << endl;
-        if (verbose > 1)
-          format->print_packet_header ();
+        need_next_block = false;
+
+        // update absolute limits
+        curr_byte_offset = next_byte_offset;
+        next_byte_offset += data_bufsz;
+        overflow_maxbyte = next_byte_offset + overflow_bufsz;
+
+        if (overflow_lastbyte > 0)
+        {
+          memcpy (block, overflow, overflow_lastbyte);
+          overflow_lastbyte = 0;
+          bytes_this_buf = overflowed_bytes;
+          stats->increment_bytes (overflowed_bytes);
+          overflowed_bytes = 0;
+        }
+        else
+          bytes_this_buf = 0;
       }
 
-      stats->sleeps(nsleeps);
-      have_packet = false;
+      // decode the header so that the format knows what to do with the packet
+      byte_offset = format->decode_packet (buf, &bytes_received);
+
+      //cerr << "byte_offset=" << byte_offset << " bytes_received=" << bytes_received << " this buf=" << bytes_this_buf << endl; 
+      
+      // packet belongs in current buffer
+      if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
+      {
+        stats->increment_bytes (bytes_received);
+        format->insert_last_packet (block + (byte_offset - curr_byte_offset));
+        bytes_this_buf += bytes_received;
+        have_packet = false;
+      }
+      else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
+      {
+        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
+        format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
+        overflowed_bytes += bytes_received;
+        have_packet = false;
+      }
+      else if (byte_offset < 0)
+      {
+        // ignore
+        have_packet = false;
+      }
+      else
+      {
+        need_next_block = true;
+      }
+
+      if (bytes_this_buf >= data_bufsz || need_next_block)
+      {
+        //cerr << "need next buf this=" << bytes_this_buf << " size=" << data_bufsz << " overflowed_bytes=" << overflowed_bytes <<  endl;
+        stats->dropped_bytes (data_bufsz - bytes_this_buf);
+      }
     }
   }
 }

@@ -33,7 +33,7 @@ namespace spip {
 
       int configure (const char * config);
 
-      void prepare (std::string ip_address, int port);
+      void prepare ();
 
       void set_format (UDPFormat * fmt);
 
@@ -75,6 +75,10 @@ namespace spip {
       void control_thread ();
 
       void update_stats();
+
+      std::string data_host;
+
+      int data_port;
 
       UDPSocketReceive * sock;
 

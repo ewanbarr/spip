@@ -169,6 +169,7 @@ bool spip::SPEADReceiver::receive ()
     }
   }
 
+  cerr << "spip::SPEADReceiver::receive have meta-data" << endl;
   bf_config.print_config();
 
 /*

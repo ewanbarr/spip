@@ -72,22 +72,16 @@ int spip::SimReceiveDB::configure (const char * config)
   bits_per_second = (double) (nchan * npol * ndim * nbit) * (1000000.0f / tsamp);
   bytes_per_second = bits_per_second / 8.0;
 
-  unsigned start_chan, end_chan;
-  if (spip::AsciiHeader::header_get (config, "START_CHANNEL", "%u", &start_chan) != 1)
-    throw invalid_argument ("START_CHANNEL did not exist in header");
-  if (spip::AsciiHeader::header_get (config, "END_CHANNEL", "%u", &end_chan) != 1)
-    throw invalid_argument ("END_CHANNEL did not exist in header");
+  // save the header for use on the first open block
+  header.load_from_str (config);
 
   if (!format)
     throw runtime_error ("unable for prepare format");
-  format->set_channel_range (start_chan, end_chan);
+  format->configure (header, "");
 
   uint64_t block_size = db->get_data_bufsz();
   unsigned nsamp_per_block = block_size / (nchan * npol * ndim * nbit / 8);
   format->set_nsamp_per_block (nsamp_per_block);
-
-  // save the header for use on the first open block
-  header.load_from_str (config);
 
   // now write new params to header
   uint64_t resolution = format->get_resolution();
@@ -323,6 +317,7 @@ void spip::SimReceiveDB::update_stats()
 
 void spip::SimReceiveDB::open ()
 {
+  format->prepare (header, "");
   open (header.raw());
 }
 

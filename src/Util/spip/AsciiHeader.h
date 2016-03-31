@@ -30,6 +30,8 @@ namespace spip {
 
       int get (const char* keyword, const char* format, ...);
 
+      int get (const char* keyword, const char* format, ...) const;
+
       int set (const char* keyword, const char* code, ...);
 
       int del (const char * keyword);
@@ -55,6 +57,8 @@ namespace spip {
       size_t header_size;
 
       char* find (const char* keyword);
+
+      char* find (const char* keyword) const;
 
   };
 }

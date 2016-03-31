@@ -4,6 +4,8 @@
 
 #include "spip/meerkat_def.h"
 #include "spip/UDPFormat.h"
+#include "spip/AsciiHeader.h"
+#include "spip/SPEADBeamFormerConfig.h"
 
 #include "spead2/recv_packet.h"
 
@@ -16,54 +18,6 @@ static uint16_t magic_version = 0x5304;  // 0x53 is the magic, 4 is the version
 
 namespace spip {
 
-  typedef struct {
-
-    uint16_t magic_version : 16;
-
-    uint8_t item_pointer_width : 8;
-
-    uint8_t heap_addr_width : 8;
-
-    uint16_t reserved: 16;
-
-    int16_t num_items;
-
-  } spead_hdr_t;
-
-  typedef struct {
-
-    //char  item_address_mode : 1;
-
-    uint16_t item_identifier : 16;
-
-    uint64_t item_address : 48;
-
-  } spead_item_pointer_t;
-
-  typedef struct {
-
-    spead2::recv::packet_header hdr;
-
-    spead_hdr_t spead_hdr;
-
-    spead_item_pointer_t heap_number;
-
-    spead_item_pointer_t heap_length;
-
-    spead_item_pointer_t payload_offset_in_heap;
-
-    spead_item_pointer_t payload_length;
-
-    spead_item_pointer_t timestamp;
-
-    spead_item_pointer_t frequency_channel;
-
-    spead_item_pointer_t f_engine_flags;
-
-    spead_item_pointer_t beam_number;
-
-  } meerkat_spead_udp_hdr_t;
-
   class UDPFormatMeerKATSPEAD : public UDPFormat {
 
     public:
@@ -71,6 +25,10 @@ namespace spip {
       UDPFormatMeerKATSPEAD ();
 
       ~UDPFormatMeerKATSPEAD ();
+
+      void configure (const spip::AsciiHeader& config, const char* suffix);
+
+      void prepare (const spip::AsciiHeader& header, const char* suffix);
 
       void generate_signal ();
 
@@ -87,22 +45,15 @@ namespace spip {
         memcpy (buf, (void *) &seq, sizeof(uint64_t));
       };
 
-      static inline uint64_t decode_seq (char * buf)
-      {
-        return ((uint64_t *) buf)[0];  
-      };
-
       inline void encode_header_seq (char * buf, uint64_t packet_number);
       inline void encode_header (char * buf);
 
-      inline uint64_t decode_header_seq (char * buf);
-      inline unsigned decode_header (char * buf);
+      inline int64_t decode_packet (char * buf, unsigned *payload_size);
+      inline int insert_last_packet (char * buf);
 
-      inline int check_packet ();
-      inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);
-
-      void print_item_pointer (spead_item_pointer_t item);
       void print_packet_header ();
+      void print_packet_timestamp ();
+
 
       inline void gen_packet (char * buf, size_t bufsz);
 
@@ -115,9 +66,15 @@ namespace spip {
 
     private:
 
+      SPEADBeamFormerConfig bf_config;
+
       spead2::recv::packet_header header;
 
       int64_t obs_start_sample;
+
+      double tsamp;
+
+      double adc_to_cbf;
 
       uint64_t nsamp_per_sec;
 

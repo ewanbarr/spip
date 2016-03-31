@@ -75,6 +75,10 @@ namespace spip {
 
       uint64_t get_obs_offset (uint64_t timestamp);
 
+      time_t get_sync_time () { return (time_t) sync_time; };
+
+      uint64_t get_adc_sample_rate () { return (uint64_t) adc_sample_rate; };
+
     protected:
 
     private:

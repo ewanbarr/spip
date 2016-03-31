@@ -41,37 +41,33 @@ spip::UDPGenerator::~UDPGenerator()
     delete format;
 }
 
-int spip::UDPGenerator::configure (const char * header)
+int spip::UDPGenerator::configure (const char * config)
 {
-  if (spip::AsciiHeader::header_get (header, "NCHAN", "%u", &nchan) != 1)
+  if (spip::AsciiHeader::header_get (config, "NCHAN", "%u", &nchan) != 1)
     throw invalid_argument ("NCHAN did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NBIT", "%u", &nbit) != 1)
+  if (spip::AsciiHeader::header_get (config, "NBIT", "%u", &nbit) != 1)
     throw invalid_argument ("NBIT did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NPOL", "%u", &npol) != 1)
+  if (spip::AsciiHeader::header_get (config, "NPOL", "%u", &npol) != 1)
     throw invalid_argument ("NPOL did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "NDIM", "%u", &ndim) != 1)
+  if (spip::AsciiHeader::header_get (config, "NDIM", "%u", &ndim) != 1)
     throw invalid_argument ("NDIM did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "TSAMP", "%f", &tsamp) != 1)
+  if (spip::AsciiHeader::header_get (config, "TSAMP", "%f", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in header");
 
-  if (spip::AsciiHeader::header_get (header, "BW", "%f", &bw) != 1)
+  if (spip::AsciiHeader::header_get (config, "BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
 
   channel_bw = bw / nchan;
 
-  unsigned start_chan, end_chan;
-  if (spip::AsciiHeader::header_get (header, "START_CHANNEL", "%u", &start_chan) != 1)
-    throw invalid_argument ("START_CHANNEL did not exist in header");
-  if (spip::AsciiHeader::header_get (header, "END_CHANNEL", "%u", &end_chan) != 1)
-    throw invalid_argument ("END_CHANNEL did not exist in header");
+  header.load_from_str (config);
 
   if (!format)
     throw runtime_error ("unable for prepare format");
-  format->set_channel_range (start_chan, end_chan);
+  format->configure (header, "");
 }
 
 // allocate memory for 1 second of data for use in packet generation

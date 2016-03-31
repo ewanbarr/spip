@@ -38,12 +38,6 @@ int main(int argc, char *argv[])
 
   spip::AsciiHeader config;
 
-  // Host/IP to receive packets on 
-  char * host;
-
-  // udp port to send data to
-  int port = MEERKAT_DEFAULT_UDP_PORT;
-
   // core on which to bind thread operations
   spip::HardwareAffinity hw_affinity;
 
@@ -54,7 +48,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hp:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hv")) != EOF) 
   {
     switch(c) 
     {
@@ -72,10 +66,6 @@ int main(int argc, char *argv[])
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'p':
-        port = atoi(optarg);
         break;
 
       case 'v':
@@ -114,9 +104,9 @@ int main(int argc, char *argv[])
   }
 
   // Check arguments
-  if ((argc - optind) != 2) 
+  if ((argc - optind) != 1) 
   {
-    fprintf(stderr,"ERROR: 2 command line arguments expected\n");
+    fprintf(stderr,"ERROR: 1 command line argument expected\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -133,17 +123,13 @@ int main(int argc, char *argv[])
     return (EXIT_FAILURE);
   }
 
-  // local address/host to listen on
-  host = strdup(argv[optind+1]);
-
   if (udprecv->verbose)
     cerr << "meerkat_udprecv: configuring using fixed config" << endl;
   udprecv->configure (config.raw());
 
   if (udprecv->verbose)
-    cerr << "meerkat_udprecv: listening for packets on " << host << ":" 
-         << port << endl;
-  udprecv->prepare (std::string(host), port);
+    cerr << "meerkat_udprecv: allocating runtime resources" << endl;
+  udprecv->prepare ();
 
   if (udprecv->verbose)
     cerr << "meerkat_udprecv: starting stats thread" << endl;
@@ -173,19 +159,15 @@ int main(int argc, char *argv[])
 
 void usage() 
 {
-  cout << "meerkat_udprecv [options] header host\n"
-    "  header      ascii file contain header\n"
-    "  host        hostname/ip of UDP receiver\n"
+  cout << "meerkat_udprecv [options] config\n"
+    "  header      ascii file contain config and header\n"
 #ifdef HAVE_SPEAD2
-    "  -f format   recverate UDP data of format [simple spead]\n"
+    "  -f format   receive UDP data of format [simple spead]\n"
 #else
-    "  -f format   recverate UDP data of format [simple]\n"
+    "  -f format   receive UDP data of format [simple]\n"
 #endif
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
-    "  -n secs     number of seconds to transmit [default 5]\n"
-    "  -p port     destination udp port [default " << MEERKAT_DEFAULT_UDP_PORT << "]\n"
-    "  -r rate     transmit at rate Mib/s [default 10]\n"
     "  -v          verbose output\n"
     << endl;
 }
@@ -202,9 +184,7 @@ void signal_handler(int signalValue)
     exit(EXIT_FAILURE);
   }
   quit_threads = 1;
-
 }
-
 
 
 /* 
@@ -247,8 +227,9 @@ void * stats_thread (void * arg)
 
     // determine how much memory is free in the receivers
     fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
-
     sleep(1);
   }
+
+  udprecv->stop_receiving();
 }
 

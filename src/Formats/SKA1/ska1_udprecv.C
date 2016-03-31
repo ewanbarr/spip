@@ -120,8 +120,8 @@ int main(int argc, char *argv[])
   recv->configure (header.raw());
 
   if (verbose)
-    cerr << "ska1_udprecv: listening for packets on " << host << ":" << port << endl;
-  recv->prepare (std::string(host), port);
+    cerr << "ska1_udprecv: allocating runtime resources" << endl;
+  recv->prepare ();
 
   if (verbose)
     cerr << "ska1_udprecv: starting stats thread" << endl;

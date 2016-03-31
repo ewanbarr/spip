@@ -36,12 +36,6 @@ int main(int argc, char *argv[]) try
 
   spip::AsciiHeader header;
 
-  // Host/IP to receive packets on 
-  char * host;
-
-  // udp port to send data to
-  int port = SKA1_DEFAULT_UDP_PORT;
-
   // core on which to bind thread operations
   int core = -1;
   spip::HardwareAffinity hw_affinity;
@@ -51,7 +45,7 @@ int main(int argc, char *argv[]) try
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:hk:p:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:hk:v")) != EOF) 
   {
     switch(c) 
     {
@@ -73,10 +67,6 @@ int main(int argc, char *argv[]) try
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'p':
-        port = atoi(optarg);
         break;
 
       case 'v':
@@ -106,9 +96,9 @@ int main(int argc, char *argv[]) try
   }
 
   // Check arguments
-  if ((argc - optind) != 2) 
+  if ((argc - optind) != 1)
   {
-    fprintf(stderr,"ERROR: 2 command line arguments expected\n");
+    fprintf(stderr,"ERROR: 1 command line argument expected\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -121,16 +111,13 @@ int main(int argc, char *argv[]) try
     return (EXIT_FAILURE);
   }
 
-  // local address/host to listen on
-  host = strdup(argv[optind+1]);
-
   if (verbose)
     cerr << "ska1_udpdb: configuring based on header" << endl;
   udpdb->configure (header.raw());
 
   if (verbose)
-    cerr << "ska1_udpdb: listening for packets on " << host << ":" << port << endl;
-  udpdb->prepare (std::string(host), port);
+    cerr << "ska1_udpdb: allocating resources" << endl;
+  udpdb->prepare ();
 
   if (verbose)
     cerr << "ska1_udpdb: writing header to data block" << endl;
@@ -169,14 +156,12 @@ catch (std::exception& exc)
 
 void usage() 
 {
-  cout << "ska1_udpdb [options] header host\n"
-    "  header      ascii file contain header\n"
-    "  host        hostname/ip of UDP receiver\n"
+  cout << "ska1_udpdb [options] header\n"
+    "  header      ascii file contain config\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -f format   UDP data format [standard custom]\n"
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
-    "  -p port     destination udp port [default " << std::dec << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -v          verbose output\n"
     << endl;
 }

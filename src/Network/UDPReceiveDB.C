@@ -8,8 +8,10 @@
 #include "spip/TCPSocketServer.h"
 #include "spip/AsciiHeader.h"
 #include "spip/UDPReceiveDB.h"
+#include "spip/Time.h"
 #include "sys/time.h"
 
+#include <signal.h>
 #include <unistd.h>
 #include <cstring>
 #include <iostream>
@@ -25,6 +27,8 @@
 #define UDPReceiveDB_CMD_START 1
 #define UDPReceiveDB_CMD_STOP 2
 #define UDPReceiveDB_CMD_QUIT 3
+
+//#define _DEBUG
 
 using namespace std;
 
@@ -61,45 +65,46 @@ spip::UDPReceiveDB::~UDPReceiveDB()
 
 int spip::UDPReceiveDB::configure (const char * config)
 {
-  if (spip::AsciiHeader::header_get (config, "NCHAN", "%u", &nchan) != 1)
+  // save the header for use on the first open block
+  header.load_from_str (config);
+
+  if (header.get ("NCHAN", "%u", &nchan) != 1)
     throw invalid_argument ("NCHAN did not exist in header");
 
-  if (spip::AsciiHeader::header_get (config, "NBIT", "%u", &nbit) != 1)
+  if (header.get ("NBIT", "%u", &nbit) != 1)
     throw invalid_argument ("NBIT did not exist in header");
 
-  if (spip::AsciiHeader::header_get (config, "NPOL", "%u", &npol) != 1)
+  if (header.get ("NPOL", "%u", &npol) != 1)
     throw invalid_argument ("NPOL did not exist in header");
 
-  if (spip::AsciiHeader::header_get (config, "NDIM", "%u", &ndim) != 1)
+  if (header.get ("NDIM", "%u", &ndim) != 1)
     throw invalid_argument ("NDIM did not exist in header");
 
-  if (spip::AsciiHeader::header_get (config, "TSAMP", "%f", &tsamp) != 1)
+  if (header.get ("TSAMP", "%f", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in header");
 
-  if (spip::AsciiHeader::header_get (config, "BW", "%f", &bw) != 1)
+  if (header.get ("BW", "%f", &bw) != 1)
     throw invalid_argument ("BW did not exist in header");
 
-  channel_bw = bw / nchan;
+  char * buffer = (char *) malloc (128);
+  if (header.get ("DATA_HOST", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST did not exist in header");
+  data_host = string (buffer);
+  if (header.get ("DATA_PORT", "%d", &data_port) != 1)
+    throw invalid_argument ("DATA_PORT did not exist in header");
+
+  cerr << "UDP source " << data_host << ":" << data_port << endl;
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
 
-  unsigned start_chan, end_chan;
-  if (spip::AsciiHeader::header_get (config, "START_CHANNEL", "%u", &start_chan) != 1)
-    throw invalid_argument ("START_CHANNEL did not exist in header");
-  if (spip::AsciiHeader::header_get (config, "END_CHANNEL", "%u", &end_chan) != 1)
-    throw invalid_argument ("END_CHANNEL did not exist in header");
-
   if (!format)
-    throw runtime_error ("unable for prepare format");
-  format->set_channel_range (start_chan, end_chan);
+    throw runtime_error ("unable for configure format");
+  format->configure (header, "");
 
   uint64_t block_size = db->get_data_bufsz();
   unsigned nsamp_per_block = block_size / (nchan * npol * ndim * nbit / 8);
   format->set_nsamp_per_block (nsamp_per_block);
-
-  // save the header for use on the first open block
-  header.load_from_str (config);
 
   // now write new params to header
   uint64_t resolution = format->get_resolution();
@@ -107,17 +112,20 @@ int spip::UDPReceiveDB::configure (const char * config)
   if (header.set("RESOLUTION", "%lu", resolution) < 0)
     throw invalid_argument ("failed to write RESOLUTION to header");
 
+  free (buffer);
 }
 
-void spip::UDPReceiveDB::prepare (std::string ip_address, int port)
+void spip::UDPReceiveDB::prepare ()
 {
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
-
-  sock->open (ip_address, port);
+  sock->open (data_host, data_port);
   
   if (!vma_api)
+  {
+    cerr << "setting nonblock" << endl;
     sock->set_nonblock ();
+  }
 
   size_t sock_bufsz = format->get_header_size() + format->get_data_size();
   cerr << "spip::UDPReceiveDB::prepare resize(" << sock_bufsz << ")" << endl;
@@ -310,7 +318,6 @@ void spip::UDPReceiveDB::stats_thread()
       fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
       sleep (1);
     }
-
     sleep(1);
   }
 }
@@ -356,7 +363,25 @@ void spip::UDPReceiveDB::update_stats()
 
 void spip::UDPReceiveDB::open ()
 {
+  cerr << "spip::UDPReceiveDB::open format->prepare()" << endl;
+
+  // check if UTC_START has been set
+  char * buffer = (char *) malloc (128);
+  if (header.get ("UTC_START", "%s", buffer) == -1)
+  {
+    cerr << "spip::UDPReceiveDB::open no UTC_START in header" << endl;
+    time_t now = time(0);
+    spip::Time utc_start (now);
+    utc_start.add_seconds (2);
+    std::string utc_str = utc_start.get_gmtime();
+    cerr << "spip::UDPReceiveDB::open UTC_START=" << utc_str  << endl;
+    if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
+      throw invalid_argument ("failed to write UTC_START to header");
+  }
+
+  format->prepare(header, "");
   open (header.raw());
+  free (buffer);
 }
 
 // write the ascii header to the datablock, then
@@ -407,7 +432,7 @@ bool spip::UDPReceiveDB::receive ()
   bool obs_started = false;
 
   // block control logic
-  char * block;
+  char * block = (char *) db->open_block();
   bool need_next_block = false;
 
   const uint64_t data_bufsz = db->get_data_bufsz();
@@ -423,12 +448,21 @@ bool spip::UDPReceiveDB::receive ()
   int result;
 
   // block accounting 
-  uint64_t curr_sample = 0;
-  uint64_t next_sample  = 0;
-  uint64_t bytes_this_buf = 0;
-  uint64_t offset;
+  uint64_t curr_byte_offset = 0;
+  uint64_t next_byte_offset = data_bufsz;
 
-  int bytes_received, bytes_dropped;
+  // overflow buffer
+  const uint64_t overflow_bufsz = 2097152;
+  uint64_t overflow_lastbyte = 0;
+  uint64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
+  uint64_t overflowed_bytes = 0;
+  char * overflow = (char *) malloc(overflow_bufsz);
+  memset (overflow, 0, overflow_bufsz);
+
+  uint64_t bytes_this_buf = 0;
+  int64_t byte_offset;
+
+  unsigned bytes_received, bytes_dropped;
 
 #ifdef _DEBUG
   cerr << "spip::UDPReceiveDB::receive sock_bufsz=" << sock_bufsz << endl;
@@ -466,15 +500,6 @@ bool spip::UDPReceiveDB::receive ()
             buf = (char *) (pkt->iov[0].iov_base);
           }
           have_packet = true;
-        }
-        else if (got == -1)
-        {
-          nsleeps++;
-          if (nsleeps > 1000)
-          {
-            stats->sleeps(1000);
-            nsleeps -= 1000;
-          }
         }
         else
         {
@@ -540,81 +565,69 @@ bool spip::UDPReceiveDB::receive ()
         block = (char *) db->open_block();
         need_next_block = false;
 
-        if (bytes_this_buf == 0 && next_sample > 0)
+        if (bytes_this_buf == 0 && curr_byte_offset > 0)
         {
           cerr << "spip::UDPReceiveDB::receive received 0 packets this buf" << endl;
           keep_receiving = false;
         }
 
-        // number is first packet due in block to first packet of next block
-        curr_sample = next_sample;
-        next_sample += samples_per_buf;
+        // update absolute limits
+        curr_byte_offset = next_byte_offset;
+        next_byte_offset += data_bufsz;
+        overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
-#ifdef _DEBUG
-        cerr << "spip::UDPReceiveDB::receive [" << curr_sample << " - " 
-             << next_sample << "] (" << bytes_this_buf << ")" << endl;
-#endif
+//#ifdef _DEBUG
+        cerr << "spip::UDPReceiveDB::receive [" << curr_byte_offset << " - " 
+             << next_byte_offset << "] (" << bytes_this_buf << ")" << endl;
+//#endif
 
-        bytes_this_buf = 0;
+        if (overflow_lastbyte > 0)
+        {
+          memcpy (block, overflow, overflow_lastbyte);
+          overflow_lastbyte = 0;
+          bytes_this_buf = overflowed_bytes;
+          stats->increment_bytes (overflowed_bytes);
+          overflowed_bytes = 0;
+        }
+        else
+          bytes_this_buf = 0;
       }
 
-      // decode the header so that the format knows what to do with the packet
-      bytes_received = format->decode_header (buf);
+      byte_offset = format->decode_packet (buf, &bytes_received);
 
-      // check to see if any bytes have been dropped, based on the reception of this packet
-      bytes_dropped = format->check_packet ();
-
-      // copy the current packet into the appropriate place in the buffer
-      result = format->insert_packet (block, payload, curr_sample, next_sample);
-
-      if (bytes_dropped)
+      // packet belongs in current buffer
+      if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
       {
-        stats->dropped_bytes (bytes_dropped);
-        cerr << "dropped " << bytes_dropped <<" bytes " << endl;
-        format->print_packet_header();
-      }
-
-      // positive result indicates bytes inserted
-      if (result > 0)
-      {
-        bytes_this_buf += result;
-        stats->increment_bytes (result);
+        bytes_this_buf += bytes_received;
+        stats->increment_bytes (bytes_received); 
+        format->insert_last_packet (block + (byte_offset - curr_byte_offset));
         have_packet = false;
       }
-      else if (result == UDP_PACKET_TOO_EARLY)
+      else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
       {
-#ifdef _DEBUG
-        cerr << "result == UDP_PACKET_TOO_EARLY" << endl;
-        format->print_packet_header();
-#endif
-        need_next_block = true;
-      }
-      else if (result == UDP_PACKET_TOO_LATE)
-      {
-#ifdef _DEBUG
-        cerr << "result == UDP_PACKET_TOO_LATE" << endl;
-#endif
-        format->print_packet_header();
+        format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
+        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
+        overflowed_bytes += bytes_received;
         have_packet = false;
-        keep_receiving = false;
       }
-      else if (result == UDP_PACKET_IGNORE)
+      else if (byte_offset < 0)
       {
-        //cerr << "result == UDP_PACKET_IGNORE" << endl;
-        //format->print_packet_header();
+        // ignore
         have_packet = false;
       }
       else
       {
-        ;
+        need_next_block = true;
+        have_packet = true;
       }
+
 
       // close open data block buffer if is is now full
       if (bytes_this_buf >= data_bufsz || need_next_block)
       {
 #ifdef _DEBUG
-        cerr << bytes_this_buf << " / " << data_bufsz << " => " << 
-            ((float) bytes_this_buf / (float) data_bufsz) * 100 << endl;
+          cerr << bytes_this_buf << " / " << data_bufsz << " => " << 
+              ((float) bytes_this_buf / (float) data_bufsz) * 100 << endl;
         cerr << "spip::UDPReceiveDB::receive close_block bytes_this_buf=" 
              << bytes_this_buf << " bytes_per_buf=" << data_bufsz 
              << " need_next_block=" << need_next_block

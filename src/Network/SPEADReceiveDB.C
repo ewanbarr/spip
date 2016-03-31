@@ -262,7 +262,7 @@ bool spip::SPEADReceiveDB::receive ()
   spead2::recv::ring_stream<> stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
   stream.set_memory_pool(pool);
   boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address_v4::any(), spead_port);
-  stream.emplace_reader<spead2::recv::udp_reader>( endpoint, spead2::recv::udp_reader::default_max_size, 64 * 1024 * 1024);
+  stream.emplace_reader<spead2::recv::udp_reader>( endpoint, spead2::recv::udp_reader::default_max_size, 128 * 1024 * 1024);
 
   control_state = Idle;
   keep_receiving = true;
@@ -392,7 +392,8 @@ bool spip::SPEADReceiveDB::receive ()
         const auto &items = fh.get_items();
         int raw_id = -1;
         timestamp = 0;
-
+#define PARSE_ALL_ITEMS
+#ifdef PARSE_ALL_ITEMS
         for (unsigned i=0; i<items.size(); i++)
         {
           if (items[i].id >= SPEAD_CBF_RAW_SAMPLES)
@@ -412,8 +413,19 @@ bool spip::SPEADReceiveDB::receive ()
             // for now ignore all non CBF RAW heaps after the start
           }
         }
+#else
+        if (items[0].id == SPEAD_CBF_RAW_SAMPLES)
+        {
+          raw_id = 0;
+          timestamp = SPEADBeamFormerConfig::item_ptr_48u (items[1].ptr);
+        }
+        else
+        {
+          cerr << "items.size()=" << items.size() << " items[0].id=" << std::hex << items[0].id << std::dec << endl;
+        }
+          //cerr << "raw_id=" << raw_id << " timestamp=" << timestamp << " start_adc_sample=" << start_adc_sample << endl;
+#endif
 
-        //cerr << "raw_id=" << raw_id << " timestamp=" << timestamp << " start_adc_sample=" << start_adc_sample << endl;
 
         // if a starting ADC sample was not provided in the configuration
         if (start_adc_sample == -1 && timestamp > 0)
@@ -450,7 +462,7 @@ bool spip::SPEADReceiveDB::receive ()
           else if (heap >= next_heap)
           {
             need_next_block = true;
-            cerr << "WARN : heap=" << heap << " > next_heap=" << next_heap << endl;
+            cerr << "WARN : heap=" << heap << " >= next_heap=" << next_heap << endl;
             // TODO we should keep this heap if possible
           }
           else

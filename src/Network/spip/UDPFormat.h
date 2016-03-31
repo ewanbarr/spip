@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <inttypes.h>
 
+#include "spip/AsciiHeader.h"
+
 #define UDP_FORMAT_PACKET_NSAMP 1024;
 
 #define UDP_PACKET_TOO_LATE -1
@@ -21,9 +23,11 @@ namespace spip {
 
       ~UDPFormat();
 
-      void generate_signal ();
+      virtual void configure (const AsciiHeader& config, const char* suffix) = 0;
 
-      virtual void set_channel_range (unsigned start, unsigned end) = 0;
+      virtual void prepare (const AsciiHeader& header, const char* suffix) = 0;
+
+      void generate_signal ();
 
       void set_nsamp_per_block (unsigned _nsamp);
 
@@ -35,13 +39,17 @@ namespace spip {
 
       virtual void encode_header (char * buf) = 0;
 
-      virtual uint64_t decode_header_seq (char * buf) = 0;
+      //virtual uint64_t decode_header_seq (char * buf) = 0;
 
-      virtual unsigned decode_header (char * buf) = 0;
+      //virtual unsigned decode_header (char * buf) = 0;
 
-      virtual int check_packet () = 0;
+      virtual int64_t decode_packet (char * buf, unsigned * payload_size) = 0;
 
-      virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
+      //virtual int check_packet () = 0;
+
+      //virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
+
+      virtual int insert_last_packet (char * buf) = 0;
 
       virtual void print_packet_header () = 0;
 
@@ -61,7 +69,11 @@ namespace spip {
 
       void set_noise_buffer_size (unsigned nbytes);
 
+      void set_start_sample (uint64_t s) { start_sample = s; };
+
     protected:
+
+      uint64_t start_sample;
 
       unsigned packet_header_size;
 
@@ -92,6 +104,10 @@ namespace spip {
       char * noise_buffer;
 
       size_t noise_buffer_size;
+
+      bool configured;
+
+      bool prepared;
 
     private:
 

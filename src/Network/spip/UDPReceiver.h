@@ -2,6 +2,7 @@
 #ifndef __UDPReceiver_h
 #define __UDPReceiver_h
 
+#include "spip/AsciiHeader.h"
 #include "spip/UDPSocketReceive.h"
 #include "spip/UDPFormat.h"
 #include "spip/UDPStats.h"
@@ -22,11 +23,13 @@ namespace spip {
 
       ~UDPReceiver ();
 
-      int configure (const char * header);
+      int configure (const char * header_str);
 
-      void prepare (std::string ip_address, int port);
+      void prepare ();
 
       void set_format (UDPFormat * fmt);
+
+      void stop_receiving () { keep_receiving = false; };
 
       // transmission thread
       void receive ();
@@ -42,6 +45,12 @@ namespace spip {
       UDPFormat * format;
 
       UDPStats * stats;
+
+      std::string data_host;
+
+      int data_port;
+
+      AsciiHeader header;
 
 #ifdef HAVE_VMA
       struct vma_api_t *vma_api;
@@ -63,12 +72,13 @@ namespace spip {
 
       float channel_bw;
 
-      float tsamp;
+      double tsamp;
 
       unsigned bits_per_second;
 
       unsigned bytes_per_second;
 
+      bool keep_receiving;
   };
 
 }

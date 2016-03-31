@@ -40,6 +40,19 @@ spip::UDPFormatMeerKATSimple::~UDPFormatMeerKATSimple()
 #endif
 }
 
+void spip::UDPFormatMeerKATSimple::configure(const spip::AsciiHeader& config, const char* suffix)
+{
+  if (config.get ("START_CHANNEL", "%u", &start_channel) != 1)
+    throw invalid_argument ("START_CHANNEL did not exist in config");
+  if (config.get ("END_CHANNEL", "%u", &end_channel) != 1)
+    throw invalid_argument ("END_CHANNEL did not exist in config");
+  nchan = (end_channel - start_channel) + 1;
+  header.channel_number = start_channel;
+}
+
+void spip::UDPFormatMeerKATSimple::prepare (const spip::AsciiHeader& hdr, const char * suffix)
+{
+}
 void spip::UDPFormatMeerKATSimple::generate_signal ()
 {
 }
@@ -63,21 +76,6 @@ uint64_t spip::UDPFormatMeerKATSimple::get_resolution ()
   return nbits / 8;
 }
 
-void spip::UDPFormatMeerKATSimple::set_channel_range (unsigned start, unsigned end) 
-{
-#ifdef _DEBUG
-  cerr << "spip::UDPFormatMeerKATSimple::set_channel_range start=" << start 
-       << " end=" << end << endl;
-#endif
-  start_channel = start;
-  end_channel   = end;
-  nchan = (end - start) + 1;
-  header.channel_number = start;
-#ifdef _DEBUG
-  cerr << "spip::UDPFormatMeerKATSimple::set_channel_range nchan=" <<  nchan << endl;
-#endif
-}
-
 inline void spip::UDPFormatMeerKATSimple::encode_header_seq (char * buf, uint64_t seq)
 {
   header.seq_number = seq;
@@ -99,6 +97,15 @@ inline unsigned spip::UDPFormatMeerKATSimple::decode_header (char * buf)
 {
   memcpy ((void *) &header, buf, sizeof(header));
   return packet_data_size;
+}
+
+inline int64_t spip::UDPFormatMeerKATSimple::decode_packet (char* buf, unsigned * pkt_size)
+{
+  return -1;
+}
+inline int spip::UDPFormatMeerKATSimple::insert_last_packet (char * buffer)
+{
+  return 0;
 }
 
 inline int spip::UDPFormatMeerKATSimple::check_packet ()

@@ -50,6 +50,10 @@ namespace spip {
 
       ~UDPFormatMeerKATSimple ();
 
+      void configure (const spip::AsciiHeader& config, const char* suffix);
+
+      void prepare (const spip::AsciiHeader& header, const char* suffix);
+
       void generate_signal ();
 
       uint64_t get_samples_for_bytes (uint64_t nbytes);
@@ -73,6 +77,9 @@ namespace spip {
 
       inline uint64_t decode_header_seq (char * buf);
       inline unsigned decode_header (char * buf);
+
+      inline int64_t decode_packet (char * buf, unsigned *payload_size);
+      inline int insert_last_packet (char * buf);
 
       inline int check_packet ();
       inline int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp);

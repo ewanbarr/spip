@@ -6,9 +6,9 @@
  ****************************************************************************/
 
 #include "dada_def.h"
-#include "dada_affinity.h"
 #include "futils.h"
 
+#include "spip/HardwareAffinity.h"
 #include "spip/SPEADReceiver.h"
 
 #include <unistd.h>
@@ -40,7 +40,8 @@ int main(int argc, char *argv[])
   // udp port to send data to
   int port = MEERKAT_DEFAULT_SPEAD_PORT;
 
-  // core on which to bind thread operations
+  // CPU and memory binding
+  spip::HardwareAffinity hw_affinity;
   int core = -1;
 
   int verbose = 0;
@@ -54,6 +55,8 @@ int main(int argc, char *argv[])
     {
       case 'b':
         core = atoi(optarg);
+        hw_affinity.bind_process_to_cpu_core (core);
+        hw_affinity.bind_to_memory (core);
         break;
 
       case 'h':
@@ -77,10 +80,6 @@ int main(int argc, char *argv[])
         break;
     }
   }
-
-  // bind CPU computation to specific core
-  if (core >= 0)
-    dada_bind_thread_to_core (core);
 
   // create a UDP Receiver
   speadrecv = new spip::SPEADReceiver();
@@ -142,7 +141,7 @@ void usage()
   cout << "meerkat_speadrecv [options] header host\n"
     "  header      ascii file contain header\n"
     "  host        ip to listen on\n"
-    "  -b core     bind computation to specified CPU core\n"
+    "  -b core     bind compute and memory to core\n"
     "  -h          print this help text\n"
     "  -p port     udp port [default " << MEERKAT_DEFAULT_SPEAD_PORT << "]\n"
     "  -v          verbose output\n"

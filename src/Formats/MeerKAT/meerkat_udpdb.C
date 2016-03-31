@@ -23,7 +23,6 @@
 #include <stdexcept>
 
 void usage();
-void * stats_thread (void * arg);
 void signal_handler (int signal_value);
 
 spip::UDPReceiveDB * udpdb;
@@ -38,12 +37,6 @@ int main(int argc, char *argv[]) try
   string * format = new string("simple");
 
   spip::AsciiHeader config;
-
-  // Host/IP to receive packets on 
-  char * host;
-
-  // udp port to send data to
-  int port = MEERKAT_DEFAULT_UDP_PORT;
 
   // tcp control port to receive configuration
   int control_port = -1;
@@ -60,7 +53,7 @@ int main(int argc, char *argv[]) try
 
   int core;
 
-  while ((c = getopt(argc, argv, "b:c:f:hk:p:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:c:f:hk:v")) != EOF) 
   {
     switch(c) 
     {
@@ -86,10 +79,6 @@ int main(int argc, char *argv[]) try
         cerr << "Usage: " << endl;
         usage();
         exit(EXIT_SUCCESS);
-        break;
-
-      case 'p':
-        port = atoi(optarg);
         break;
 
       case 'v':
@@ -121,9 +110,9 @@ int main(int argc, char *argv[]) try
   }
 
   // Check arguments
-  if ((argc - optind) != 2) 
+  if ((argc - optind) != 1) 
   {
-    fprintf(stderr,"ERROR: 2 command line arguments expected\n");
+    fprintf(stderr,"ERROR: 1 command line argument expected\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -137,9 +126,6 @@ int main(int argc, char *argv[]) try
     return (EXIT_FAILURE);
   }
 
-  // local address/host to listen on
-  host = strdup(argv[optind+1]);
-
   uint64_t data_bufsz = udpdb->get_data_bufsz();
   if (config.set("RESOLUTION", "%lu", data_bufsz) < 0)
   {
@@ -152,9 +138,8 @@ int main(int argc, char *argv[]) try
   udpdb->configure (config.raw());
 
   if (verbose)
-    cerr << "meerkat_udpdb: listening for UDP packets on " 
-         << host << ":" << port << endl;
-  udpdb->prepare (std::string(host), port);
+    cerr << "meerkat_udpdb: preparing runtime resources" << endl;
+  udpdb->prepare ();
 
   // prepare a header which combines config with observation parameters
   spip::AsciiHeader header;
@@ -181,7 +166,7 @@ int main(int argc, char *argv[]) try
   {
     if (verbose)
       cerr << "meerkat_udpdb: writing header to data block" << endl;
-    udpdb->open (header.raw());
+    udpdb->open ();
 
     cerr << "meerkat_udpdb: issuing start command" << endl;
     udpdb->start_capture ();
@@ -204,7 +189,7 @@ catch (std::exception& exc)
 
 void usage() 
 {
-  cout << "meerkat_udpdb [options] config host\n"
+  cout << "meerkat_udpdb [options] config\n"
     "  config      ascii file containing fixed configuration\n"
     "  host        hostname/ip of UDP receiver\n"
     "  -b core     bind computation to specified CPU core\n"
@@ -216,7 +201,6 @@ void usage()
 #endif
     "  -h          print this help text\n"
     "  -k key      PSRDada shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << "]\n"
-    "  -p port     incoming udp port [default " << std::dec << MEERKAT_DEFAULT_UDP_PORT << "]\n"
     "  -v          verbose output\n"
     << endl;
 }

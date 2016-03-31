@@ -32,7 +32,17 @@ spip::UDPFormatCustom::~UDPFormatCustom()
   cerr << "spip::UDPFormatCustom::~UDPFormatCustom()" << endl;
 }
 
-void spip::UDPFormatCustom::generate_signal ()
+void spip::UDPFormatCustom::configure(const spip::AsciiHeader& config, const char* suffix)
+{
+  if (config.get ("START_CHANNEL", "%u", &start_channel) != 1)
+    throw invalid_argument ("START_CHANNEL did not exist in header");
+  if (config.get ("END_CHANNEL", "%u", &end_channel) != 1)
+    throw invalid_argument ("END_CHANNEL did not exist in header");
+  nchan = (end_channel - start_channel) + 1;
+  header.channel_number = start_channel;
+}
+
+void spip::UDPFormatCustom::prepare (const spip::AsciiHeader& header, const char * suffix)
 {
 }
 
@@ -48,17 +58,6 @@ uint64_t spip::UDPFormatCustom::get_resolution ()
 {
   uint64_t nbits = nchan * npol * ndim * nbit * spip::UDPFormatCustom::get_samples_per_packet();
   return nbits / 8;
-}
-
-void spip::UDPFormatCustom::set_channel_range (unsigned start, unsigned end) 
-{
-  cerr << "spip::UDPFormatCustom::set_channel_range start=" << start 
-       << " end=" << end << endl;
-  start_channel = start;
-  end_channel   = end;
-  nchan = (end - start) + 1;
-  header.channel_number = start;
-  cerr << "spip::UDPFormatCustom::set_channel_range nchan=" <<  nchan << endl;
 }
 
 inline void spip::UDPFormatCustom::encode_header_seq (char * buf, uint64_t seq)
@@ -82,6 +81,18 @@ inline unsigned spip::UDPFormatCustom::decode_header (char * buf)
 {
   memcpy ((void *) &header, buf, sizeof(header));
   return packet_data_size;
+}
+
+inline int64_t spip::UDPFormatCustom::decode_packet (char *buf, unsigned * payload_size)
+{
+  // TODO implement;
+  return -1;
+}
+
+inline int spip::UDPFormatCustom::insert_last_packet (char * buffer)
+{
+  // TODO implement
+  return 0;
 }
 
 inline int spip::UDPFormatCustom::check_packet ()
