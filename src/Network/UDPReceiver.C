@@ -21,7 +21,7 @@ spip::UDPReceiver::UDPReceiver()
 {
   keep_receiving = true;
   format = 0;
-  verbose = 0;
+  verbose = 1;
 
 #ifdef HAVE_VMA
   vma_api = vma_get_api();
@@ -68,7 +68,9 @@ int spip::UDPReceiver::configure (const char * config_str)
   if (header.get ("DATA_PORT", "%d", &data_port) != 1)
     throw invalid_argument ("DATA_PORT did not exist in header");
 
-  channel_bw = bw / nchan;
+  if (verbose)
+    cerr << "spip::UDPReceiver::configure receiving on " 
+         << data_host << ":" << data_port  << endl;
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
@@ -88,6 +90,8 @@ void spip::UDPReceiver::prepare ()
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
 
+  if (verbose)
+    cerr << "spip::UDPReceiver::prepare sock->open(" << data_host << ", " << data_port << ")" << endl;
   sock->open (data_host, data_port);
   
   if (vma_api)
@@ -95,7 +99,10 @@ void spip::UDPReceiver::prepare ()
   else
     sock->set_nonblock ();
 
-  sock->resize (format->get_header_size() + format->get_data_size());
+  size_t sock_size = format->get_header_size() + format->get_data_size();
+  if (verbose)
+    cerr << "spip::UDPReceiver::prepare sock->resize(" << sock_size << ")" << endl;
+  sock->resize (sock_size);
 
   // this should not be required when using VMA offloading
   sock->resize_kernel_buffer (64*1024*1024);
@@ -243,6 +250,12 @@ void spip::UDPReceiver::receive ()
         // update absolute limits
         curr_byte_offset = next_byte_offset;
         next_byte_offset += data_bufsz;
+
+#ifdef _DEBUG
+        cerr << "spip::UDPReceiver::receive [" << curr_byte_offset << " - "
+             << next_byte_offset << "] (" << bytes_this_buf << ")" << endl;
+#endif
+
         overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
         if (overflow_lastbyte > 0)
@@ -272,8 +285,8 @@ void spip::UDPReceiver::receive ()
       }
       else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
       {
-        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
         format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
+        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
         overflowed_bytes += bytes_received;
         have_packet = false;
       }
@@ -285,12 +298,13 @@ void spip::UDPReceiver::receive ()
       else
       {
         need_next_block = true;
+        have_packet = true;
       }
 
       if (bytes_this_buf >= data_bufsz || need_next_block)
       {
-        //cerr << "need next buf this=" << bytes_this_buf << " size=" << data_bufsz << " overflowed_bytes=" << overflowed_bytes <<  endl;
         stats->dropped_bytes (data_bufsz - bytes_this_buf);
+        need_next_block = true;
       }
     }
   }
