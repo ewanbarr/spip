@@ -95,11 +95,6 @@ int spip::UDPReceiveMergeDB::configure (const char * config)
   formats[0]->configure (header, "_0");
   formats[1]->configure (header, "_1");
 
-  uint64_t block_size = db->get_data_bufsz();
-  unsigned nsamp_per_block = block_size / (nchan * npol * ndim * nbit / 8);
-  formats[0]->set_nsamp_per_block (nsamp_per_block);
-  formats[1]->set_nsamp_per_block (nsamp_per_block);
-
   // now write new params to header
   uint64_t resolution = formats[0]->get_resolution();
   cerr << "spip::UDPReceiveDB::configure resolution=" << resolution << endl;
