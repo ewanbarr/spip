@@ -48,13 +48,6 @@ void spip::UDPFormat::generate_signal ()
 
 }
 
-void spip::UDPFormat::set_nsamp_per_block (unsigned nsamp)
-{
-  nsamp_per_block = nsamp;
-  chanpol_stride = nsamp_per_block * ndim;
-  channel_stride = chanpol_stride * npol;
-}
-
 double spip::UDPFormat::rand_normal (double mean, double stddev)
 {
   n2 = 0.0;
