@@ -99,12 +99,8 @@ int spip::UDPReceiveDB::configure (const char * config)
   bytes_per_second = bits_per_second / 8;
 
   if (!format)
-    throw runtime_error ("unable for configure format");
+    throw runtime_error ("unable to configure format");
   format->configure (header, "");
-
-  uint64_t block_size = db->get_data_bufsz();
-  unsigned nsamp_per_block = block_size / (nchan * npol * ndim * nbit / 8);
-  format->set_nsamp_per_block (nsamp_per_block);
 
   // now write new params to header
   uint64_t resolution = format->get_resolution();
@@ -576,10 +572,10 @@ bool spip::UDPReceiveDB::receive ()
         next_byte_offset += data_bufsz;
         overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
-//#ifdef _DEBUG
+#ifdef _DEBUG
         cerr << "spip::UDPReceiveDB::receive [" << curr_byte_offset << " - " 
              << next_byte_offset << "] (" << bytes_this_buf << ")" << endl;
-//#endif
+#endif
 
         if (overflow_lastbyte > 0)
         {
