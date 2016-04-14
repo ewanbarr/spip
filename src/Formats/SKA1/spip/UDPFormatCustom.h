@@ -102,6 +102,10 @@ namespace spip {
 
       ska1_custom_udp_header_t header;
 
+      char * payload_ptr;
+
+      unsigned channel_stride;
+
       uint64_t nsamp_offset;
 
       uint64_t nsamp_per_sec;
@@ -109,6 +113,8 @@ namespace spip {
       unsigned start_channel;
 
       unsigned end_channel;
+
+      unsigned seq_to_bytes;
 
   };
 
