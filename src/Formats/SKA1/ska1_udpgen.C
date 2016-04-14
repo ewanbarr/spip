@@ -31,17 +31,11 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
-  string format = "standard";
+  string format = "custom";
 
-  spip::AsciiHeader header;
+  spip::AsciiHeader config;
 
   char * src_host = 0;
-
-  // Hostname to send UDP packets to
-  char * dest_host;
-
-  // udp port to send data to
-  int dest_port = SKA1_DEFAULT_UDP_PORT;
 
   // total time to transmit for
   unsigned transmission_time = 5;   
@@ -58,7 +52,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:f:p:r:t:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:f:r:t:v")) != EOF) 
   {
     switch(c) 
     {
@@ -81,10 +75,6 @@ int main(int argc, char *argv[])
         transmission_time = atoi(optarg);
         break;
 
-      case 'p':
-        dest_port = atoi(optarg);
-        break;
-
       case 'r':
         data_rate_gbits = atof(optarg);
         break;
@@ -100,10 +90,10 @@ int main(int argc, char *argv[])
     }
   }
 
-  // Check arguments
-  if ((argc - optind) != 2) 
+  // check arguments
+  if ((argc - optind) != 1) 
   {
-    fprintf(stderr,"ERROR: 2 command line arguments expected\n");
+    fprintf(stderr,"ERROR: 1 command line argument expected\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -124,26 +114,23 @@ int main(int argc, char *argv[])
   signal(SIGINT, signal_handler);
 
   // header the this data stream
-  if (header.load_from_file (argv[optind]) < 0)
+  if (config.load_from_file (argv[optind]) < 0)
   {
     cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
     return (EXIT_FAILURE);
   }
 
-  // destination host
-  dest_host = strdup(argv[optind+1]);
-
   if (verbose)
     cerr << "ska1_udpgen: configuring based on header" << endl;
-  gen->configure (header.raw());
+  gen->configure (config.raw());
 
   if (verbose)
     cerr << "ska1_udpgen: allocating signal" << endl;
   gen->allocate_signal ();
 
   if (verbose)
-    cerr << "ska1_udpgen: preparing for transmission to " << dest_host << ":" << dest_port << endl;
-  gen->prepare (std::string(dest_host), dest_port);
+    cerr << "ska1_udpgen: allocating resources" << endl;
+  gen->prepare ();
 
   if (verbose)
     cerr << "ska1_udpgen: starting stats thread" << endl;
@@ -168,21 +155,17 @@ int main(int argc, char *argv[])
 
   delete gen;
 
-  free (dest_host);
-
   return 0;
 }
 
 void usage() 
 {
-  cout << "ska1_udpgen [options] header host\n"
+  cout << "ska1_udpgen [options] header\n"
     "  header      ascii file contain header\n"
-    "  host        hostname/ip of UDP receiver\n"
-    "  -f format   generate UDP data of format [custom standard spead vdif]\n"
+    "  -f format   generate UDP data of format [custom]\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -h          print this help text\n"
     "  -t secs     number of seconds to transmit [default 5]\n"
-    "  -p port     destination udp port [default " << SKA1_DEFAULT_UDP_PORT << "]\n"
     "  -r rate     transmit at rate Gib/s [default 0.5]\n"
     "  -v          verbose output\n"
     << endl;

@@ -19,13 +19,13 @@ namespace spip {
 
       ~UDPGenerator ();
 
-      int configure (const char * header);
+      int configure (const char * config);
 
       void allocate_signal ();
 
       void set_format (UDPFormat * format);
 
-      void prepare (std::string ip_address, int port);
+      void prepare ();
 
       // transmission thread
       void transmit (unsigned tobs, float data_rate);
@@ -43,6 +43,10 @@ namespace spip {
       UDPFormat * format;
 
       UDPStats * stats;
+
+      std::string data_host;
+
+      int data_port;
 
       unsigned nchan;
 
