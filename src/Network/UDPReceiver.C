@@ -65,6 +65,10 @@ int spip::UDPReceiver::configure (const char * config_str)
   if (header.get ("DATA_HOST", "%s", buffer) != 1)
     throw invalid_argument ("DATA_HOST did not exist in header");
   data_host = string (buffer);
+  if (header.get ("DATA_MCAST", "%s", buffer) != 1)
+    data_mcast = string ();
+  else
+    data_mcast = string (buffer);
   if (header.get ("DATA_PORT", "%d", &data_port) != 1)
     throw invalid_argument ("DATA_PORT did not exist in header");
 
@@ -88,7 +92,13 @@ void spip::UDPReceiver::prepare ()
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
 
-  sock->open (data_host, data_port);
+  if (data_mcast.size() > 0)
+  {
+    cerr << "spip::UDPReceiver::prepare sock->open_multicast" << endl;
+    sock->open_multicast (data_host, data_mcast, data_port);
+  }
+  else
+    sock->open (data_host, data_port);
   
   if (vma_api)
     sock->set_block ();
@@ -147,23 +157,23 @@ void spip::UDPReceiver::receive ()
   socklen_t addr_size = sizeof(struct sockaddr);
 
   // virtual block
-  size_t data_bufsz = 32*1024*1024;
+  size_t data_bufsz = 256*1024*1024;
   char * block = (char *) malloc (data_bufsz);
   bool need_next_block = false;
 
   // block accounting 
-  uint64_t curr_byte_offset = 0;
-  uint64_t next_byte_offset = data_bufsz;
+  int64_t curr_byte_offset = 0;
+  int64_t next_byte_offset = data_bufsz;
 
   // overflow buffer
-  const uint64_t overflow_bufsz = 2*1024*1024;
-  uint64_t overflow_lastbyte = 0;
-  uint64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
-  uint64_t overflowed_bytes = 0;
+  const int64_t overflow_bufsz = 2*1024*1024;
+  int64_t overflow_lastbyte = 0;
+  int64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
+  int64_t overflowed_bytes = 0;
   char * overflow = (char *) malloc(overflow_bufsz);
   memset (overflow, 0, overflow_bufsz);
 
-  uint64_t bytes_this_buf = 0;
+  int64_t bytes_this_buf = 0;
   int64_t byte_offset;
   unsigned bytes_received;
 
@@ -243,6 +253,9 @@ void spip::UDPReceiver::receive ()
         // update absolute limits
         curr_byte_offset = next_byte_offset;
         next_byte_offset += data_bufsz;
+
+        //cerr << "[" << curr_byte_offset << " - " << next_byte_offset << "]" << endl;
+
         overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
         if (overflow_lastbyte > 0)
@@ -260,8 +273,6 @@ void spip::UDPReceiver::receive ()
       // decode the header so that the format knows what to do with the packet
       byte_offset = format->decode_packet (buf, &bytes_received);
 
-      //cerr << "byte_offset=" << byte_offset << " bytes_received=" << bytes_received << " this buf=" << bytes_this_buf << endl; 
-      
       // packet belongs in current buffer
       if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
       {
@@ -272,25 +283,29 @@ void spip::UDPReceiver::receive ()
       }
       else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
       {
-        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
         format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
+        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
         overflowed_bytes += bytes_received;
         have_packet = false;
       }
-      else if (byte_offset < 0)
+      else if (byte_offset < curr_byte_offset)
       {
         // ignore
         have_packet = false;
       }
       else
       {
+        //cerr << "ELSE byte_offset=" << byte_offset << " [" << curr_byte_offset <<" - " << next_byte_offset << " - " << overflow_maxbyte << "] bytes_received=" << bytes_received << " bytes_this_buf=" << bytes_this_buf << endl; 
+
         need_next_block = true;
+        have_packet = true;
       }
 
       if (bytes_this_buf >= data_bufsz || need_next_block)
       {
         //cerr << "need next buf this=" << bytes_this_buf << " size=" << data_bufsz << " overflowed_bytes=" << overflowed_bytes <<  endl;
         stats->dropped_bytes (data_bufsz - bytes_this_buf);
+        need_next_block = true;
       }
     }
   }

@@ -93,7 +93,12 @@ int spip::UDPReceiveDB::configure (const char * config)
   if (header.get ("DATA_PORT", "%d", &data_port) != 1)
     throw invalid_argument ("DATA_PORT did not exist in header");
 
-  cerr << "UDP source " << data_host << ":" << data_port << endl;
+  if (header.get ("DATA_MCAST", "%s", buffer) != 1)
+    data_mcast = string ();
+  else
+    data_mcast = string (buffer);
+  if (header.get ("DATA_PORT", "%d", &data_port) != 1)
+    throw invalid_argument ("DATA_PORT did not exist in header");
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
@@ -119,7 +124,14 @@ void spip::UDPReceiveDB::prepare ()
 {
   // create and open a UDP receiving socket
   sock = new UDPSocketReceive ();
-  sock->open (data_host, data_port);
+
+  if (data_mcast.size() > 0)
+  {
+    cerr << "spip::UDPReceiveDB::prepare sock->open_multicast" << endl;
+    sock->open_multicast (data_host, data_mcast, data_port);
+  }
+  else
+    sock->open (data_host, data_port);
   
   if (!vma_api)
   {
@@ -448,18 +460,18 @@ bool spip::UDPReceiveDB::receive ()
   int result;
 
   // block accounting 
-  uint64_t curr_byte_offset = 0;
-  uint64_t next_byte_offset = data_bufsz;
+  int64_t curr_byte_offset = 0;
+  int64_t next_byte_offset = data_bufsz;
 
   // overflow buffer
-  const uint64_t overflow_bufsz = 2097152;
-  uint64_t overflow_lastbyte = 0;
-  uint64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
-  uint64_t overflowed_bytes = 0;
+  const int64_t overflow_bufsz = 2097152;
+  int64_t overflow_lastbyte = 0;
+  int64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
+  int64_t overflowed_bytes = 0;
   char * overflow = (char *) malloc(overflow_bufsz);
   memset (overflow, 0, overflow_bufsz);
 
-  uint64_t bytes_this_buf = 0;
+  int64_t bytes_this_buf = 0;
   int64_t byte_offset;
 
   unsigned bytes_received, bytes_dropped;
@@ -576,10 +588,10 @@ bool spip::UDPReceiveDB::receive ()
         next_byte_offset += data_bufsz;
         overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
-//#ifdef _DEBUG
+#ifdef _DEBUG
         cerr << "spip::UDPReceiveDB::receive [" << curr_byte_offset << " - " 
              << next_byte_offset << "] (" << bytes_this_buf << ")" << endl;
-//#endif
+#endif
 
         if (overflow_lastbyte > 0)
         {
@@ -610,7 +622,7 @@ bool spip::UDPReceiveDB::receive ()
         overflowed_bytes += bytes_received;
         have_packet = false;
       }
-      else if (byte_offset < 0)
+      else if (byte_offset < curr_byte_offset)
       {
         // ignore
         have_packet = false;
@@ -620,7 +632,6 @@ bool spip::UDPReceiveDB::receive ()
         need_next_block = true;
         have_packet = true;
       }
-
 
       // close open data block buffer if is is now full
       if (bytes_this_buf >= data_bufsz || need_next_block)
@@ -636,6 +647,7 @@ bool spip::UDPReceiveDB::receive ()
 #endif
         stats->dropped_bytes (data_bufsz - bytes_this_buf);
         db->close_block (data_bufsz);
+        need_next_block = true;
       }
     }
 
