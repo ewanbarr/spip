@@ -115,36 +115,6 @@ inline int spip::UDPFormatMeerKATSimple::check_packet ()
   return (curr_packet_number - (prev_packet_number + 1)) * packet_data_size;
 }
 
-inline int spip::UDPFormatMeerKATSimple::insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_start_samp)
-{
-  const uint64_t sample_number = header.seq_number * SAMPLES_PER_BLOCK; 
-  if (sample_number < start_samp)
-  {
-    cerr << "header.seq_number=" << header.seq_number << " header.channel_number=" << header.channel_number << endl;
-    cerr << "sample_number=" << sample_number << " start_samp=" << start_samp << endl;
-    return UDP_PACKET_TOO_LATE;
-  }
-  if (sample_number >= next_start_samp)
-  {
-    return UDP_PACKET_TOO_EARLY;
-  }
-
-  // determine the channel offset in bytes
-  const unsigned channel_offset = (header.channel_number - start_channel) * channel_stride;
-  const unsigned sample_offset = (sample_number - start_samp) * ndim;
- 
-  // incremement buf pointer to 
-  const unsigned pol0_offset = channel_offset + sample_offset;
-  const unsigned pol1_offset = pol0_offset + chanpol_stride;
-
-  //cerr << "seq=" << header.seq_number << " chan=" << header.channel_number << " sample_number=" << sample_number << " channel_offset=" << channel_offset << " sample_offset=" << sample_offset << " pol0_offset=" << pol0_offset << " pol1_offset=" << pol1_offset << endl;
-
-  memcpy (buf + pol0_offset, pkt, SAMPLES_PER_BLOCK * 2);
-  memcpy (buf + pol1_offset, pkt + (SAMPLES_PER_BLOCK * 2), (SAMPLES_PER_BLOCK * 2));
-
-  return SAMPLES_PER_BLOCK * 4;
-}
-
 // generate the next packet in the cycle
 inline void spip::UDPFormatMeerKATSimple::gen_packet (char * buf, size_t bufsz)
 {

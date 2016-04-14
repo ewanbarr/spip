@@ -29,8 +29,6 @@ namespace spip {
 
       void generate_signal ();
 
-      void set_nsamp_per_block (unsigned _nsamp);
-
       virtual void gen_packet (char * buf, size_t bufsz) = 0;
 
       virtual uint64_t get_samples_for_bytes (uint64_t nbytes) = 0;
@@ -93,9 +91,9 @@ namespace spip {
 
       unsigned nchan;
 
-      unsigned channel_stride;
+      //unsigned channel_stride;
 
-      unsigned chanpol_stride;
+      //unsigned chanpol_stride;
 
       double n2;
       

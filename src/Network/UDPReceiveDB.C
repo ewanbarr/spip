@@ -104,12 +104,8 @@ int spip::UDPReceiveDB::configure (const char * config)
   bytes_per_second = bits_per_second / 8;
 
   if (!format)
-    throw runtime_error ("unable for configure format");
+    throw runtime_error ("unable to configure format");
   format->configure (header, "");
-
-  uint64_t block_size = db->get_data_bufsz();
-  unsigned nsamp_per_block = block_size / (nchan * npol * ndim * nbit / 8);
-  format->set_nsamp_per_block (nsamp_per_block);
 
   // now write new params to header
   uint64_t resolution = format->get_resolution();

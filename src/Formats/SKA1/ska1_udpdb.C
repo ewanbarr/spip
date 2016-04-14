@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) try
 
   string format = "standard";
 
-  spip::AsciiHeader header;
+  spip::AsciiHeader config;
 
   // core on which to bind thread operations
   int core = -1;
@@ -105,15 +105,15 @@ int main(int argc, char *argv[]) try
  
   signal(SIGINT, signal_handler);
 
-  if (header.load_from_file (argv[optind]) < 0)
+  if (config.load_from_file (argv[optind]) < 0)
   {
-    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+    cerr << "ERROR: could not read ASCII config from " << argv[optind] << endl;
     return (EXIT_FAILURE);
   }
 
   if (verbose)
-    cerr << "ska1_udpdb: configuring based on header" << endl;
-  udpdb->configure (header.raw());
+    cerr << "ska1_udpdb: configuring" << endl;
+  udpdb->configure (config.raw());
 
   if (verbose)
     cerr << "ska1_udpdb: allocating resources" << endl;
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) try
 
   if (verbose)
     cerr << "ska1_udpdb: writing header to data block" << endl;
-  udpdb->open (header.raw());
+  udpdb->open ();
 
   if (verbose)
     cerr << "ska1_udpdb: starting stats thread" << endl;
@@ -132,6 +132,9 @@ int main(int argc, char *argv[]) try
     cerr << "ska1_udpdb: failed to start stats thread" << endl;
     return (EXIT_FAILURE);
   }
+
+  cerr << "ska1_udpdb: issuing start command" << endl;
+  udpdb->start_capture ();
 
   if (verbose)
     cerr << "ska1_udpdb: receiving" << endl;
@@ -156,8 +159,8 @@ catch (std::exception& exc)
 
 void usage() 
 {
-  cout << "ska1_udpdb [options] header\n"
-    "  header      ascii file contain config\n"
+  cout << "ska1_udpdb [options] config\n"
+    "  config      ascii file containing config\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -f format   UDP data format [standard custom]\n"
     "  -h          print this help text\n"

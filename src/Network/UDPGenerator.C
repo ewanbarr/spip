@@ -6,7 +6,6 @@
  ***************************************************************************/
 
 #include "spip/UDPGenerator.h"
-#include "spip/AsciiHeader.h"
 #include "sys/time.h"
 
 #include <cstring>
@@ -43,39 +42,50 @@ spip::UDPGenerator::~UDPGenerator()
 
 int spip::UDPGenerator::configure (const char * config)
 {
-  if (spip::AsciiHeader::header_get (config, "NCHAN", "%u", &nchan) != 1)
-    throw invalid_argument ("NCHAN did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NBIT", "%u", &nbit) != 1)
-    throw invalid_argument ("NBIT did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NPOL", "%u", &npol) != 1)
-    throw invalid_argument ("NPOL did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NDIM", "%u", &ndim) != 1)
-    throw invalid_argument ("NDIM did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "TSAMP", "%f", &tsamp) != 1)
-    throw invalid_argument ("TSAMP did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "BW", "%f", &bw) != 1)
-    throw invalid_argument ("BW did not exist in header");
-
-  channel_bw = bw / nchan;
-
+  // save the header for use later
   header.load_from_str (config);
 
+  if (header.get ("NCHAN", "%u", &nchan) != 1)
+    throw invalid_argument ("NCHAN did not exist in config");
+
+  if (header.get ("NBIT", "%u", &nbit) != 1)
+    throw invalid_argument ("NBIT did not exist in config");
+
+  if (header.get ("NPOL", "%u", &npol) != 1)
+    throw invalid_argument ("NPOL did not exist in config");
+
+  if (header.get ("NDIM", "%u", &ndim) != 1)
+    throw invalid_argument ("NDIM did not exist in config");
+
+  if (header.get ("TSAMP", "%f", &tsamp) != 1)
+    throw invalid_argument ("TSAMP did not exist in config");
+
+  if (header.get ("BW", "%f", &bw) != 1)
+    throw invalid_argument ("BW did not exist in config");
+
+  char * buffer = (char *) malloc (128);
+  if (header.get ("DATA_HOST", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST did not exist in config");
+  data_host = string (buffer);
+  if (header.get ("DATA_PORT", "%d", &data_port) != 1)
+    throw invalid_argument ("DATA_PORT did not exist in config");
+  free (buffer);
+
+  cerr << "UDP dest " << data_host << ":" << data_port << endl;
+
+  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
+  bytes_per_second = bits_per_second / 8;
+
   if (!format)
-    throw runtime_error ("unable for prepare format");
+    throw runtime_error ("unable to configure format");
   format->configure (header, "");
+
+
 }
 
 // allocate memory for 1 second of data for use in packet generation
 void spip::UDPGenerator::allocate_signal()
 {
-  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
-  bytes_per_second = bits_per_second / 8;
-
   if (bytes_per_second > signal_buffer_size)
   {
     if (signal_buffer_size)
@@ -98,15 +108,16 @@ void spip::UDPGenerator::set_format (UDPFormat * fmt)
   format = fmt;
 }
 
-void spip::UDPGenerator::prepare (std::string ip_address, int port)
+void spip::UDPGenerator::prepare ()
 {
   // create and open a UDP sending socket
   sock = new UDPSocketSend();
-  sock->open (ip_address, port);
+  sock->open (data_host, data_port);
   
   unsigned header_size = format->get_header_size();
   unsigned data_size   = format->get_data_size();
 
+  cerr << "header_size=" << header_size << " data_size=" << data_size << endl;
   sock->resize (header_size + data_size);
 
   // initialize a stats class
@@ -159,16 +170,18 @@ void spip::UDPGenerator::transmit (unsigned tobs, float data_rate)
 
   char wait = 1;
 
+  const uint64_t payload_size = format->get_data_size();
+
   cerr << "spip::UDPGenerator::transmit bytes_per_second=" << bytes_per_second << endl;
   cerr << "spip::UDPGenerator::transmit bytes_to_send=" << bytes_to_send << endl;
   cerr << "spip::UDPGenerator::transmit packets_to_send=" << packets_to_send<< endl;
   cerr << "spip::UDPGenerator::transmit packets_per_second=" << packets_per_second<< endl;
   cerr << "spip::UDPGenerator::transmit sleep_time=" << sleep_time<< endl;
   cerr << "spip::UDPGenerator::transmit start_second=" << start_second<< endl;
+  cerr << "spip::UDPGenerator::transmit payload_size=" << payload_size << endl;
+  cerr << "spip::UDPGenerator::transmit bufsz=" << bufsz << endl;
 
   keep_transmitting = true;
-
-  const uint64_t payload_size = format->get_data_size();
 
   while (total_bytes_sent < bytes_to_send && keep_transmitting)
   {
