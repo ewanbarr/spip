@@ -28,7 +28,7 @@ spip::UDPSocket::~UDPSocket ()
 
 void spip::UDPSocket::open (int port)
 {
-  fd = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  fd = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (fd < 0)
     throw runtime_error("could not create socket");
 

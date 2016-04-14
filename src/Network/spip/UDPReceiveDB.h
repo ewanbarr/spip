@@ -78,6 +78,8 @@ namespace spip {
 
       std::string data_host;
 
+      std::string data_mcast;
+
       int data_port;
 
       UDPSocketReceive * sock;

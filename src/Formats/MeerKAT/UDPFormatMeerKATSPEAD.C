@@ -72,16 +72,26 @@ void spip::UDPFormatMeerKATSPEAD::configure(const spip::AsciiHeader& config, con
 
 void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, const char * suffix)
 {
-  char * buffer = (char *) malloc (128);
-  char * meta_host = (char *) malloc (128);
-  int meta_port = -1;
+  char * key = (char *) malloc (128);
+  char * val = (char *) malloc (128);
 
-  sprintf (buffer, "META_HOST%s", suffix);
-  if (header.get (buffer, "%s", meta_host) != 1)
+  boost::asio::ip::address meta_host;
+  int meta_port = -1;
+  boost::asio::ip::address meta_mcast;
+
+  sprintf (key, "META_HOST%s", suffix);
+  if (header.get (key, "%s", val) != 1)
     throw invalid_argument ("META_HOST did not exist in header");
-  sprintf (buffer, "META_PORT%s", suffix);
-  if (header.get (buffer, "%u", &meta_port) != 1)
+  meta_host = boost::asio::ip::address::from_string(string(val));
+
+  sprintf (key, "META_MCAST%s", suffix);
+  if (header.get (key, "%s", val) == 1)
+    meta_mcast = boost::asio::ip::address::from_string(string(val));
+
+  sprintf (key, "META_PORT%s", suffix);
+  if (header.get (key, "%u", &meta_port) != 1)
     throw invalid_argument ("META_PORT did not exist in header");
+
 
   int lower = 1048576;
   int upper = lower + 4096;
@@ -90,14 +100,25 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
   spead2::thread_pool worker;
   spead2::recv::ring_stream<> stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
   stream.set_memory_pool(pool);
-  // fix this 
-  boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address_v4::any(), meta_port);
-  stream.emplace_reader<spead2::recv::udp_reader>(endpoint, spead2::recv::udp_reader::default_max_size, 262144);
+
+  size_t max_size = spead2::recv::udp_reader::default_max_size;
+  size_t buffer_size = 262144;
+  if (meta_host.is_v4())
+  {
+    cerr << "Creating multicast endpoint " << meta_host << ":" << meta_port << endl;
+    boost::asio::ip::udp::endpoint endpoint(meta_mcast, meta_port);
+    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size, meta_host);
+  }
+  else
+  {
+    cerr << "Creating unicast endpoint " << meta_host << ":" << meta_port << endl;
+    boost::asio::ip::udp::endpoint endpoint(meta_host, meta_port);
+    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size);
+  }
 
   bool keep_receiving = true;
   bool have_metadata = false;
 
-  cerr << "Waiting for meta-data on port " << meta_port << endl;
   while (keep_receiving && !have_metadata)
   {
     try
@@ -122,9 +143,9 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
   time_t adc_sync_time = bf_config.get_sync_time();
   uint64_t adc_sample_rate = bf_config.get_adc_sample_rate();
 
-  if (header.get ("UTC_START", "%s", buffer) != 1)
+  if (header.get ("UTC_START", "%s", key) != 1)
     throw invalid_argument ("UTC_START did not exist in header");
-  spip::Time utc_start(buffer);
+  spip::Time utc_start(key);
 
   cerr << "adc_sync_time=" << adc_sync_time << endl;
   cerr << "utc_start.get_time=" << utc_start.get_time() << endl;
@@ -132,7 +153,7 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
 
   obs_start_sample = (int64_t) (adc_sample_rate * (utc_start.get_time() - adc_sync_time));
 
-  cerr << "UTC_START=" << buffer << " obs_start_sample=" << obs_start_sample << endl;
+  cerr << "UTC_START=" << key<< " obs_start_sample=" << obs_start_sample << endl;
 
   double cbf_byte_rate = ((double) nchan * nbytes_per_samp * 1e6) / tsamp;
   cerr << "cbf_byte_rate=" << cbf_byte_rate << endl;
@@ -140,8 +161,8 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
   adc_to_cbf = (double) adc_sample_rate / cbf_byte_rate;
   cerr << "adc_to_cbf=" << adc_to_cbf << endl;
 
-  free (buffer);
-  free (meta_host);
+  free (key);
+  free (val);
 
   prepared = true;
 }
@@ -204,15 +225,18 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
     {
       int64_t adc_sample = get_timestamp_fast();
       int64_t obs_sample = adc_sample - obs_start_sample;
-      curr_heap_cnt = header.heap_cnt;
 
+      // if this packet pre-dates our start time, ignore
+      if (obs_sample < 0)
+        return -1;
+
+      curr_heap_cnt = header.heap_cnt;
       curr_heap_offset = (uint64_t) ((double) obs_sample / adc_to_cbf);
 
+#ifdef _DEBUG
       double t_offset = (double) obs_sample / 1712000000.0;
-      if (header.heap_cnt % 1000 == 0)
-        print_packet_timestamp();
-      //cerr << "adc_sample=" << adc_sample << " obs_sample=" << obs_sample << " offset=" << t_offset <<  " curr_heap_offset=" << curr_heap_offset << endl;
-
+      cerr << "spip::UDPFormatMeerKATSPEAD::decode_packet adc=" << adc_sample << " t_offset=" << t_offset << endl;
+#endif
     }
     // ignore
     else

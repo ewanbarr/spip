@@ -191,7 +191,6 @@ void usage()
 {
   cout << "meerkat_udpdb [options] config\n"
     "  config      ascii file containing fixed configuration\n"
-    "  host        hostname/ip of UDP receiver\n"
     "  -b core     bind computation to specified CPU core\n"
     "  -c port     control port for dynamic configuration\n"
 #ifdef HAVE_SPEAD2

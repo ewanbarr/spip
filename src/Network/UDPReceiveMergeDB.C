@@ -8,7 +8,8 @@
 #include "spip/HardwareAffinity.h"
 #include "spip/TCPSocketServer.h"
 #include "spip/UDPReceiveMergeDB.h"
-#include "sys/time.h"
+#include "spip/Time.h"
+//#include "sys/time.h"
 
 #include <cstring>
 #include <iostream>
@@ -44,6 +45,9 @@ spip::UDPReceiveMergeDB::UDPReceiveMergeDB (const char * key_string)
   pthread_cond_init( &cond, NULL);
   pthread_mutex_init( &mutex, NULL);
 
+  data_mcasts[0] = string ();
+  data_mcasts[1] = string ();
+
   verbose = 1;
 }
 
@@ -57,41 +61,52 @@ spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
 
 int spip::UDPReceiveMergeDB::configure (const char * config)
 {
-  if (spip::AsciiHeader::header_get (config, "NCHAN", "%u", &nchan) != 1)
-    throw invalid_argument ("NCHAN did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NBIT", "%u", &nbit) != 1)
-    throw invalid_argument ("NBIT did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NPOL", "%u", &npol) != 1)
-    throw invalid_argument ("NPOL did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "NDIM", "%u", &ndim) != 1)
-    throw invalid_argument ("NDIM did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "TSAMP", "%f", &tsamp) != 1)
-    throw invalid_argument ("TSAMP did not exist in header");
-
-  if (spip::AsciiHeader::header_get (config, "BW", "%f", &bw) != 1)
-    throw invalid_argument ("BW did not exist in header");
-
-  channel_bw = bw / nchan;
-
-  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
-  bytes_per_second = bits_per_second / 8;
-
-  channel_bw = bw / nchan;
-
-  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
-  bytes_per_second = bits_per_second / 8;
-
   // save the header for use on the first open block
   header.load_from_str (config);
+
+  if (header.get ("NCHAN", "%u", &nchan) != 1)
+    throw invalid_argument ("NCHAN did not exist in header");
+
+  if (header.get ("NBIT", "%u", &nbit) != 1)
+    throw invalid_argument ("NBIT did not exist in header");
+
+  if (header.get ("NPOL", "%u", &npol) != 1)
+    throw invalid_argument ("NPOL did not exist in header");
+
+  if (header.get ("NDIM", "%u", &ndim) != 1)
+    throw invalid_argument ("NDIM did not exist in header");
+
+  if (header.get ("TSAMP", "%f", &tsamp) != 1)
+    throw invalid_argument ("TSAMP did not exist in header");
+
+  if (header.get ("BW", "%f", &bw) != 1)
+    throw invalid_argument ("BW did not exist in header");
+
+  char * buffer = (char *) malloc (128);
+
+  if (header.get ("DATA_HOST_0", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_0 did not exist in header");
+  data_hosts[0] = string (buffer);
+  if (header.get ("DATA_HOST_1", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_1 did not exist in header");
+  data_hosts[1] = string (buffer);
+
+  if (header.get ("DATA_PORT_0", "%d", &data_ports[0]) != 1)
+    throw invalid_argument ("DATA_PORT_0 did not exist in header");
+  if (header.get ("DATA_PORT_1", "%d", &data_ports[1]) != 1)
+    throw invalid_argument ("DATA_PORT_1 did not exist in header");
+
+  if (header.get ("DATA_MCAST_0", "%s", buffer) == 1)
+    data_mcasts[0] = string (buffer);
+  if (header.get ("DATA_MCAST_1", "%s", buffer) == 1)
+    data_mcasts[1] = string (buffer);
+
+  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
+  bytes_per_second = bits_per_second / 8;
 
   if (!formats[0] or !formats[1])
     throw runtime_error ("unable for prepare format");
 
-    throw runtime_error ("unable for prepare format");
   formats[0]->configure (header, "_0");
   formats[1]->configure (header, "_1");
 
@@ -104,16 +119,17 @@ int spip::UDPReceiveMergeDB::configure (const char * config)
   return 0;
 }
 
-void spip::UDPReceiveMergeDB::prepare (std::string ip_address1, int port1, std::string ip_address2, int port2)
+void spip::UDPReceiveMergeDB::prepare ()
 {
-  socks[0] = new UDPSocketReceive ();
-  socks[1] = new UDPSocketReceive ();
-
-  socks[0]->open (ip_address1, port1);
-  socks[1]->open (ip_address2, port2);
-
   for (unsigned i=0; i<2; i++)
   {
+    socks[i] = new UDPSocketReceive ();
+
+    if (data_mcasts[i].size() > 0)
+      socks[i]->open_multicast (data_hosts[i], data_mcasts[i], data_ports[i]);
+    else
+      socks[i]->open (data_hosts[i], data_ports[i]);
+
 #ifdef HAVE_VMA
     vma_apis[i] = vma_get_api();
     if (!vma_apis[i])
@@ -129,7 +145,8 @@ void spip::UDPReceiveMergeDB::prepare (std::string ip_address1, int port1, std::
     if (!vma_apis[i])
       socks[i]->set_nonblock ();
     socks[i]->resize (sock_bufsz);
-    socks[i]->resize_kernel_buffer (32*1024*1024);
+    if (!vma_apis[i])
+      socks[i]->resize_kernel_buffer (32*1024*1024);
     stats[i] = new UDPStats (formats[i]->get_header_size(), formats[i]->get_data_size());
   }
 
@@ -257,6 +274,21 @@ void spip::UDPReceiveMergeDB::control_thread()
 
 void spip::UDPReceiveMergeDB::open ()
 {
+
+  // check if UTC_START has been set
+  char * buffer = (char *) malloc (128);
+  if (header.get ("UTC_START", "%s", buffer) == -1)
+  {
+    cerr << "spip::UDPReceiveDB::open no UTC_START in header" << endl;
+    time_t now = time(0);
+    spip::Time utc_start (now);
+    utc_start.add_seconds (2);
+    std::string utc_str = utc_start.get_gmtime();
+    cerr << "spip::UDPReceiveDB::open UTC_START=" << utc_str  << endl;
+    if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
+      throw invalid_argument ("failed to write UTC_START to header");
+  }
+
   // prepare formats based on run-time header
   formats[0]->prepare (header, "_0");
   formats[1]->prepare (header, "_1");
@@ -438,15 +470,15 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
   int result;
 
   // block accounting 
-  const uint64_t data_bufsz = db->get_data_bufsz() / 2;
-  uint64_t curr_byte_offset = 0;
-  uint64_t next_byte_offset = 0;
+  const int64_t data_bufsz = db->get_data_bufsz() / 2;
+  int64_t curr_byte_offset = 0;
+  int64_t next_byte_offset = 0;
 
   // overflow buffer
-  const uint64_t overflow_bufsz = 2097152;
-  uint64_t overflow_lastbyte = 0;
-  uint64_t overflow_maxbyte = 0;
-  uint64_t overflowed_bytes = 0;
+  const int64_t overflow_bufsz = 2097152;
+  int64_t overflow_lastbyte = 0;
+  int64_t overflow_maxbyte = 0;
+  int64_t overflowed_bytes = 0;
   char * overflow = (char *) malloc(overflow_bufsz);
   memset (overflow, 0, overflow_bufsz);
 
@@ -593,7 +625,7 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
         overflowed_bytes += bytes_received;
         have_packet = false;
       }
-      else if (byte_offset < 0)
+      else if (byte_offset < curr_byte_offset)
       {
         // ignore
         have_packet = false;

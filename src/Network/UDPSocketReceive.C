@@ -22,21 +22,28 @@ spip::UDPSocketReceive::UDPSocketReceive ()
 {
   have_packet = 0;
   kernel_bufsz = 131071;      // general default buffer size for linux kernels
+  multicast = false;
 }
 
 spip::UDPSocketReceive::~UDPSocketReceive ()
 {
+  if (multicast)
+    close_multicast();
   if (buf)
     free (buf);
 }
 
 void spip::UDPSocketReceive::open (string ip_address, int port)
 {
+  cerr << "spip::UDPSocketReceive::open(" << ip_address << ", " << port << ")" << endl;
   // open the socket FD
   spip::UDPSocket::open (port);
 
   if (ip_address.compare("any") == 0)
+  {
+    cerr << "spip::UDPSocketReceive::open s_addr = htonl (INADDR_ANY)" << endl;
     udp_sock.sin_addr.s_addr = htonl (INADDR_ANY);
+  }
   else
     udp_sock.sin_addr.s_addr = inet_addr (ip_address.c_str());
 
@@ -44,6 +51,36 @@ void spip::UDPSocketReceive::open (string ip_address, int port)
   if (bind(fd, (struct sockaddr *)&udp_sock, sizeof(udp_sock)) == -1) 
   {
     throw runtime_error ("could not bind to UDP socket");
+  }
+}
+
+void spip::UDPSocketReceive::open_multicast (string ip_address, string group, int port)
+{
+  // open the UDP socket on INADDR_ANY
+  open ("any", port);
+
+  struct ip_mreq mreq;
+
+    // use setsockopt() to request that the kernel join a multicast group
+  mreq.imr_multiaddr.s_addr=inet_addr(group.c_str());
+  mreq.imr_interface.s_addr=inet_addr(ip_address.c_str());
+
+  cerr << "spip::UDPSocketReceive::open_multicast mreq.imr_multiaddr.s_addr=inet_addr=" << group << ":" << port << endl;
+  cerr << "spip::UDPSocketReceive::open_multicast mreq.imr_interface.s_addr=inet_addr=" << ip_address<< endl;
+
+  if (setsockopt(fd, IPPROTO_IP,IP_ADD_MEMBERSHIP,&mreq,sizeof(mreq)) < 0)
+  {
+    throw runtime_error ("could not subscribe to multicast address");
+  }
+  multicast = true;
+}
+
+void spip::UDPSocketReceive::close_multicast ()
+{
+  struct ip_mreq mreq;
+  if (setsockopt(fd, IPPROTO_IP,IP_DROP_MEMBERSHIP,&mreq,sizeof(mreq)) < 0)
+  {
+    throw runtime_error ("could not unsubscribe from multicast address");
   }
 }
 

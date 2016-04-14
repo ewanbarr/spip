@@ -20,8 +20,6 @@
 #include <cstring>
 #include <iostream>
 
-#define MEERKAT_DEFAULT_SPEAD_PORT 8888
-
 void usage();
 void signal_handler (int signal_value);
 
@@ -40,13 +38,6 @@ int main(int argc, char *argv[])
 
   char * config_file = 0;
 
-  // Host/IP to receive packets on 
-  char * host;
-
-  // udp port to send data to
-  int port1 = MEERKAT_DEFAULT_SPEAD_PORT;
-  int port2 = MEERKAT_DEFAULT_SPEAD_PORT + 1;
-
   // core on which to bind thread operations
   int core1 = -1;
   int core2 = -1;
@@ -61,7 +52,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:c:f:hk:p:q:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:c:f:hk:v")) != EOF) 
   {
     switch(c) 
     {
@@ -85,14 +76,6 @@ int main(int argc, char *argv[])
 
       case 'k':
         key = optarg;
-        break;
-
-      case 'p':
-        port1 = atoi(optarg);
-        break;
-
-      case 'q':
-        port2 = atoi(optarg);
         break;
 
       case 'v':
@@ -124,9 +107,9 @@ int main(int argc, char *argv[])
   }
 
   // Check arguments
-  if ((argc - optind) != 2) 
+  if ((argc - optind) != 1) 
   {
-    fprintf(stderr,"ERROR: 2 command line arguments expected\n");
+    fprintf(stderr,"ERROR: 1 command line argument expected\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -140,9 +123,6 @@ int main(int argc, char *argv[])
     return (EXIT_FAILURE);
   }
 
-  // local address/host to listen on
-  host = strdup(argv[optind+1]);
-
   uint64_t data_bufsz = udpmergedb->get_data_bufsz();
   if (config.set("RESOLUTION", "%lu", data_bufsz) < 0)
   {
@@ -155,9 +135,8 @@ int main(int argc, char *argv[])
   udpmergedb->configure (config.raw());
 
   if (verbose)
-    cerr << "meerkat_udpmergedb: listening for packets on " << host << ":" 
-         << port1 << " and  " << host << ":" << port2 << endl;
-  udpmergedb->prepare (std::string(host), port1, std::string(host), port2);
+    cerr << "meerkat_udpmergedb: allocating resources" << endl;
+  udpmergedb->prepare ();
 
   if (control_port > 0)
   {
@@ -179,7 +158,7 @@ int main(int argc, char *argv[])
   {
     if (verbose)
       cerr << "meerkat_udpmergedb: writing header to data block" << endl;
-    udpmergedb->open (config.raw());
+    udpmergedb->open ();
 
     cerr << "meerkat_udpmergedb: calling receive" << endl;
     if (verbose)
@@ -205,9 +184,8 @@ int main(int argc, char *argv[])
 
 void usage() 
 {
-  cout << "meerkat_udpmergedb [options] header host\n"
+  cout << "meerkat_udpmergedb [options] header\n"
     "  header      ascii file contain header\n"
-    "  host        ip to listen on\n"
     "  -b core     bind pol1 to specified CPU core\n"
     "  -c core     bind pol2 to specified CPU core\n"
 #ifdef HAVE_SPEAD2
@@ -217,8 +195,6 @@ void usage()
 #endif
     "  -k key      shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << std::dec << "]\n"
     "  -h          print this help text\n"
-    "  -p port     udp port pol1 [default " << MEERKAT_DEFAULT_SPEAD_PORT << "]\n"
-    "  -q port     udp port pol2 [default " << ( MEERKAT_DEFAULT_SPEAD_PORT + 1) << "]\n"
     "  -v          verbose output\n"
     << endl;
 }
@@ -235,5 +211,5 @@ void signal_handler(int signalValue)
     exit(EXIT_FAILURE);
   }
   quit_threads = 1;
-
+  udpmergedb->set_control_cmd (spip::Quit);
 }

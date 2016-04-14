@@ -34,7 +34,7 @@ namespace spip {
 
       int configure (const char * config);
 
-      void prepare (std::string ip_address1, int port1, std::string ip_address2, int port2);
+      void prepare ();
 
       void set_formats (UDPFormat * fmt1, UDPFormat * fmt2);
 
@@ -80,10 +80,6 @@ namespace spip {
 
       bool receive ();
 
-      void start_capture ();
-
-      void stop_capture ();
-
       uint64_t get_data_bufsz () { return db->get_data_bufsz(); };
 
     protected:
@@ -99,6 +95,12 @@ namespace spip {
       ControlState control_state;
 
       ControlState control_states[2];
+
+      std::string data_hosts[2];
+
+      int data_ports[2];
+
+      std::string data_mcasts[2];
 
       unsigned nchan;
 

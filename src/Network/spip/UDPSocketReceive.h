@@ -19,6 +19,12 @@ namespace spip {
       // open the socket
       void open (std::string, int);
 
+      // open the socket and bind to a multicast group
+      void open_multicast (std::string, std::string, int port);
+
+      // close a multicast socket
+      void close_multicast ();
+
       size_t resize_kernel_buffer (size_t);
 
       size_t clear_buffered_packets ();
@@ -32,6 +38,8 @@ namespace spip {
 
       // flag for whether bufsz contains a packet
       char have_packet;
+
+      bool multicast;
 
   };
 
