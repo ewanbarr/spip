@@ -42,10 +42,9 @@ int main(int argc, char *argv[])
   // udp port to send data to
   int port = MEERKAT_DEFAULT_SPEAD_PORT;
 
-  // core on which to bind thread operations
-  int core = -1;
-
+  // for cpu and memory binding
   spip::HardwareAffinity hw_affinity;
+  int core = -1;
 
   int verbose = 0;
 
