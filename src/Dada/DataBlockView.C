@@ -74,9 +74,7 @@ void spip::DataBlockView::read_header ()
   header_size = 0;
   char * header_ptr;
 
-  cerr << "spip::DataBlockView::read_header ipcbuf_get_next_read();\n";
   header_ptr = ipcbuf_get_next_read (header_block, &header_size);
-  cerr << "spip::DataBlockView::read_header header_ptr=" << (void *) header_ptr << " header_size=" << header_size << endl;
 
   while (!header_size)
   {
@@ -88,7 +86,9 @@ void spip::DataBlockView::read_header ()
     {
       cerr << "spip::DataBlockView::read_header End of data on header block" << endl;
       if (ipcbuf_is_reader (header_block))
+      {
         ipcbuf_reset (header_block);
+      }
     }
     else
     {

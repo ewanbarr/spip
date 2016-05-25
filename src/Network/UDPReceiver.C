@@ -10,6 +10,8 @@
 #include "spip/UDPReceiver.h"
 #include "sys/time.h"
 
+#include <unistd.h>
+
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -20,7 +22,7 @@ using namespace std;
 spip::UDPReceiver::UDPReceiver()
 {
   keep_receiving = true;
-  format = 0;
+  format = NULL;
   verbose = 1;
 
 #ifdef HAVE_VMA
@@ -36,10 +38,14 @@ spip::UDPReceiver::UDPReceiver()
 
 spip::UDPReceiver::~UDPReceiver()
 {
-  delete format;
+  if (format)
+  {
+    format->conclude();
+    delete format;
+  }
 }
 
-int spip::UDPReceiver::configure (const char * config_str)
+void spip::UDPReceiver::configure (const char * config_str)
 {
   header.load_from_str (config_str);
 
@@ -71,6 +77,7 @@ int spip::UDPReceiver::configure (const char * config_str)
     data_mcast = string (buffer);
   if (header.get ("DATA_PORT", "%d", &data_port) != 1)
     throw invalid_argument ("DATA_PORT did not exist in header");
+  free (buffer);
 
   if (verbose)
     cerr << "spip::UDPReceiver::configure receiving on " 
@@ -80,10 +87,8 @@ int spip::UDPReceiver::configure (const char * config_str)
   bytes_per_second = bits_per_second / 8;
 
   if (!format)
-    throw runtime_error ("unable for configure format");
+    throw runtime_error ("format was not allocated");
   format->configure (header, "");
-
-  free (buffer);
 }
 
 void spip::UDPReceiver::prepare ()
@@ -115,8 +120,6 @@ void spip::UDPReceiver::prepare ()
   if (verbose)
     cerr << "spip::UDPReceiver::prepare sock->resize(" << sock_size << ")" << endl;
   sock->resize (sock_size);
-
-  // this should not be required when using VMA offloading
   sock->resize_kernel_buffer (64*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
@@ -155,6 +158,7 @@ void spip::UDPReceiver::receive ()
 
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
+  char * buf_ptr = buf;
   size_t sock_bufsz = sock->get_bufsz();
 
   bool have_packet = false;
@@ -175,7 +179,7 @@ void spip::UDPReceiver::receive ()
   int64_t next_byte_offset = data_bufsz;
 
   // overflow buffer
-  const int64_t overflow_bufsz = 2*1024*1024;
+  const int64_t overflow_bufsz = 2097152;
   int64_t overflow_lastbyte = 0;
   int64_t overflow_maxbyte = next_byte_offset + overflow_bufsz;
   int64_t overflowed_bytes = 0;
@@ -189,6 +193,9 @@ void spip::UDPReceiver::receive ()
 #ifdef HAVE_VMA
   int flags;
 #endif
+
+  if (verbose)
+    cerr << "spip::UDPReceiver::receive starting main loop" << endl;
 
   while (keep_receiving)
   {
@@ -206,11 +213,12 @@ void spip::UDPReceiver::receive ()
         got = vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
         if (got  > 32)
         {
-          if (flags & MSG_VMA_ZCOPY)
+          if ((flags & MSG_VMA_ZCOPY) == MSG_VMA_ZCOPY)
           {
-            pkts = (struct vma_packets_t*) buf;
+            pkts = (vma_packets_t*) buf;
+            int npkts = pkts->n_packet_num;
             struct vma_packet_t *pkt = &pkts->pkts[0];
-            buf = (char *) pkt->iov[0].iov_base;
+            buf_ptr = (char *) pkt->iov[0].iov_base;
           }
           have_packet = true;
         }
@@ -283,7 +291,7 @@ void spip::UDPReceiver::receive ()
       }
 
       // decode the header so that the format knows what to do with the packet
-      byte_offset = format->decode_packet (buf, &bytes_received);
+      byte_offset = format->decode_packet (buf_ptr, &bytes_received);
 
       // packet belongs in current buffer
       if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
@@ -307,8 +315,9 @@ void spip::UDPReceiver::receive ()
       }
       else
       {
-        //cerr << "ELSE byte_offset=" << byte_offset << " [" << curr_byte_offset <<" - " << next_byte_offset << " - " << overflow_maxbyte << "] bytes_received=" << bytes_received << " bytes_this_buf=" << bytes_this_buf << endl; 
-
+#ifdef _DEBUG
+        cerr << "ELSE byte_offset=" << byte_offset << " [" << curr_byte_offset <<" - " << next_byte_offset << " - " << overflow_maxbyte << "] bytes_received=" << bytes_received << " bytes_this_buf=" << bytes_this_buf << endl; 
+#endif
         need_next_block = true;
         have_packet = true;
       }
@@ -322,3 +331,9 @@ void spip::UDPReceiver::receive ()
   }
 }
 
+void spip::UDPReceiver::stop_receiving ()
+{
+  keep_receiving = false;
+  if (format)
+    format->conclude();
+}

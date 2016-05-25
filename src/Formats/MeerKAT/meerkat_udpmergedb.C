@@ -32,17 +32,18 @@ int main(int argc, char *argv[])
 {
   string key = "dada";
 
-  string * format = new string("simple");
+  string format = "simple";
 
   spip::AsciiHeader config;
 
   char * config_file = 0;
 
   // core on which to bind thread operations
-  int core1 = -1;
-  int core2 = -1;
+  string cores = "-1,-1";
 
   int control_port = -1;
+
+  int nsecs = -1;
 
   // control socket for the control port
   spip::TCPSocketServer * ctrl_sock = 0;
@@ -52,20 +53,20 @@ int main(int argc, char *argv[])
   opterr = 0;
   int c;
 
-  while ((c = getopt(argc, argv, "b:c:f:hk:v")) != EOF) 
+  while ((c = getopt(argc, argv, "b:c:f:hk:t:v")) != EOF) 
   {
     switch(c) 
     {
       case 'b':
-        core1 = atoi(optarg);
+        cores = string(optarg);
         break;
 
       case 'c':
-        core2 = atoi(optarg);
+        control_port = atoi(optarg);
         break;
 
       case 'f':
-        format = new string(optarg);
+        format = optarg;
         break;
 
       case 'h':
@@ -76,6 +77,10 @@ int main(int argc, char *argv[])
 
       case 'k':
         key = optarg;
+        break;
+
+      case 't':
+        nsecs = atoi(optarg);
         break;
 
       case 'v':
@@ -90,94 +95,106 @@ int main(int argc, char *argv[])
     }
   }
 
-  // create a UDP Receiver
-  udpmergedb = new spip::UDPReceiveMergeDB(key.c_str());
-
-  if (format->compare("simple") == 0)
-    udpmergedb->set_formats (new spip::UDPFormatMeerKATSimple(), new spip::UDPFormatMeerKATSimple());
-#ifdef HAVE_SPEAD2
-  else if (format->compare("spead") == 0)
-    udpmergedb->set_formats (new spip::UDPFormatMeerKATSPEAD(), new spip::UDPFormatMeerKATSPEAD());
-#endif
-  else
+  try
   {
-    cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
-    delete udpmergedb;
-    return (EXIT_FAILURE);
-  }
 
-  // Check arguments
-  if ((argc - optind) != 1) 
-  {
-    fprintf(stderr,"ERROR: 1 command line argument expected\n");
-    usage();
-    return EXIT_FAILURE;
-  }
+    udpmergedb = new spip::UDPReceiveMergeDB(key.c_str());
 
-  signal(SIGINT, signal_handler);
- 
-  // config for the this data stream
-  if (config.load_from_file (argv[optind]) < 0)
-  {
-    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
-    return (EXIT_FAILURE);
-  }
+    if (format.compare("simple") == 0)
+      udpmergedb->set_formats (new spip::UDPFormatMeerKATSimple(), new spip::UDPFormatMeerKATSimple());
+  #ifdef HAVE_SPEAD2
+    else if (format.compare("spead") == 0)
+      udpmergedb->set_formats (new spip::UDPFormatMeerKATSPEAD(), new spip::UDPFormatMeerKATSPEAD());
+  #endif
+    else
+    {
+      cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
+      delete udpmergedb;
+      return (EXIT_FAILURE);
+    }
 
-  uint64_t data_bufsz = udpmergedb->get_data_bufsz();
-  if (config.set("RESOLUTION", "%lu", data_bufsz) < 0)
-  {
-    fprintf (stderr, "ERROR: could not write RESOLUTION=%lu to config\n", data_bufsz);
-    return (EXIT_FAILURE);
-  }
+    // Check arguments
+    if ((argc - optind) != 1) 
+    {
+      fprintf(stderr,"ERROR: 1 command line argument expected\n");
+      usage();
+      return EXIT_FAILURE;
+    }
 
-  if (verbose)
-    cerr << "meerkat_udpmergedb: configuring using fixed config" << endl;
-  udpmergedb->configure (config.raw());
+    int core1, core2;
+    string delimited = ",";
+    size_t pos = cores.find(delimited);
+    string str1 = cores.substr(0, pos);
+    string str2 = cores.substr(pos+1, cores.length());
+    istringstream(str1) >> core1;
+    istringstream(str2) >> core2;
 
-  if (verbose)
-    cerr << "meerkat_udpmergedb: allocating resources" << endl;
-  udpmergedb->prepare ();
+    signal(SIGINT, signal_handler);
+   
+    // config for the this data stream
+    if (config.load_from_file (argv[optind]) < 0)
+    {
+      cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+      return (EXIT_FAILURE);
+    }
 
-  if (control_port > 0)
-  {
-    // open a listening socket for observation parameters
-    cerr << "meerkat_udpmergedb: start_control_thread (" << control_port << ")" << endl;
-    udpmergedb->start_control_thread (control_port);
+    if (verbose)
+      cerr << "meerkat_udpmergedb: configuring using fixed config" << endl;
+    udpmergedb->configure (config.raw());
 
-    bool keep_receiving = true;
-    while (keep_receiving)
+    if (control_port > 0)
+    {
+      // open a listening socket for observation parameters
+      cerr << "meerkat_udpmergedb: start_control_thread (" << control_port << ")" << endl;
+      udpmergedb->start_control_thread (control_port);
+
+      while (!quit_threads)
+      {
+        if (verbose)
+          cerr << "meerkat_udpmergedb: receiving" << endl;
+        udpmergedb->start_threads (core1, core2);
+        udpmergedb->join_threads ();
+        cerr << "meerkat_udpmergedb: receive returned" << endl;
+        udpmergedb->set_control_cmd (spip::None);
+      }
+      udpmergedb->stop_control_thread ();
+    }
+    else
     {
       if (verbose)
         cerr << "meerkat_udpmergedb: receiving" << endl;
       udpmergedb->start_threads (core1, core2);
+
+      if (verbose)
+        cerr << "meerkat_udpmergedb: waiting for meta-data" << endl;
+      if (udpmergedb->open ())
+      {
+        cerr << "meerkat_udpmergedb: issuing start command" << endl;
+        udpmergedb->set_control_cmd (spip::Start);
+      }
+      else
+      {
+        if (verbose)
+          cerr << "meerkat_udpmergedb: failed to open data stream" << endl;
+      }
+      //if (nsecs > 0)
+      //  udpmergedb->set_control_cmd (spip::Stop, nsecs);
+
       udpmergedb->join_threads ();
-      cerr << "meerkat_udpmergedb: receive returned" << endl;
+      cerr << "meerkat_udpmergedb: exiting" << endl;
     }
+
+    udpmergedb->close();
+
+    quit_threads = 1;
+    delete udpmergedb;
   }
-  else
+  catch (std::exception& exc)
   {
-    if (verbose)
-      cerr << "meerkat_udpmergedb: writing header to data block" << endl;
-    udpmergedb->open ();
-
-    cerr << "meerkat_udpmergedb: calling receive" << endl;
-    if (verbose)
-      cerr << "meerkat_udpmergedb: receiving" << endl;
-    udpmergedb->start_threads (core1, core2);
-
-    cerr << "meerkat_udpmergedb: issuing start command" << endl;
-    udpmergedb->set_control_cmd (spip::Start);
-
-    cerr << "meerkat_udpmergedb: waiting for threads to terminate" << endl;
-    udpmergedb->join_threads ();
-    cerr << "meerkat_udpmergedb: receive returned" << endl;
+    cerr << "meerkat_udpmergedb: ERROR: " << exc.what() << endl;
+    return -1;
   }
 
-  //udpmergedb->stop_stats_thread ();
-  udpmergedb->close();
-
-  quit_threads = 1;
-  delete udpmergedb;
 
   return 0;
 }
@@ -185,16 +202,17 @@ int main(int argc, char *argv[])
 void usage() 
 {
   cout << "meerkat_udpmergedb [options] header\n"
-    "  header      ascii file contain header\n"
-    "  -b core     bind pol1 to specified CPU core\n"
-    "  -c core     bind pol2 to specified CPU core\n"
-#ifdef HAVE_SPEAD2
-    "  -f format   UDP data format [simple spead]\n"
-#else
-    "  -f format   UDP data format [simple]\n"
-#endif
-    "  -k key      shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << std::dec << "]\n"
-    "  -h          print this help text\n"
+      "  header      ascii file contain header\n"
+      "  -b c1,c2    bind pols 1 and 2 to cores c1 and c2\n"
+      "  -c port     listen for control commands on port\n"
+  #ifdef HAVE_SPEAD2
+      "  -f format   UDP data format [simple spead]\n"
+  #else
+      "  -f format   UDP data format [simple]\n"
+  #endif
+      "  -t sec      Receive data for sec seconds\n"
+      "  -k key      shared memory key to write to [default " << std::hex << DADA_DEFAULT_BLOCK_KEY << std::dec << "]\n"
+      "  -h          print this help text\n"
     "  -v          verbose output\n"
     << endl;
 }

@@ -51,7 +51,7 @@ namespace spip {
 
       void start_capture () { control_cmd = Start; };
 
-      void stop_capture () { control_cmd = Quit; };
+      void stop_capture () { control_cmd = Stop; };
 
       static void * stats_thread_wrapper (void * obj)
       {

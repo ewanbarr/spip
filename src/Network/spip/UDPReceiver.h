@@ -23,13 +23,13 @@ namespace spip {
 
       ~UDPReceiver ();
 
-      int configure (const char * header_str);
+      void configure (const char * header_str);
 
       void prepare ();
 
       void set_format (UDPFormat * fmt);
 
-      void stop_receiving () { keep_receiving = false; };
+      void stop_receiving ();
 
       // transmission thread
       void receive ();

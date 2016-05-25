@@ -18,6 +18,8 @@ namespace spip {
 
       void lock ();
 
+      void page ();
+
       void close();
 
       void unlock ();

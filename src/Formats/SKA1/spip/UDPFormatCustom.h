@@ -54,6 +54,8 @@ namespace spip {
 
       void prepare (const spip::AsciiHeader& header, const char* suffix);
 
+      void conclude () { ; } ;
+
       void generate_signal ();
 
       uint64_t get_samples_for_bytes (uint64_t nbytes);

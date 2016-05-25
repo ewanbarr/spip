@@ -34,13 +34,15 @@ spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
   obs_start_sample = 0;
   npol = 1;
   ndim = 2;
-  nchan = 4096;
+  nbit = 8;
   nsamp_per_heap = 256;
-  nbytes_per_samp = 2;
+  nbytes_per_samp = (ndim * npol * nbit) / 8;
+
+  // nchan is variable depending on number of active paritions
+  nchan = 4096;
   nbytes_per_heap = nsamp_per_heap * nchan * nbytes_per_samp; 
   timestamp_to_samples = nchan * nbytes_per_samp;
-
-  heap_size = 2097152;
+  heap_size = nbytes_per_heap;
 
   // this is the average size 
   avg_pkt_size = 4096;
@@ -49,122 +51,65 @@ spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
   curr_heap_cnt = -1;
   curr_heap_bytes = 0;
   first_heap = true;
-
-  cerr << "spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD pkts_per_heap=" << pkts_per_heap << endl;
 }
 
 spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()
 {
-  cerr << "spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()" << endl;
 }
 
 void spip::UDPFormatMeerKATSPEAD::configure(const spip::AsciiHeader& config, const char* suffix)
 {
+  if (config.get ("NPOL", "%u", &header_npol) != 1)
+    throw invalid_argument ("NPOL did not exist in config");
   if (config.get ("START_CHANNEL", "%u", &start_channel) != 1)
     throw invalid_argument ("START_CHANNEL did not exist in config");
   if (config.get ("END_CHANNEL", "%u", &end_channel) != 1)
     throw invalid_argument ("END_CHANNEL did not exist in config");
   if (config.get ("TSAMP", "%lf", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in config");
+  if (config.get ("ADC_SAMPLE_RATE", "%lu", &adc_sample_rate) != 1)
+    throw invalid_argument ("ADC_SAMPLE_RATE did not exist in config");
+
   nchan = (end_channel - start_channel) + 1;
+  nbytes_per_heap = nsamp_per_heap * nchan * nbytes_per_samp;
+  timestamp_to_samples = nchan * nbytes_per_samp;
+  heap_size = nbytes_per_heap;
+
   configured = true;
 }
 
 void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, const char * suffix)
 {
   char * key = (char *) malloc (128);
-  char * val = (char *) malloc (128);
 
-  boost::asio::ip::address meta_host;
-  int meta_port = -1;
-  boost::asio::ip::address meta_mcast;
-
-  sprintf (key, "META_HOST%s", suffix);
-  if (header.get (key, "%s", val) != 1)
-    throw invalid_argument ("META_HOST did not exist in header");
-  meta_host = boost::asio::ip::address::from_string(string(val));
-
-  sprintf (key, "META_MCAST%s", suffix);
-  if (header.get (key, "%s", val) == 1)
-    meta_mcast = boost::asio::ip::address::from_string(string(val));
-
-  sprintf (key, "META_PORT%s", suffix);
-  if (header.get (key, "%u", &meta_port) != 1)
-    throw invalid_argument ("META_PORT did not exist in header");
-
-
-  int lower = 1048576;
-  int upper = lower + 4096;
-
-  std::shared_ptr<spead2::memory_pool> pool = std::make_shared<spead2::memory_pool>(lower, upper, 12, 8);
-  spead2::thread_pool worker;
-  spead2::recv::ring_stream<> stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
-  stream.set_memory_pool(pool);
-
-  size_t max_size = spead2::recv::udp_reader::default_max_size;
-  size_t buffer_size = 262144;
-  if (meta_host.is_v4())
-  {
-    cerr << "Creating multicast endpoint " << meta_host << ":" << meta_port << endl;
-    boost::asio::ip::udp::endpoint endpoint(meta_mcast, meta_port);
-    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size, meta_host);
-  }
-  else
-  {
-    cerr << "Creating unicast endpoint " << meta_host << ":" << meta_port << endl;
-    boost::asio::ip::udp::endpoint endpoint(meta_host, meta_port);
-    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size);
-  }
-
-  bool keep_receiving = true;
-  bool have_metadata = false;
-
-  while (keep_receiving && !have_metadata)
-  {
-    try
-    {
-      spead2::recv::heap fh = stream.pop();
-      const auto &items = fh.get_items();
-      for (const auto &item : items)
-        bf_config.parse_item (item);
-
-      vector<spead2::descriptor> descriptors = fh.get_descriptors();
-      for (const auto &descriptor : descriptors)
-        bf_config.parse_descriptor (descriptor);
-      have_metadata = bf_config.valid();
-    }
-    catch (spead2::ringbuffer_stopped &e)
-    {
-      keep_receiving = false;
-    }
-  }
-  cerr << "Received meta-data" << endl;
-
-  time_t adc_sync_time = bf_config.get_sync_time();
-  uint64_t adc_sample_rate = bf_config.get_adc_sample_rate();
-
+  if (header.get ("ADC_SYNC_TIME", "%ld", &adc_sync_time) != 1)
+    throw invalid_argument ("ADC_SYNC_TIME did not exist in config");
   if (header.get ("UTC_START", "%s", key) != 1)
     throw invalid_argument ("UTC_START did not exist in header");
+
   spip::Time utc_start(key);
 
+#ifdef _DEBUG
   cerr << "adc_sync_time=" << adc_sync_time << endl;
   cerr << "utc_start.get_time=" << utc_start.get_time() << endl;
   cerr << "adc_sample_rate=" << adc_sample_rate << endl;
+#endif
 
   obs_start_sample = (int64_t) (adc_sample_rate * (utc_start.get_time() - adc_sync_time));
 
-  cerr << "UTC_START=" << key<< " obs_start_sample=" << obs_start_sample << endl;
+  int64_t modulus = obs_start_sample % heap_size;
+  if (modulus > 0)
+    obs_start_sample += (heap_size - modulus);
 
-  double cbf_byte_rate = ((double) nchan * nbytes_per_samp * 1e6) / tsamp;
-  cerr << "cbf_byte_rate=" << cbf_byte_rate << endl;
-
-  adc_to_cbf = (double) adc_sample_rate / cbf_byte_rate;
-  cerr << "adc_to_cbf=" << adc_to_cbf << endl;
+  cerr << "UTC_START=" << key<< " obs_start_sample=" << obs_start_sample << " modulus=" << modulus << endl;
 
   free (key);
-  free (val);
 
   prepared = true;
+}
+
+void spip::UDPFormatMeerKATSPEAD::conclude ()
+{
 }
 
 
@@ -182,7 +127,7 @@ uint64_t spip::UDPFormatMeerKATSPEAD::get_samples_for_bytes (uint64_t nbytes)
 
 uint64_t spip::UDPFormatMeerKATSPEAD::get_resolution ()
 {
-  uint64_t nbits = nchan * nbytes_per_samp * npol * nbit * ndim;
+  uint64_t nbits = nchan * nbytes_per_samp * npol * nbit * ndim * nsamp_per_heap;
   return nbits / 8;
 }
 
@@ -194,13 +139,11 @@ void spip::UDPFormatMeerKATSPEAD::set_channel_range (unsigned start, unsigned en
   start_channel = start;
   end_channel   = end;
   nchan = (end - start) + 1;
-  //header.frequency_channel.item_address = start;
   cerr << "spip::UDPFormatMeerKATSPEAD::set_channel_range nchan=" <<  nchan << endl;
 }
 
 inline void spip::UDPFormatMeerKATSPEAD::encode_header_seq (char * buf, uint64_t seq)
 {
-  //header.heap_cnt = (seq * 8192) + (heap.payload_offset / 1024);
   encode_header (buf);
 }
 
@@ -209,10 +152,16 @@ inline void spip::UDPFormatMeerKATSPEAD::encode_header (char * buf)
   //memcpy (buf, (void *) &header, sizeof (meerkat_spead_udp_hdr_t));
 }
 
+void spip::UDPFormatMeerKATSPEAD::decode_spead (char * buf)
+{
+  spead2::recv::decode_packet (header, (const uint8_t *) buf, 4152);
+}
+
 // return byte offset for this payload in the whole data stream
 inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned * pkt_size)
 {
   spead2::recv::decode_packet (header, (const uint8_t *) buf, 4152);
+
   *pkt_size = (unsigned) header.payload_length;
 
   if (header.heap_cnt != curr_heap_cnt)
@@ -231,10 +180,10 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
         return -1;
 
       curr_heap_cnt = header.heap_cnt;
-      curr_heap_offset = (uint64_t) ((double) obs_sample / adc_to_cbf);
+      curr_heap_offset = (uint64_t) obs_sample * header_npol;
 
 #ifdef _DEBUG
-      double t_offset = (double) obs_sample / 1712000000.0;
+      double t_offset = (double) obs_sample / adc_sample_rate;
       cerr << "spip::UDPFormatMeerKATSPEAD::decode_packet adc=" << adc_sample << " t_offset=" << t_offset << endl;
 #endif
     }
@@ -321,9 +270,8 @@ void spip::UDPFormatMeerKATSPEAD::print_packet_header()
 void spip::UDPFormatMeerKATSPEAD::print_packet_timestamp ()
 {
   double adc_sample = (double) get_timestamp_fast();
-  double adc_sample_rate = (double) bf_config.get_adc_sample_rate();
+  double adc_sample_rate = (double) adc_sample_rate;
   double adc_time = adc_sample / adc_sample_rate;
-  time_t adc_sync_time = bf_config.get_sync_time();
 
   spip::Time packet_time (adc_sync_time);
   unsigned adc_time_secs = (unsigned) floor(adc_time);

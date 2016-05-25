@@ -48,6 +48,12 @@ void spip::DataBlockWrite::lock ()
   locked = true;
 }
 
+void spip::DataBlockWrite::page ()
+{
+  if (ipcbuf_page ((ipcbuf_t*) data_block) < 0)
+    throw runtime_error ("could not page in data block buffers");
+}
+
 
 void spip::DataBlockWrite::close ()
 {

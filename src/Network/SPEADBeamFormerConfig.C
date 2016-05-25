@@ -159,7 +159,7 @@ bool spip::SPEADBeamFormerConfig::valid ()
   bool config_valid = (n_chans > 0 &&
           feng_pkt_len > 0 &&
           adc_sample_rate > 0 &&
-          //bandwidth > 0 &&
+          bandwidth > 0 &&
           sync_time > 0 &&
           scale_factor_timestamp > 0);
   return config_valid;

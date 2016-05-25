@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <iostream>
+#include <stdexcept> 
 
 using namespace std;
 
@@ -48,11 +49,14 @@ void spip::UDPFormatMeerKATSimple::configure(const spip::AsciiHeader& config, co
     throw invalid_argument ("END_CHANNEL did not exist in config");
   nchan = (end_channel - start_channel) + 1;
   header.channel_number = start_channel;
+  configured = true;
 }
 
 void spip::UDPFormatMeerKATSimple::prepare (const spip::AsciiHeader& hdr, const char * suffix)
 {
+  prepared = true;
 }
+
 void spip::UDPFormatMeerKATSimple::generate_signal ()
 {
 }

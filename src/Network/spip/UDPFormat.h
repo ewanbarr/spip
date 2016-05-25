@@ -27,7 +27,17 @@ namespace spip {
 
       virtual void prepare (const AsciiHeader& header, const char* suffix) = 0;
 
+      virtual void conclude () = 0;
+
       void generate_signal ();
+
+      bool is_configured() { return configured; } ;
+
+      bool is_prepared() { return prepared; } ;
+      
+      void set_configured() { configured = true; };
+
+      void set_prepared() { prepared = true; };
 
       virtual void gen_packet (char * buf, size_t bufsz) = 0;
 

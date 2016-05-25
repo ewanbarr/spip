@@ -14,11 +14,6 @@
 #include <cstdlib>
 #include <pthread.h>
 
-#ifdef  HAVE_VMA
-#include <mellanox/vma_extra.h>
-#endif
-
-
 namespace spip {
 
   enum ControlCmd   { None, Start, Stop, Quit };
@@ -34,20 +29,17 @@ namespace spip {
 
       int configure (const char * config);
 
-      void prepare ();
-
       void set_formats (UDPFormat * fmt1, UDPFormat * fmt2);
 
       void set_control_cmd (ControlCmd cmd);
 
       void start_control_thread (int port);
+      void stop_control_thread ();
 
       static void * control_thread_wrapper (void * obj)
       {
         ((UDPReceiveMergeDB*) obj )->control_thread ();
       }
-
-      void stop_control_thread ();
 
       void start_threads (int core1, int core2);
 
@@ -56,6 +48,7 @@ namespace spip {
       static void * datablock_thread_wrapper (void * obj)
       {
         ((UDPReceiveMergeDB*) obj )->datablock_thread ();
+        pthread_exit (NULL);
       }
 
       bool datablock_thread ();
@@ -63,16 +56,26 @@ namespace spip {
       static void * recv_thread1_wrapper (void * obj)
       {
         ((UDPReceiveMergeDB*) obj )->receive_thread (0);
+        pthread_exit (NULL);
       }
 
       static void * recv_thread2_wrapper (void * obj)
       {
         ((UDPReceiveMergeDB*) obj )->receive_thread (1);
+        pthread_exit (NULL);
       }
 
       bool receive_thread (int pol);
 
-      void open ();
+      static void * stats_thread_wrapper (void * obj)
+      {
+        ((UDPReceiveMergeDB*) obj )->stats_thread ();
+        pthread_exit (NULL);
+      }
+
+      void stats_thread();
+
+      bool open ();
 
       void open (const char * header);
 
@@ -138,11 +141,15 @@ namespace spip {
 
       pthread_t recv_thread2_id;
 
-      pthread_cond_t cond;
+      pthread_t stats_thread_id;
 
-      pthread_mutex_t mutex;
+      pthread_cond_t cond_db;
 
-      UDPSocketReceive * socks[2];
+      pthread_mutex_t mutex_db;
+
+      pthread_cond_t cond_recvs[2];
+
+      pthread_mutex_t mutex_recvs[2];
 
       UDPFormat * formats[2];
 
@@ -152,20 +159,15 @@ namespace spip {
 
       bool full[2];
 
+      char * overflow;
+
+      int64_t overflow_lastbytes[2];
+
       unsigned heap_size;
 
       uint64_t timestamp;
 
       AsciiHeader header;
-
-
-#ifdef HAVE_VMA
-      struct vma_api_t *vma_apis[2];
-
-      struct vma_packets_t* pkts[2];
-#else
-      char vma_apis[2];
-#endif
 
   };
 

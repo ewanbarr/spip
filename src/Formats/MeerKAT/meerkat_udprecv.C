@@ -80,29 +80,6 @@ int main(int argc, char *argv[])
     }
   }
 
-  // create a UDP Receiver
-  udprecv = new spip::UDPReceiver();
-  udprecv->verbose = verbose;
-
-  if (verbose)
-    cerr << "meerkat_udprecv: configuring format to be " << format << endl;
-
-  if (format->compare("simple") == 0)
-    udprecv->set_format (new spip::UDPFormatMeerKATSimple());
-#ifdef HAVE_SPEAD2
-  else if (format->compare("spead") == 0)
-  {
-    cerr << "spip::UDPReceiver set_format (spip::UDPFormatMeerKATSPEAD)" << endl;
-    udprecv->set_format (new spip::UDPFormatMeerKATSPEAD());
-  }
-#endif
-  else
-  {
-    cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
-    delete udprecv;
-    return (EXIT_FAILURE);
-  }
-
   // Check arguments
   if ((argc - optind) != 1) 
   {
@@ -113,46 +90,76 @@ int main(int argc, char *argv[])
 
   signal(SIGINT, signal_handler);
 
-  if (verbose)
-    cerr << "meerkat_udprecv: Loading configuration from " << argv[optind] << endl;
-
-  // config file for this data stream
-  if (config.load_from_file (argv[optind]) < 0)
+  try 
   {
-    cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
-    return (EXIT_FAILURE);
+    // create a UDP Receiver
+    udprecv = new spip::UDPReceiver();
+    udprecv->verbose = verbose;
+
+    if (verbose)
+      cerr << "meerkat_udprecv: configuring format to be " << format << endl;
+
+    if (format->compare("simple") == 0)
+      udprecv->set_format (new spip::UDPFormatMeerKATSimple());
+#ifdef HAVE_SPEAD2
+    else if (format->compare("spead") == 0)
+    {
+      udprecv->set_format (new spip::UDPFormatMeerKATSPEAD());
+    }
+#endif
+    else
+    {
+      cerr << "ERROR: unrecognized UDP format [" << format << "]" << endl;
+      delete udprecv;
+      return (EXIT_FAILURE);
+    }
+
+    if (verbose)
+      cerr << "meerkat_udprecv: Loading configuration from " << argv[optind] << endl;
+
+    // config file for this data stream
+    if (config.load_from_file (argv[optind]) < 0)
+    {
+      cerr << "ERROR: could not read ASCII header from " << argv[optind] << endl;
+      return (EXIT_FAILURE);
+    }
+
+    if (udprecv->verbose)
+      cerr << "meerkat_udprecv: configuring using fixed config" << endl;
+    udprecv->configure (config.raw());
+
+    if (udprecv->verbose)
+      cerr << "meerkat_udprecv: allocating runtime resources" << endl;
+    udprecv->prepare ();
+
+    if (udprecv->verbose)
+      cerr << "meerkat_udprecv: starting stats thread" << endl;
+    pthread_t stats_thread_id;
+    int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) recv);
+    if (rval != 0)
+    {
+      cerr << "meerkat_udprecv: failed to start stats thread" << endl;
+      return (EXIT_FAILURE);
+    }
+
+    if (udprecv->verbose)
+      cerr << "meerkat_udprecv: receiving" << endl;
+    udprecv->receive ();
+
+    quit_threads = 1;
+
+    if (udprecv->verbose)
+      cerr << "meerkat_udprecv: joining stats_thread" << endl;
+    void * result;
+    pthread_join (stats_thread_id, &result);
+  
+    delete udprecv;
   }
-
-  if (udprecv->verbose)
-    cerr << "meerkat_udprecv: configuring using fixed config" << endl;
-  udprecv->configure (config.raw());
-
-  if (udprecv->verbose)
-    cerr << "meerkat_udprecv: allocating runtime resources" << endl;
-  udprecv->prepare ();
-
-  if (udprecv->verbose)
-    cerr << "meerkat_udprecv: starting stats thread" << endl;
-  pthread_t stats_thread_id;
-  int rval = pthread_create (&stats_thread_id, 0, stats_thread, (void *) recv);
-  if (rval != 0)
+  catch (std::exception& exc)
   {
-    cerr << "meerkat_udprecv: failed to start stats thread" << endl;
-    return (EXIT_FAILURE);
+    cerr << "meerkat_udprecv: ERROR: " << exc.what() << endl;
+    return -1;
   }
-
-  if (udprecv->verbose)
-    cerr << "meerkat_udprecv: receiving" << endl;
-  udprecv->receive ();
-
-  quit_threads = 1;
-
-  if (udprecv->verbose)
-    cerr << "meerkat_udprecv: joining stats_thread" << endl;
-  void * result;
-  pthread_join (stats_thread_id, &result);
-
-  delete udprecv;
 
   return 0;
 }
@@ -184,6 +191,7 @@ void signal_handler(int signalValue)
     exit(EXIT_FAILURE);
   }
   quit_threads = 1;
+  udprecv->stop_receiving();
 }
 
 
@@ -229,7 +237,6 @@ void * stats_thread (void * arg)
     fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
     sleep(1);
   }
-
-  udprecv->stop_receiving();
+  cerr << "stats_thread: exiting" << endl;
 }
 

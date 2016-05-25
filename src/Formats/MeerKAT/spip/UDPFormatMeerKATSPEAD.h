@@ -5,9 +5,9 @@
 #include "spip/meerkat_def.h"
 #include "spip/UDPFormat.h"
 #include "spip/AsciiHeader.h"
-#include "spip/SPEADBeamFormerConfig.h"
 
 #include "spead2/recv_packet.h"
+#include "spead2/recv_udp.h"
 
 #define UDP_FORMAT_MEERKAT_SPEAD_NDIM 2
 #define UDP_FORMAT_MEERKAT_SPEAD_NPOL 1
@@ -30,6 +30,8 @@ namespace spip {
 
       void prepare (const spip::AsciiHeader& header, const char* suffix);
 
+      void conclude ();
+
       void generate_signal ();
 
       uint64_t get_samples_for_bytes (uint64_t nbytes);
@@ -48,6 +50,7 @@ namespace spip {
       inline void encode_header_seq (char * buf, uint64_t packet_number);
       inline void encode_header (char * buf);
 
+      void decode_spead (char * buf);
       inline int64_t decode_packet (char * buf, unsigned *payload_size);
       inline int insert_last_packet (char * buf);
 
@@ -66,9 +69,11 @@ namespace spip {
 
     private:
 
-      SPEADBeamFormerConfig bf_config;
-
       spead2::recv::packet_header header;
+
+      time_t adc_sync_time;
+
+      uint64_t adc_sample_rate;
 
       int64_t obs_start_sample;
 
@@ -104,7 +109,10 @@ namespace spip {
 
       bool first_heap;
 
+      unsigned header_npol;
+
   };
+
 
 }
 

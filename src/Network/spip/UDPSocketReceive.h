@@ -41,6 +41,8 @@ namespace spip {
 
       bool multicast;
 
+      struct ip_mreq mreq;
+
   };
 
 }

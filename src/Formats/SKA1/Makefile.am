@@ -14,7 +14,7 @@ AM_CXXFLAGS = -I. \
 
 LDADD = libska1.la \
   $(top_builddir)/src/libspip.la \
-	-lpthread
+	-lpthread 
 
 if HAVE_PSRDADA
 

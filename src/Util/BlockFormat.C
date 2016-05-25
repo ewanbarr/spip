@@ -24,7 +24,6 @@ using namespace std;
 
 spip::BlockFormat::BlockFormat()
 {
-  cerr << "spip::BlockFormat::BlockFormat()" << endl;
   npol = 1;
   ndim = 1;
   nchan = 1;
@@ -33,7 +32,6 @@ spip::BlockFormat::BlockFormat()
 
 spip::BlockFormat::~BlockFormat()
 {
-  cerr << "spip::BlockFormat::~BlockFormat()" << endl;
 }
 
 void spip::BlockFormat::prepare (unsigned _nbin, unsigned _ntime, unsigned _nfreq)

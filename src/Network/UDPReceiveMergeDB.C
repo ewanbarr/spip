@@ -9,17 +9,15 @@
 #include "spip/TCPSocketServer.h"
 #include "spip/UDPReceiveMergeDB.h"
 #include "spip/Time.h"
-//#include "sys/time.h"
 
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <new>
 
-#define UDPReceiveMergeDB_CMD_NONE 0
-#define UDPReceiveMergeDB_CMD_START 1
-#define UDPReceiveMergeDB_CMD_STOP 2
-#define UDPReceiveMergeDB_CMD_QUIT 3
+#ifdef  HAVE_VMA
+#include <mellanox/vma_extra.h>
+#endif
 
 //#define _DEBUG
 
@@ -31,28 +29,50 @@ spip::UDPReceiveMergeDB::UDPReceiveMergeDB (const char * key_string)
 
   db->connect();
   db->lock();
+  db->page();
 
   control_port = -1;
 
   control_cmd = None;
   control_state = Idle;
-  control_states[0] = Idle;
-  control_states[1] = Idle;
 
-  cond = PTHREAD_COND_INITIALIZER;
-  mutex = PTHREAD_MUTEX_INITIALIZER;
+  for (unsigned i=0; i<2; i++)
+  {
+    control_states[i] = Idle;
+    cond_recvs[i] = PTHREAD_COND_INITIALIZER;
+    mutex_recvs[i] = PTHREAD_MUTEX_INITIALIZER;
 
-  pthread_cond_init( &cond, NULL);
-  pthread_mutex_init( &mutex, NULL);
+    pthread_cond_init( &(cond_recvs[i]), NULL);
+    pthread_mutex_init( &(mutex_recvs[i]), NULL);
 
-  data_mcasts[0] = string ();
-  data_mcasts[1] = string ();
+    data_mcasts[i] = string ();
+    formats[i] = NULL;
+    stats[i] = NULL;
+  }
+
+  cond_db = PTHREAD_COND_INITIALIZER;
+  mutex_db = PTHREAD_MUTEX_INITIALIZER;
+  pthread_cond_init( &cond_db, NULL);
+  pthread_mutex_init( &mutex_db, NULL);
+
+
+  heap_size = 4194304;
+  overflow = (char *) malloc (heap_size);
 
   verbose = 1;
 }
 
 spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
 {
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::~UDPReceiveMergeDB" << endl;
+#endif
+  for (unsigned i=0; i<2; i++)
+  {
+    delete stats[i];
+    delete formats[i];
+  }
+
   db->unlock();
   db->disconnect();
 
@@ -104,53 +124,18 @@ int spip::UDPReceiveMergeDB::configure (const char * config)
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
 
-  if (!formats[0] or !formats[1])
-    throw runtime_error ("unable for prepare format");
+  formats[0]->configure(header, "_0");
+  formats[1]->configure(header, "_1");
 
-  formats[0]->configure (header, "_0");
-  formats[1]->configure (header, "_1");
+  npol = 2;
+  if (header.set("NPOL", "%u", npol) < 0)
+    throw invalid_argument ("failed to write NPOL to header"); 
 
-  // now write new params to header
-  uint64_t resolution = formats[0]->get_resolution();
-  cerr << "spip::UDPReceiveDB::configure resolution=" << resolution << endl;
-  if (header.set("RESOLUTION", "%lu", resolution) < 0)
-    throw invalid_argument ("failed to write RESOLUTION to header");
-
-  return 0;
-}
-
-void spip::UDPReceiveMergeDB::prepare ()
-{
   for (unsigned i=0; i<2; i++)
   {
-    socks[i] = new UDPSocketReceive ();
-
-    if (data_mcasts[i].size() > 0)
-      socks[i]->open_multicast (data_hosts[i], data_mcasts[i], data_ports[i]);
-    else
-      socks[i]->open (data_hosts[i], data_ports[i]);
-
-#ifdef HAVE_VMA
-    vma_apis[i] = vma_get_api();
-    if (!vma_apis[i])
-    {
-      cerr << "WARNING: VMA support compiled, but VMA not available" << endl;
-      pkts[i] = NULL;
-    }
-#else
-    vma_apis[i] = 0;
-#endif
-
-    size_t sock_bufsz = formats[i]->get_header_size() + formats[i]->get_data_size();
-    if (!vma_apis[i])
-      socks[i]->set_nonblock ();
-    socks[i]->resize (sock_bufsz);
-    if (!vma_apis[i])
-      socks[i]->resize_kernel_buffer (32*1024*1024);
     stats[i] = new UDPStats (formats[i]->get_header_size(), formats[i]->get_data_size());
   }
-
-      
+  return 0;
 }
 
 void spip::UDPReceiveMergeDB::set_formats (spip::UDPFormat * fmt1, spip::UDPFormat * fmt2)
@@ -158,6 +143,7 @@ void spip::UDPReceiveMergeDB::set_formats (spip::UDPFormat * fmt1, spip::UDPForm
   if (formats[0])
     delete formats[0];
   formats[0] = fmt1;
+
   if (formats[1])
     delete formats[1];
   formats[1] = fmt2;
@@ -172,14 +158,16 @@ void spip::UDPReceiveMergeDB::start_control_thread (int port)
 void spip::UDPReceiveMergeDB::stop_control_thread ()
 {
   control_cmd = Quit;
+  void * result;
+  pthread_join (control_thread_id, &result);
 }
 
 void spip::UDPReceiveMergeDB::set_control_cmd (spip::ControlCmd cmd)
 {
-  pthread_mutex_lock (&mutex);  
+  pthread_mutex_lock (&mutex_db);
   control_cmd = cmd;
-  pthread_cond_signal (&cond);
-  pthread_mutex_unlock (&mutex);
+  pthread_cond_signal (&cond_db);
+  pthread_mutex_unlock (&mutex_db);
 }
 
 // start a control thread that will receive commands from the TCS/LMC
@@ -195,12 +183,14 @@ void spip::UDPReceiveMergeDB::control_thread()
     return;
   }
 
+#ifdef _DEBUG
   cerr << "spip::UDPReceiveMergeDB::control_thread creating TCPSocketServer" << endl;
+#endif
   spip::TCPSocketServer * control_sock = new spip::TCPSocketServer();
 
   // open a listen sock on all interfaces for the control port
-  cerr << "spip::UDPReceiveMergeDB::control_thread open socket on port=" 
-       << control_port << endl;
+  if (verbose)
+  cerr << "opened control socket on port=" << control_port << endl;
   control_sock->open ("any", control_port, 1);
 
   int fd = -1;
@@ -272,42 +262,56 @@ void spip::UDPReceiveMergeDB::control_thread()
 #endif
 }
 
-void spip::UDPReceiveMergeDB::open ()
+bool spip::UDPReceiveMergeDB::open ()
 {
+  if (control_cmd == Stop)
+  {
+    return false;
+  } 
 
   // check if UTC_START has been set
   char * buffer = (char *) malloc (128);
   if (header.get ("UTC_START", "%s", buffer) == -1)
   {
-    cerr << "spip::UDPReceiveDB::open no UTC_START in header" << endl;
     time_t now = time(0);
     spip::Time utc_start (now);
     utc_start.add_seconds (2);
     std::string utc_str = utc_start.get_gmtime();
-    cerr << "spip::UDPReceiveDB::open UTC_START=" << utc_str  << endl;
+    cerr << "Generated UTC_START=" << utc_str  << endl;
     if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
       throw invalid_argument ("failed to write UTC_START to header");
   }
 
-  // prepare formats based on run-time header
+  uint64_t obs_offset;
+  if (header.get("OBS_OFFSET", "%lu", &obs_offset) == -1)
+  {
+    obs_offset = 0;
+    if (header.set ("OBS_OFFSET", "%lu", obs_offset) < 0)
+      throw invalid_argument ("failed to write OBS_OFFSET=0 to header");
+  }
+
+  if (header.get ("SOURCE", "%s", buffer) == -1)
+  {
+    cerr << "No SOURCE in header, using J047-4715" << endl;
+    if (header.set ("SOURCE", "%s", "J0437-4715") < 0)
+      throw invalid_argument ("failed to write SOURCE to header");
+  }
+
   formats[0]->prepare (header, "_0");
   formats[1]->prepare (header, "_1");
 
   open (header.raw());
+  return true;
 }
 
 // write the ascii header to the datablock, then
 void spip::UDPReceiveMergeDB::open (const char * header_str)
 {
-  cerr << "spip::UDPReceiveMergeDB::open()" << endl;
-
   // open the data block for writing  
   db->open();
 
   // write the header
   db->write_header (header_str);
-
-  cerr << "spip::UDPReceiveMergeDB::open db=" << (void *) db << endl;
 }
 
 void spip::UDPReceiveMergeDB::close ()
@@ -335,9 +339,13 @@ void spip::UDPReceiveMergeDB::start_threads (int c1, int c2)
   full[0] = true;
   full[1] = true;
 
+  control_states[0] = Idle;
+  control_states[1] = Idle;
+
   pthread_create (&datablock_thread_id, NULL, datablock_thread_wrapper, this);
   pthread_create (&recv_thread1_id, NULL, recv_thread1_wrapper, this);
   pthread_create (&recv_thread2_id, NULL, recv_thread2_wrapper, this);
+  pthread_create (&stats_thread_id, NULL, stats_thread_wrapper, this);
 }
 
 void spip::UDPReceiveMergeDB::join_threads ()
@@ -346,58 +354,69 @@ void spip::UDPReceiveMergeDB::join_threads ()
   pthread_join (datablock_thread_id, &result);
   pthread_join (recv_thread1_id, &result);
   pthread_join (recv_thread2_id, &result);
+  pthread_join (stats_thread_id, &result);
 }
 
 bool spip::UDPReceiveMergeDB::datablock_thread ()
 {
-  pthread_mutex_lock (&mutex);
+  pthread_mutex_lock (&mutex_db);
+  pthread_mutex_lock (&(mutex_recvs[0]));
+  pthread_mutex_lock (&(mutex_recvs[1]));
 
-  // open the data block for writing
-  block = (char *) (db->open_block());
-
-#ifdef _DEBUG
   uint64_t ibuf = 0;
-#endif
+  int64_t overflow_lastbyte;
 
   // wait for the starting command from the control_thread
   while (control_cmd == None)
-    pthread_cond_wait (&cond, &mutex);
+    pthread_cond_wait (&cond_db, &mutex_db);
 
   // if we have a start command then we can continue
   if (control_cmd == Start)
   {
-    cerr << "spip::UDPReceiveMergeDB::datablock control_cmd == Start" << endl;
+   // open the data block for writing
+    block = (char *) (db->open_block());
+
     // state of this thread
     control_state = Active;
-    // signal both receive threads to begin
-    control_states[0] = Active;
-    control_states[1] = Active;
-    full[0] = false;
-    full[1] = false;
+
+    full[0] = full[1] = false;
+    overflow_lastbytes[0] = overflow_lastbytes[1] = 0;
+
 #ifdef _DEBUG
     cerr << "spip::UDPReceiveMergeDB::datablock opened buffer " << ibuf << endl;
 #endif
-
-    // single receive threads to commence
-    pthread_cond_broadcast (&cond);
-    pthread_mutex_unlock(&mutex);
   }
-  else if (control_cmd == Stop)
+  else if (control_cmd == Stop || control_cmd == Quit)
   {
+    control_state = Stopping;
+#ifdef _DEBUG
     cerr << "spip::UDPReceiveMergeDB::datablock_thread received "
          <<  "a Stop command prior to starting" << endl;
-    control_state = Idle;
-    pthread_cond_broadcast (&cond);
-    pthread_mutex_unlock(&mutex);
-    pthread_exit (NULL);
+#endif
   }
   else
+  {
     throw invalid_argument ("datathread encounter an unexpected control_cmd");
+  }
+
+  pthread_mutex_unlock (&mutex_db);
+
+  // signal receive threads to wake up and inspect control_state
+  control_states[0] = control_states[1] = control_state;
+  pthread_cond_signal (&(cond_recvs[0]));
+  pthread_cond_signal (&(cond_recvs[1]));
+  pthread_mutex_unlock (&(mutex_recvs[0]));
+  pthread_mutex_unlock (&(mutex_recvs[1]));
+
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::datablock signaled recv " << ibuf << endl;
+#endif
 
   // while the receiving state is Active
   while (control_state == Active)
   {
-    pthread_mutex_lock (&mutex);
+    // wait for RECV threads to fill buffer
+    pthread_mutex_lock (&mutex_db);
 
     // if the current buffer has been filled  by both receive threads
     while (!full[0] || !full[1])
@@ -406,7 +425,7 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
       cerr << "spip::UDPReceiveMergeDB::datablock checking buffer " << ibuf 
            << " [" << full[0] << "," << full[1] << "]" << endl;
 #endif
-      pthread_cond_wait (&cond, &mutex);
+      pthread_cond_wait (&cond_db, &mutex_db);
     }
     
 #ifdef _DEBUG
@@ -415,45 +434,90 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
     
     // close data block
     db->close_block(db->get_data_bufsz());
-#ifdef _DEBUG
-    ibuf++;
-#endif
 
-    // check for a control command whilst no buffers are open
-    if (control_cmd == Stop)
+    // acquire both recv threads' mutexes
+    pthread_mutex_lock (&(mutex_recvs[0]));
+    pthread_mutex_lock (&(mutex_recvs[1]));
+
+    ibuf++;
+
+    // check for state changes
+    if (control_cmd == Stop || control_cmd == Quit)
     {
       cerr << "STATE=Idle" << endl;
       control_state = Idle;
+      control_states[0] = control_states[1] = control_state;
     }
     else
     {
       block = (char *) (db->open_block());
       full[0] = full[1] = false;
+     
+      // TODO make this a linked list!
+
+      // copy any overflowed data into place
+      overflow_lastbyte = std::max (overflow_lastbytes[0], overflow_lastbytes[1]);
+      if (overflow_lastbyte > 0)
+      {
+#ifdef _DEBUG
+        cerr << "spip::UDPReceiveMergeDB::data_block overflow saved " << overflow_lastbyte << " bytes" << endl;
+#endif
+        //memcpy (block, overflow, overflow_lastbyte);
+      }
     }
-    pthread_cond_broadcast (&cond);
-    pthread_mutex_unlock (&mutex);
+
+    // release the DB mutex now that we have the recv threads locked
+    pthread_mutex_unlock (&mutex_db);
+    pthread_cond_signal (&(cond_recvs[0]));
+    pthread_cond_signal (&(cond_recvs[1]));
+    pthread_mutex_unlock (&(mutex_recvs[0]));
+    pthread_mutex_unlock (&(mutex_recvs[1]));
   }
 
-  pthread_exit (NULL);
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::data_block exiting" << endl;
+#endif
+
+  return true;
 }
 
 bool spip::UDPReceiveMergeDB::receive_thread (int p)
 {
-  //if (verbose)
-  //  cerr << "spip::UDPReceiveMergeDB::receive[" << p << "] ()" << endl;
-
   spip::HardwareAffinity hw_affinity;
-  //cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] binding to core " << cores[p] << endl;
   hw_affinity.bind_thread_to_cpu_core (cores[p]);
   hw_affinity.bind_to_memory (cores[p]);
 
-  UDPSocketReceive * sock = socks[p];
+#ifdef HAVE_VMA
+  struct vma_api_t * vma_api = vma_get_api();
+  struct vma_packets_t* pkt = NULL;
+  if (!vma_api)
+  {
+    cerr << "WARNING: VMA support compiled, but VMA not available" << endl;
+  }
+#else
+  char vma_api = 0;
+#endif
+
+  // allocated and configured in main threasd
   UDPFormat * format = formats[p];
   UDPStats * stat = stats[p];
-#if HAVE_VMA
-  struct vma_api_t *vma_api = vma_apis[p];
-  struct vma_packets_t* pkt = pkts[p];
-#endif
+
+  // open socket within the context of this thread 
+  UDPSocketReceive * sock = new UDPSocketReceive;
+  if (data_mcasts[p].size() > 0)
+    sock->open_multicast (data_hosts[p], data_mcasts[p], data_ports[p]);
+  else
+    sock->open (data_hosts[p], data_ports[p]); 
+
+  if (!vma_api)
+    sock->set_nonblock ();
+
+  size_t sock_bufsz = format->get_header_size() + format->get_data_size();
+  sock->resize (sock_bufsz);
+  sock->resize_kernel_buffer (64*1024*1024);
+
+  pthread_cond_t * cond_recv = &(cond_recvs[p]);
+  pthread_mutex_t * mutex_recv = &(mutex_recvs[p]);
 
   bool keep_receiving = true;
   bool have_packet = false;
@@ -463,208 +527,300 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
   struct sockaddr * addr = (struct sockaddr *) &client_addr;
   socklen_t addr_size = sizeof(struct sockaddr);
 
-
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
-  size_t sock_bufsz = sock->get_bufsz();
-  int result;
+  char * buf_ptr = buf;
 
   // block accounting 
-  const int64_t data_bufsz = db->get_data_bufsz() / 2;
-  int64_t curr_byte_offset = 0;
+  const int64_t data_bufsz = db->get_data_bufsz();
+  const int64_t pol_bufsz = data_bufsz / 2;
+  int64_t curr_byte_offset;
   int64_t next_byte_offset = 0;
 
   // overflow buffer
-  const int64_t overflow_bufsz = 2097152;
-  int64_t overflow_lastbyte = 0;
+  const int64_t overflow_bufsz = heap_size;
   int64_t overflow_maxbyte = 0;
   int64_t overflowed_bytes = 0;
-  char * overflow = (char *) malloc(overflow_bufsz);
-  memset (overflow, 0, overflow_bufsz);
 
   uint64_t bytes_this_buf = 0;
   int64_t byte_offset;
+  uint64_t pol_offset = p * 2097152;
 
   bool filled_this_buffer = false;
   unsigned bytes_received, bytes_dropped;
   int flags, got;
-  uint64_t nsleeps, ibuf;
-  ibuf = 0;
+  uint64_t nsleeps;
+  uint64_t ibuf = 0;
 
   // wait for datablock thread to change state to Active
-  pthread_mutex_lock (&mutex);
-#ifdef _DEBUG
-  cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] waiting for Active" << endl;
-#endif
+  pthread_mutex_lock (mutex_recv);
+
+  // wait for start command
   while (control_states[p] == Idle)
-    pthread_cond_wait (&cond, &mutex);
-  pthread_mutex_unlock (&mutex);
+    pthread_cond_wait (cond_recv, mutex_recv);
+  pthread_mutex_unlock (mutex_recv);
 
   // main data acquisition loop
   while (control_states[p] == Active)
   {
     // wait until the datablock thread sets the state of this buffer
     // to empty (i.e. when it has provided a new buffer to fill
-    pthread_mutex_lock (&mutex);
-    while (full[p])
+    pthread_mutex_lock (mutex_recv);
+    while (full[p] && control_states[p] == Active)
     {
 #ifdef _DEBUG
       cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] waiting for empty " << ibuf << " [" << full[0] << ", " << full[1] << "]" << endl;
 #endif
-      pthread_cond_wait (&cond, &mutex);
+      pthread_cond_wait (cond_recv, mutex_recv);
     }
 
-    curr_byte_offset = next_byte_offset;
-    next_byte_offset += data_bufsz;
-    overflow_maxbyte = next_byte_offset + overflow_bufsz;
+    if (control_states[p] == Active)
+    {
+      curr_byte_offset = next_byte_offset;
+      next_byte_offset += data_bufsz;
+      overflow_maxbyte = next_byte_offset + overflow_bufsz;
 
 #ifdef _DEBUG
-    cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] filling buffer " << ibuf << " [" <<  curr_byte_offset << " - " << next_byte_offset << "] overflow=" << overflow_lastbyte << endl;
+      if (p == 1)
+        cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] filling buffer " 
+             << ibuf << " [" <<  curr_byte_offset << " - " << next_byte_offset
+             << " - " << overflow_maxbyte << "] overflow=" << overflow_lastbytes[p] << " overflow_bufsz=" <<
+overflow_bufsz << endl;
 #endif
 
-    // signal other threads waiting on the condition
-    pthread_cond_broadcast (&cond);
-    pthread_mutex_unlock (&mutex);
-    filled_this_buffer = false;
-    
-    // pointer to polarisation block 
-    char * pol_block = block + (data_bufsz * p);
+      // signal other threads waiting on the condition
+      pthread_mutex_unlock (mutex_recv);
+      filled_this_buffer = false;
+      
+      // overflow handler
+      if (overflow_lastbytes[p] > 0)
+      {
+        overflow_lastbytes[p] = 0;
+        bytes_this_buf = overflowed_bytes;
+        stat->increment_bytes (overflowed_bytes);
+        overflowed_bytes = 0;
+      }
+      else
+        bytes_this_buf = 0;
 
-    // overflow handler
-    if (overflow_lastbyte > 0)
-    {
-      memcpy (pol_block, overflow, overflow_lastbyte);
-      overflow_lastbyte = 0;
-      bytes_this_buf = overflowed_bytes;
-      stat->increment_bytes (overflowed_bytes);
-      overflowed_bytes = 0;
+      // while we have not filled this buffer with data from
+      // this polarisation
+      while (!filled_this_buffer && keep_receiving)
+      {
+        if (vma_api)
+        {
+  #ifdef HAVE_VMA
+          if (pkt)
+          {
+            vma_api->free_packets(fd, pkt->pkts, pkt->n_packet_num);
+            pkt = NULL;
+          }
+          while (!have_packet && keep_receiving)
+          {
+            flags = 0;
+            got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
+            if (got  > 32)
+            {
+              if (flags == MSG_VMA_ZCOPY)
+              {
+                pkt = (vma_packets_t*) buf;
+                buf_ptr = (char *) pkt->pkts[0].iov[0].iov_base;
+              }
+              have_packet = true;
+            }
+            else if (got == -1)
+            {
+              nsleeps++;
+              if (nsleeps > 1000)
+              {
+                stat->sleeps(1000);
+                nsleeps -= 1000;
+              }
+            }
+            else
+            {
+              cerr << "spip::UDPReceiveMergeDB::receive error expected " << sock_bufsz
+                   << " B, received " << got << " B" <<  endl;
+              set_control_cmd (Stop);
+              keep_receiving = false;
+            }
+          }
+  #endif
+        }
+        else
+        {
+          while (!have_packet && keep_receiving)
+          {
+            got = (int) recvfrom (fd, buf, sock_bufsz, 0, addr, &addr_size);
+            if (got > 32)
+            {
+              have_packet = true;
+            }
+            else if (got == -1)
+            {
+              nsleeps++;
+              if (nsleeps > 1000)
+              {
+                stat->sleeps(1000);
+                nsleeps -= 1000;
+              }
+            }
+            else
+            {
+              cerr << "spip::UDPReceiveMergeDB::receive error expected " << sock_bufsz
+                   << " B, received " << got << " B" <<  endl;
+              set_control_cmd (Stop);
+              keep_receiving = false;
+            }
+          }
+        }
+
+        byte_offset = format->decode_packet (buf_ptr, &bytes_received);
+
+        // ignore if byte_offset is -1
+        if (byte_offset < 0)
+        {
+          have_packet = false;
+        }
+        // packet that is part of this observation
+        else
+        {
+          // adjust byte offset from single pol to dual pol
+          byte_offset += pol_offset;
+
+          // packet belongs in current buffer
+          if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
+          {
+            bytes_this_buf += bytes_received;
+            stat->increment_bytes (bytes_received);
+            format->insert_last_packet (block + (byte_offset - curr_byte_offset));
+            have_packet = false;
+          }
+          // packet fits in the overflow buffer
+          else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
+          {
+            format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
+
+            overflow_lastbytes[p] = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbytes[p]);
+            //if (p == 1)
+            //  cerr << "byte_offset=" << byte_offset << " old overflow_lastbytes=" << overflow_lastbytes[p] << endl;
+            overflowed_bytes += bytes_received;
+            have_packet = false;
+          }
+          // packet belong to a previous buffer (this is a drop that has already been counted)
+          else if (byte_offset < curr_byte_offset)
+          {
+            have_packet = false;
+          }
+          // packet belongs to a future buffer, that is beyond the overflowr
+          else
+          {
+            filled_this_buffer = true;
+            have_packet = true;
+          }
+        }
+
+        // close open data block buffer if is is now full
+        if (bytes_this_buf >= pol_bufsz || filled_this_buffer)
+        {
+#ifdef _DEBUG
+          if (p == 1)
+            cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] close_block bytes_this_buf="
+                 << bytes_this_buf << " pol_bufsz=" << pol_bufsz << " overflow_lastbytes=" << overflow_lastbytes[p]
+                 << " filled_this_buffer=" << filled_this_buffer << endl;
+#endif
+          stat->dropped_bytes (pol_bufsz - bytes_this_buf);
+          filled_this_buffer = true;
+        }
+      }
+
+      pthread_mutex_lock (&mutex_db);
+      full[p] = true;
+
+  #ifdef _DEBUG
+      cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] filled buffer " << ibuf << endl; 
+  #endif
+      ibuf++;
+      pthread_cond_signal (&cond_db);
+      pthread_mutex_unlock (&mutex_db);
     }
     else
-      bytes_this_buf = 0;
-
-    // while we have not filled this buffer with data from
-    // this polarisation
-    while (!filled_this_buffer && keep_receiving)
-    {
-      if (vma_api)
-      {
-  #ifdef HAVE_VMA
-        if (pkt)
-        {
-          vma_api->free_packets(fd, pkt->pkts, pkt->n_packet_num);
-          pkt = NULL;
-        }
-        while (!have_packet && keep_receiving)
-        {
-          flags = 0;
-          got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
-          if (got  > 32)
-          {
-            if (flags & MSG_VMA_ZCOPY)
-            {
-              pkt = (vma_packets_t*) buf;
-              //struct vma_packet_t *vma_pkt = &pkt->pkts[0];
-              //buf = (char *) (vma_pkt->iov[0].iov_base);
-              buf = (char *) pkt->pkts[0].iov[0].iov_base;
-            }
-            have_packet = true;
-          }
-          else
-          {
-            cerr << "spip::UDPReceiveDB::receive error expected " << sock_bufsz
-                 << " B, received " << got << " B" <<  endl;
-            set_control_cmd (Stop);
-            keep_receiving = false;
-          }
-        }
-  #endif
-      }
-      else
-      {
-        while (!have_packet && keep_receiving)
-        {
-          got = (int) recvfrom (fd, buf, sock_bufsz, 0, addr, &addr_size);
-          if (got > 32)
-          {
-            have_packet = true;
-          }
-          else if (got == -1)
-          {
-            nsleeps++;
-            if (nsleeps > 1000)
-            {
-              stat->sleeps(1000);
-              nsleeps -= 1000;
-            }
-          }
-          else
-          {
-            cerr << "spip::UDPReceiveDB::receive error expected " << sock_bufsz
-                 << " B, received " << got << " B" <<  endl;
-            set_control_cmd (Stop);
-            keep_receiving = false;
-          }
-        }
-      }
-
-
-      byte_offset = format->decode_packet (buf, &bytes_received);
-
-      // packet belongs in current buffer
-      if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))
-      {
-        bytes_this_buf += bytes_received;
-        stat->increment_bytes (bytes_received);
-        format->insert_last_packet (pol_block + (byte_offset - curr_byte_offset));
-        have_packet = false;
-      }
-      else if ((byte_offset >= next_byte_offset) && (byte_offset < overflow_maxbyte))
-      {
-        format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
-        overflow_lastbyte = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbyte);
-        overflowed_bytes += bytes_received;
-        have_packet = false;
-      }
-      else if (byte_offset < curr_byte_offset)
-      {
-        // ignore
-        have_packet = false;
-      }
-      else
-      {
-        filled_this_buffer = true;
-        have_packet = true;
-      }
-
-      // close open data block buffer if is is now full
-      if (bytes_this_buf >= data_bufsz || filled_this_buffer)
-      {
-  #ifdef _DEBUG
-        cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] close_block bytes_this_buf="
-             << bytes_this_buf << " data_bufsz=" << data_bufsz
-             << " filled_this_buffer=" << filled_this_buffer << endl;
-  #endif
-        filled_this_buffer = true;
-      }
-    }
-    pthread_mutex_lock (&mutex);
-    full[p] = true;
-
-    if (control_cmd == Stop)
-    {
-      control_states[p] = Idle;
-    }
-#ifdef _DEBUG
-    cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] filled buffer " << ibuf << endl; 
-    ibuf++;
-#endif
-    pthread_cond_broadcast (&cond);
-    pthread_mutex_unlock (&mutex);
+      pthread_mutex_unlock (mutex_recv);
   }
 
+#ifdef _DEBUG
   cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] exiting" << endl;
+#endif
+
+  //delete sock;
+
   if (control_states[p] == Idle)
     return true;
   else
     return false;
 }
+
+/* 
+ *  Thread to print simple capture statistics
+ */
+void spip::UDPReceiveMergeDB::stats_thread()
+{
+  uint64_t b_recv_total[2] = {0, 0};
+  uint64_t b_recv_curr[2];
+  uint64_t b_recv_1sec;
+
+  uint64_t s_total[2] = {0, 0};
+  uint64_t s_curr[2];
+  uint64_t s_1sec;
+
+  uint64_t b_drop_total[2] = {0,0};
+  uint64_t b_drop_curr[2];
+  uint64_t b_drop_1sec;
+
+  float gb_recv_ps[2] = {0, 0};
+  float mb_recv_ps[2] = {0, 0};
+  float gb_drop_ps[2] = {0, 0};
+
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::stats_thread starting polling" << endl;
+#endif
+
+  while (control_cmd != Stop && control_cmd != Quit)
+  {
+    while (control_state == Active)
+    {
+      for (unsigned i=0; i<2; i++)
+      {
+        // get a snapshot of the data as quickly as possible
+        b_recv_curr[i] = stats[i]->get_data_transmitted();
+        b_drop_curr[i] = stats[i]->get_data_dropped();
+        s_curr[i] = stats[i]->get_nsleeps();
+
+        // calc the values for the last second
+        b_drop_1sec = b_drop_curr[i] - b_drop_total[i];
+        b_recv_1sec = b_recv_curr[i] - b_recv_total[i];
+        s_1sec = s_curr[i] - s_total[i];
+
+        // update the totals
+        b_drop_total[i] = b_drop_curr[i];
+        b_recv_total[i] = b_recv_curr[i];
+        s_total[i] = s_curr[i];
+
+        gb_drop_ps[i] = (double) (b_drop_1sec * 8) / 1000000000;
+        mb_recv_ps[i] = (double) b_recv_1sec / 1000000;
+        gb_recv_ps[i] = (mb_recv_ps[i] * 8)/1000;
+      }
+
+      // determine how much memory is free in the receivers
+      fprintf (stderr,"Recv %6.3f (%6.3f, %6.3f) [Gb/s] Dropped %6.3f (%6.3f + %6.3f) [Gb/s]\n", 
+               gb_recv_ps[0] + gb_recv_ps[1], gb_recv_ps[0], gb_recv_ps[1],
+               gb_drop_ps[0] + gb_drop_ps[1], gb_drop_ps[0], gb_drop_ps[1]);
+      sleep (1);
+    }
+    sleep(1);
+  }
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::stats_thread exiting";
+#endif
+}
+

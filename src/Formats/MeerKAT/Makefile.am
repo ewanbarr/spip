@@ -13,7 +13,7 @@ AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Util
 
 LDADD = libmeerkat.la \
-	$(top_builddir)/src/libspip.la -lpthread
+	$(top_builddir)/src/libspip.la -lpthread 
 
 if HAVE_PSRDADA
 
@@ -28,7 +28,7 @@ libmeerkat_headers += spip/UDPFormatMeerKATSPEAD.h
 
 libmeerkat_la_SOURCES += UDPFormatMeerKATSPEAD.C
 
-bin_PROGRAMS += meerkat_speadrecv meerkat_speadrecvmerge meerkat_speaddb meerkat_speadmeta
+bin_PROGRAMS += meerkat_speadrecv meerkat_speadrecvmerge meerkat_speaddb meerkat_speadmeta meerkat_speadtimestamp
 
 if HAVE_PSRDADA 
 

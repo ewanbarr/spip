@@ -22,19 +22,19 @@
 #include <cstring>
 #include <iostream>
 
+//#define _DEBUG
+
 #define MEERKAT_DEFAULT_SPEAD_PORT 8888
 
 void usage();
 void signal_handler (int signal_value);
-char quit_threads = 0;
+int quit_threads = 0;
+spead2::recv::ring_stream<> *stream_ptr = 0;
 
 using namespace std;
 
 int main(int argc, char *argv[])
 {
-  // Host/IP to receive meta-data stream on
-  char * host;
-
   // udp port to receive meta-data stream on
   int port = MEERKAT_DEFAULT_SPEAD_PORT;
 
@@ -70,9 +70,10 @@ int main(int argc, char *argv[])
   }
 
   // Check arguments
-  if ((argc - optind) != 1) 
+  int num_args = argc - optind;
+  if ((num_args != 1) && (num_args != 2))
   {
-    fprintf(stderr,"ERROR: 1 command line argument expected\n");
+    fprintf(stderr,"ERROR: at least 1 command line argument required\n");
     usage();
     return EXIT_FAILURE;
   }
@@ -80,7 +81,11 @@ int main(int argc, char *argv[])
   signal(SIGINT, signal_handler);
  
   // local address/host to listen on
-  host = strdup(argv[optind]);
+  boost::asio::ip::address host = boost::asio::ip::address::from_string(string(argv[optind]));
+  if (num_args == 2)
+  {
+    boost::asio::ip::address mcast = boost::asio::ip::address::from_string(string(argv[optind+1]));
+  }
 
   int lower = 4 * 1048576;
   int upper = lower + 4096;
@@ -89,8 +94,22 @@ int main(int argc, char *argv[])
   spead2::thread_pool worker;
   spead2::recv::ring_stream<> stream(worker, spead2::BUG_COMPAT_PYSPEAD_0_5_2);
   stream.set_memory_pool(pool);
-  boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address_v4::any(), port);
-  stream.emplace_reader<spead2::recv::udp_reader>(endpoint, spead2::recv::udp_reader::default_max_size, 2 * 1024 * 1024);
+
+  size_t max_size = spead2::recv::udp_reader::default_max_size;
+  size_t buffer_size = 262144;
+
+  if (num_args == 1)
+  {
+    boost::asio::ip::udp::endpoint endpoint(host, port); 
+    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size);
+  }
+  else 
+  {
+    boost::asio::ip::address mcast = boost::asio::ip::address::from_string(string(argv[optind+1]));
+    boost::asio::ip::udp::endpoint endpoint(mcast, port);
+    stream.emplace_reader<spead2::recv::udp_reader>(endpoint, max_size, buffer_size, host);
+  }
+  stream_ptr = &stream;
 
   bool keep_receiving = true;
   bool have_metadata = false;
@@ -102,40 +121,19 @@ int main(int argc, char *argv[])
   {
     try
     {
-#ifdef _DEBUG
-      cerr << "spip::SPEADReceiver::receive waiting for meta-data heap" << endl;
-#endif
       spead2::recv::heap fh = stream.pop();
-#ifdef _DEBUG
-      cerr << "spip::SPEADReceiver::receive received meta-data heap with ID=" << fh.get_cnt() << endl;
-#endif
-
       const auto &items = fh.get_items();
       for (const auto &item : items)
-      {
-        // ignore items with TIMESTAMPS or CBF_RAW ids
-        if (item.id == SPEAD_CBF_RAW_TIMESTAMP || item.id >= 0x5000)
-        {
-          // just ignore raw CBF packets until header is received
-        }
-        else
-        {
-          bf_config.parse_item (item);
-        }
-      }
+        bf_config.parse_item (item);
 
       vector<spead2::descriptor> descriptors = fh.get_descriptors();
       for (const auto &descriptor : descriptors)
-      {
         bf_config.parse_descriptor (descriptor);
-      }
-
-      have_metadata = bf_config.valid();
 #ifdef _DEBUG
       cerr << "=== meta data now contains: ===========" << endl;
       bf_config.print_config();
 #endif
-
+      have_metadata = bf_config.valid();
     }
     catch (spead2::ringbuffer_stopped &e)
     {
@@ -143,26 +141,43 @@ int main(int argc, char *argv[])
     }
   }
 
-  cerr << "spip::SPEADReceiver::receive have meta-data" << endl;
-  bf_config.print_config();
+  if (have_metadata)
+  {
+    stream.stop();
+    if (verbose)
+    {
+      cerr << "meerkat_speadmeta: have meta-data" << endl;
+      bf_config.print_config();
+    }
 
-  time_t sync_time = bf_config.get_sync_time();
-  size_t buffer_size = 20;
-  char * buffer = (char *) malloc (buffer_size);
-  strftime (buffer, buffer_size, DADA_TIMESTR, gmtime (&sync_time));
-  cerr << "ADC_UTC_START=" << buffer << endl;
-  strftime (buffer, buffer_size, DADA_TIMESTR, localtime (&sync_time));
-  cerr << "ADC_LOCAL_START=" << buffer << endl;
+    time_t sync_time = bf_config.get_sync_time();
 
-  free(buffer);
+    if (verbose)
+    {
+      size_t buffer_size = 20;
+      char * buffer = (char *) malloc (buffer_size);
+      strftime (buffer, buffer_size, DADA_TIMESTR, gmtime (&sync_time));
+      cerr << "ADC_UTC_START=" << buffer << endl;
+      strftime (buffer, buffer_size, DADA_TIMESTR, localtime (&sync_time));
+      cerr << "ADC_LOCAL_START=" << buffer << endl;
+      free(buffer);
+    }
 
-  return 0;
+    cerr << sync_time << endl;
+    return 0;
+  }
+  else
+  {
+    cerr << "0" << endl;
+    return 1;
+  }
 }
 
 void usage() 
 {
-  cout << "meerkat_speadmeta [options] host\n"
-    "  host        ip to listen on\n"
+  cout << "meerkat_speadmeta [options] host [mcast]\n"
+    "  host        local address to listen on\n"
+    "  mcast       multicast address to listen on\n"
     "  -h          print this help text\n"
     "  -p port     udp port [default " << MEERKAT_DEFAULT_SPEAD_PORT << "]\n"
     "  -v          verbose output\n"
@@ -172,13 +187,23 @@ void usage()
 /*
  *  Simple signal handler to exit more gracefully
  */
-void signal_handler(int signalValue)
+void signal_handler (int signo)
 {
-  fprintf(stderr, "received signal %d\n", signalValue);
+  if (signo == SIGINT)
+    fprintf(stderr, "meerkat_speadmeta: received SIGINT\n");
+  else if (signo == SIGTERM)
+    fprintf(stderr, "meerkat_speadmeta: received SIGTERM\n");
+  else if (signo == SIGPIPE)
+    fprintf(stderr, "meerkat_speadmeta: received SIGPIPE\n");
+  else if (signo == SIGKILL)
+    fprintf(stderr, "meerkat_speadmeta: received SIGKILL\n");
+  else
+    fprintf(stderr, "meerkat_speadmeta: received SIGNAL %d\n", signo);
   if (quit_threads) 
   {
-    fprintf(stderr, "received signal %d twice, hard exit\n", signalValue);
     exit(EXIT_FAILURE);
   }
   quit_threads = 1;
+  if (stream_ptr)
+    stream_ptr->stop();
 }

@@ -55,7 +55,7 @@ void spip::TCPSocketServer::open (std::string ip_addr, int port, int nqueued)
   if (bind(fd, (struct sockaddr *)&server, length) == -1)
   {
     stringstream ss;
-    ss << "could not bind TCPSocketServer to " << ip_addr << ":" <<  port;
+    ss << "could not bind TCPSocketServer to " << ip_addr << ":" <<  port << " " << strerror(errno);
     throw runtime_error (ss.str());
   }
 
@@ -66,7 +66,6 @@ void spip::TCPSocketServer::open (std::string ip_addr, int port, int nqueued)
   if (listen(fd, nqueued) < 0)
     throw runtime_error ("Could not listen on socket");
 
-  cerr << "spip::TCPSocketServer::open DONE!" << endl;
 }
 
 void spip::TCPSocketServer::close_me ()

@@ -39,7 +39,7 @@ spip::UDPReceiveDB::UDPReceiveDB(const char * key_string)
   db->connect();
   db->lock();
 
-  format = 0;
+  format = NULL;
   control_port = -1;
 
 #ifdef HAVE_VMA
@@ -59,8 +59,13 @@ spip::UDPReceiveDB::~UDPReceiveDB()
 {
   db->unlock();
   db->disconnect();
-
   delete db;
+
+  if (format)
+  {
+    format->conclude();
+    delete format;
+  };
 }
 
 int spip::UDPReceiveDB::configure (const char * config)
@@ -100,11 +105,14 @@ int spip::UDPReceiveDB::configure (const char * config)
   if (header.get ("DATA_PORT", "%d", &data_port) != 1)
     throw invalid_argument ("DATA_PORT did not exist in header");
 
+  free (buffer);
+
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
 
+  // configure the format based on the header
   if (!format)
-    throw runtime_error ("unable to configure format");
+    throw runtime_error ("format was not allocated");
   format->configure (header, "");
 
   // now write new params to header
@@ -112,8 +120,6 @@ int spip::UDPReceiveDB::configure (const char * config)
   cerr << "spip::UDPReceiveDB::configure resolution=" << resolution << endl;
   if (header.set("RESOLUTION", "%lu", resolution) < 0)
     throw invalid_argument ("failed to write RESOLUTION to header");
-
-  free (buffer);
 }
 
 void spip::UDPReceiveDB::prepare ()
@@ -134,17 +140,13 @@ void spip::UDPReceiveDB::prepare ()
     cerr << "setting nonblock" << endl;
     sock->set_nonblock ();
   }
+  else
+    sock->set_block ();
 
   size_t sock_bufsz = format->get_header_size() + format->get_data_size();
   cerr << "spip::UDPReceiveDB::prepare resize(" << sock_bufsz << ")" << endl;
   sock->resize (sock_bufsz);
-
-  // this should not be required when using VMA offloading
-  //if (!vma_api)
-  {
-    cerr << "spip::UDPReceiveDB::prepare resize_kernel_buffer()" << endl;
-    sock->resize_kernel_buffer (32*1024*1024);
-  }
+  sock->resize_kernel_buffer (32*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
 }
@@ -371,8 +373,7 @@ void spip::UDPReceiveDB::update_stats()
 
 void spip::UDPReceiveDB::open ()
 {
-  cerr << "spip::UDPReceiveDB::open format->prepare()" << endl;
-
+  
   // check if UTC_START has been set
   char * buffer = (char *) malloc (128);
   if (header.get ("UTC_START", "%s", buffer) == -1)
@@ -385,9 +386,25 @@ void spip::UDPReceiveDB::open ()
     cerr << "spip::UDPReceiveDB::open UTC_START=" << utc_str  << endl;
     if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
       throw invalid_argument ("failed to write UTC_START to header");
+    }
+
+  uint64_t obs_offset;
+  if (header.get("OBS_OFFSET", "%lu", &obs_offset) == -1)
+  {
+    obs_offset = 0;
+    if (header.set ("OBS_OFFSET", "%lu", obs_offset) < 0)
+      throw invalid_argument ("failed to write OBS_OFFSET=0 to header");
+  }
+
+  if (header.get ("SOURCE", "%s", buffer) == -1)
+  {
+    cerr << "spip::UDPReceiveDB::open no SOURCE in header, using J047-4715" << endl;
+    if (header.set ("SOURCE", "%s", "J0437-4715") < 0)
+      throw invalid_argument ("failed to write SOURCE to header");
   }
 
   format->prepare(header, "");
+
   open (header.raw());
   free (buffer);
 }
@@ -451,6 +468,7 @@ bool spip::UDPReceiveDB::receive ()
 
   int fd = sock->get_fd();
   char * buf = sock->get_buf();
+  char * buf_ptr  = buf;
   char * payload = buf + header_size;
   size_t sock_bufsz = sock->get_bufsz();
   int result;
@@ -505,7 +523,7 @@ bool spip::UDPReceiveDB::receive ()
           {
             pkts = (struct vma_packets_t*) buf;
             struct vma_packet_t *pkt = &pkts->pkts[0];
-            buf = (char *) (pkt->iov[0].iov_base);
+            buf_ptr = (char *) (pkt->iov[0].iov_base);
           }
           have_packet = true;
         }
@@ -601,7 +619,7 @@ bool spip::UDPReceiveDB::receive ()
           bytes_this_buf = 0;
       }
 
-      byte_offset = format->decode_packet (buf, &bytes_received);
+      byte_offset = format->decode_packet (buf_ptr, &bytes_received);
 
       // packet belongs in current buffer
       if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))

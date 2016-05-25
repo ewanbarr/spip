@@ -109,6 +109,7 @@ class tests extends spip_webpage
       $this->printInstrumentRow("RESOLUTION", "resolution", "RESOLUTION", 8);
       $this->printInstrumentRow("INDEPENDENT_BEAMS", "independent_beams", "INDEPENDENT_BEAMS", 8);
 ?>
+      <tr> <td>ADC_SYNC_TIME</td>    <td><input type="text" name="adc_sync_time" size="16" value=""/></td> </tr>
     </table>
   </td>
 
@@ -162,6 +163,10 @@ class tests extends spip_webpage
     $xml .=   "<mode>".$get["mode"]."</mode>\n";
     $xml .=   "<processing_file>".$get["processing_file"]."</processing_file>\n";
     $xml .= "</observation_parameters>\n";
+
+    $xml .= "<instrument_parameters>\n";
+    $xml .=   "<adc_sync_time>".$get["adc_sync_time"]."</adc_sync_time>\n";
+    $xml .= "</instrument_parameters>\n";
 
     $html = "";
 

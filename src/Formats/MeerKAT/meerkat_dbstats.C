@@ -107,6 +107,7 @@ int main(int argc, char *argv[]) try
     cerr << "meerkat_dbstats: creating DataBlockStats with " << key << endl;
   dbstats = new spip::DataBlockStats (key.c_str());
 
+  dbstats->set_verbosity(verbose > 0);
   dbstats->set_block_format (new spip::BlockFormatMeerKAT());
 
   // Check arguments

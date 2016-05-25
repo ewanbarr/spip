@@ -31,6 +31,8 @@ namespace spip {
 
       void set_block_format (BlockFormat * fmt);
 
+      void set_verbosity (bool v) { verbose = v; };
+
       void start_control_thread (int port);
 
       void stop_control_thread ();

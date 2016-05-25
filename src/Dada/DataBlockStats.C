@@ -111,7 +111,7 @@ void spip::DataBlockStats::prepare ()
     throw runtime_error ("could not read RESOLUTION from header");
   block_format->set_resolution (resolution);
 
-  //if (verbose)
+  if (verbose)
     cerr << "spip::DataBlockStats::prepare UTC_START=" << utc_start
          << " RESOLUTION=" << resolution << endl;
 }
@@ -164,7 +164,6 @@ void spip::DataBlockStats::control_thread()
   control_sock->open ("any", control_port, 1);
 
   int fd = -1;
-  int verbose = 1;
 
   char * cmds = (char *) malloc (DADA_DEFAULT_HEADER_SIZE);
   char * cmd  = (char *) malloc (32);
@@ -248,8 +247,8 @@ bool spip::DataBlockStats::monitor (std::string stats_dir, unsigned stream_id)
 
   block_format->prepare (nbin, ntime, nfreq);
 
-  //if (verbose)
-    cerr << "spip::DataBlockStats::monitor: db->read (" << buffer << ", " << bufsz << ")" << endl;
+  if (verbose)
+    cerr << "spip::DataBlockStats::monitor db->read (" << (void *) buffer << ", " << bufsz << ")" << endl;
 
   int64_t bytes_read = db->read (buffer, bufsz);
 

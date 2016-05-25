@@ -40,7 +40,6 @@ spip::UDPFormat::UDPFormat()
 
 spip::UDPFormat::~UDPFormat()
 {
-  cerr << "spip::UDPFormat::~UDPFormat()" << endl;
 }
 
 void spip::UDPFormat::generate_signal ()

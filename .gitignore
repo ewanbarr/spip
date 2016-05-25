@@ -53,6 +53,7 @@ src/Formats/MeerKAT/meerkat_speaddb
 src/Formats/MeerKAT/meerkat_speadmeta
 src/Formats/MeerKAT/meerkat_speadrecv
 src/Formats/MeerKAT/meerkat_speadrecvmerge
+src/Formats/MeerKAT/meerkat_speadtimestamp
 src/Formats/MeerKAT/meerkat_udpmergedb
 src/Formats/MeerKAT/meerkat_udprecv
 src/Formats/KAT7/kat7_dbstats

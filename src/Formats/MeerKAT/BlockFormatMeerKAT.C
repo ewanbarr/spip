@@ -16,8 +16,6 @@ using namespace std;
 
 spip::BlockFormatMeerKAT::BlockFormatMeerKAT()
 {
-  cerr << "spip::BlockFormatMeerKAT::BlockFormatMeerKAT()" << endl;
-
   nchan = 4096;
   npol = 2;
   ndim = 2;
@@ -26,7 +24,6 @@ spip::BlockFormatMeerKAT::BlockFormatMeerKAT()
 
 spip::BlockFormatMeerKAT::~BlockFormatMeerKAT()
 {
-  cerr << "spip::BlockFormatMeerKAT::~BlockFormatMeerKAT()" << endl;
 }
 
 void spip::BlockFormatMeerKAT::unpack_hgft (char * buffer, uint64_t nbytes)
