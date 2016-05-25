@@ -15,7 +15,7 @@ from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils.sockets import getHostNameShort
 from spip.utils.core import system_piped,system
-from spip import config
+from spip import Config
 
 DAEMONIZE = True
 DL = 2
@@ -100,11 +100,10 @@ class GenDaemon(Daemon,StreamBased):
     # the data generator
     hostname = getHostNameShort()
 
-    # get the site configurationa
-    site = config.getSiteConfig()
+    config = Config()
 
     # prepare header using configuration file parameters
-    fixed_config = config.getStreamConfigFixed(site, self.cfg, self.id)
+    fixed_config = config.getStreamConfigFixed(self.id)
 
     if DL > 1:
       self.log(1, "NBIT\t"  + fixed_config["NBIT"])

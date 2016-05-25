@@ -13,7 +13,7 @@ from time import sleep
 from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
-from spip import config
+from spip import Config
 from spip_smrb import SMRBDaemon
 
 DAEMONIZE = True
@@ -55,15 +55,15 @@ class RecvSimDaemon(Daemon,StreamBased):
 
       # get the site configuration, things the backend configuration
       # does not affect
-      site = config.getSiteConfig()
+      config = Config()
     
       # generate the front-end configuration file for this stream
       # the does not change from observation to observation
-      local_config = config.getStreamConfigFixed(site, self.cfg, self.id)
+      local_config = config.getStreamConfigFixed(self.id)
 
       # write this config to file
       config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
-      config.writeDictToCFGFile (local_config, config_file)
+      Config.writeDictToCFGFile (local_config, config_file)
 
       ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(self.id))
       cpu_core = self.cfg["STREAM_RECV_CORE_" + str(self.id)]  

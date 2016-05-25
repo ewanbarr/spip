@@ -169,8 +169,8 @@ class SMRBDaemon(Daemon,StreamBased):
       cmd = "dada_db -k " + db_key + " -n " + nbufs + " -b " + bufsz + " -r " + nread + " -c " + numa_node 
       if page:
         cmd += " -p -l"
+      self.log (1, cmd)
       rval, lines = self.system (cmd)
-
       db_keys.append(db_key)
 
     # after creation, launch thread to monitor smrb, maintaining state

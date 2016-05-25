@@ -10,125 +10,130 @@
 import os, re, socket, datetime, threading, time, sys, atexit, errno
 import subprocess
 
-SPIP_ROOT = os.environ.get('SPIP_ROOT');
+class Config(object):
 
-def getSPIP_ROOT():
-  return SPIP_ROOT
+  def __init__ (self):
+    spip_root = os.environ.get('SPIP_ROOT');
+  
+    config_file = spip_root + "/share/spip.cfg"
+    self.config = self.readCFGFileIntoDict (config_file)
 
-def getConfig():
-  config_file = getSpipCFGFile()
-  config = readCFGFileIntoDict(config_file)
-  return config
+    site_file = spip_root + "/share/site.cfg"
+    self.site = self.readCFGFileIntoDict (site_file)
 
-def getSiteConfig():
-  config_file = getSiteCFGFile()
-  config = readCFGFileIntoDict(config_file)
-  return config
+  def getSPIP_ROOT(self):
+    return self.spip_root
 
-def getSpipCFGFile():
-  return SPIP_ROOT + "/share/spip.cfg"
+  def getConfig(self):
+    return self.config
 
-def getSiteCFGFile():
-  return SPIP_ROOT + "/share/site.cfg"
+  def getSiteConfig(self):
+    return self.site
 
-def readCFGFileIntoDict(filename):
-  config = {}
-  try:
-    fptr = open(filename, 'r')
-  except IOError:
-    print "ERROR: cannot open " + filename
-  else:
-    for line in fptr:
-      # remove all comments 
+  @staticmethod
+  def readCFGFileIntoDict(filename):
+    cfg = {}
+    try:
+      fptr = open(filename, 'r')
+    except IOError:
+      print "ERROR: cannot open " + filename
+    else:
+      for line in fptr:
+        # remove all comments 
+        line = line.strip()
+        line = re.sub("#.*", "", line);
+        if line: 
+          line = re.sub("\s+", " ", line)
+          parts = line.split(' ', 1)
+          if (len(parts) == 2):
+            cfg[parts[0]] = parts[1].strip()
+      fptr.closed
+      return cfg
+
+  @staticmethod
+  def writeDictToCFGFile (cfg, filename):
+    try:
+      fptr = open(filename, 'w')
+    except IOError:
+      print "ERROR: cannot open " + filename + " for writing"
+    else:
+      for key in sorted(cfg.keys()):
+        fptr.write(key.ljust(20) + cfg[key] + "\n")
+      fptr.close()
+
+  @staticmethod
+  def writeDictToString (cfg):
+    string = ""
+    for key in sorted(cfg.keys()):
+      string += (key.ljust(16) + str(cfg[key]) + "\n")
+    return string
+
+  @staticmethod
+  def readDictFromString (string):
+    cfg = {}
+    for line in string.split("\n"):
       line = line.strip()
       line = re.sub("#.*", "", line);
-      if line: 
+      if line:
         line = re.sub("\s+", " ", line)
         parts = line.split(' ', 1)
         if (len(parts) == 2):
-          config[parts[0]] = parts[1].strip()
-    fptr.closed
-    return config
+          cfg[parts[0]] = parts[1].strip()
+    return cfg
 
-def writeDictToCFGFile (cfg, filename):
-  try:
-    fptr = open(filename, 'w')
-  except IOError:
-    print "ERROR: cannot open " + filename + " for writing"
-  else:
-    for key in sorted(cfg.keys()):
-      fptr.write(key.ljust(20) + cfg[key] + "\n")
-    fptr.close()
+  def getStreamConfigFixed (self, id):
 
-def writeDictToString (cfg):
-  string = ""
-  for key in sorted(cfg.keys()):
-    string += (key.ljust(16) + str(cfg[key]) + "\n")
-  return string
+    cfg = {}
 
-def readDictFromString (string):
-  config = {}
-  for line in string.split("\n"):
-    line = line.strip()
-    line = re.sub("#.*", "", line);
-    if line:
-      line = re.sub("\s+", " ", line)
-      parts = line.split(' ', 1)
-      if (len(parts) == 2):
-        config[parts[0]] = parts[1].strip()
-  return config
+    cfg["HDR_VERSION"] = self.site["HDR_VERSION"]
+    cfg["HDR_SIZE"]    = self.site["HDR_SIZE"]
+    cfg["TELESCOPE"]   = self.site["TELESCOPE"]
 
-def getStreamConfigFixed (site, cfg, id):
+    cfg["RECEIVER"]   = self.config["RECEIVER"]
+    cfg["INSTRUMENT"] = self.config["INSTRUMENT"]
 
-  config = {}
+    cfg["NBIT"]  = self.config["NBIT"]
+    cfg["NPOL"]  = self.config["NPOL"]
+    cfg["NDIM"]  = self.config["NDIM"]
+    cfg["TSAMP"] = self.config["TSAMP"]
 
-  config["HDR_VERSION"] = site["HDR_VERSION"]
-  config["HDR_SIZE"]    = site["HDR_SIZE"]
-  config["TELESCOPE"]   = site["TELESCOPE"]
+    # determine subband for this stream
+    (host, beam, subband) = self.config["STREAM_" + str(id)].split(":")
 
-  config["RECEIVER"]   = cfg["RECEIVER"]
-  config["INSTRUMENT"] = cfg["INSTRUMENT"]
+    (freq, bw, nchan) = self.config["SUBBAND_CONFIG_" + str(subband)].split(":")
+    cfg["FREQ"] = freq
+    cfg["BW"] = bw
+    cfg["NCHAN"] = nchan
 
-  config["NBIT"]  = cfg["NBIT"]
-  config["NPOL"]  = cfg["NPOL"]
-  config["NDIM"]  = cfg["NDIM"]
-  config["TSAMP"] = cfg["TSAMP"]
+    (start_chan, end_chan) = self.config["SUBBAND_CHANS_" + str(subband)].split(":")
+    cfg["START_CHANNEL"] = start_chan
+    cfg["END_CHANNEL"]   = end_chan
 
-  # determine subband for this stream
-  (host, beam, subband) = cfg["STREAM_" + str(id)].split(":")
+    # compute bytes_per_second for stream(id)
+    nchan_int = int(nchan)
+    nbit = int(self.config["NBIT"])
+    npol = int(self.config["NPOL"])
+    ndim = int(self.config["NDIM"])
+    tsamp = float(self.config["TSAMP"])
 
-  (freq, bw, nchan) = cfg["SUBBAND_CONFIG_" + str(subband)].split(":")
-  config["FREQ"] = freq
-  config["BW"] = bw
-  config["NCHAN"] = nchan
+    bytes_per_second = (nchan_int * nbit * npol * ndim * 1e6) / (8 * tsamp)
+    cfg["BYTES_PER_SECOND"] = str(bytes_per_second)
+    cfg["RESOLUTION"] = self.config["RESOLUTION"] 
 
-  (start_chan, end_chan) = cfg["SUBBAND_CHANS_" + str(subband)].split(":")
-  config["START_CHANNEL"] = start_chan
-  config["END_CHANNEL"]   = end_chan
+    return cfg
 
-  # compute bytes_per_second for stream(id)
-  nchan_int = int(nchan)
-  nbit = int(config["NBIT"])
-  npol = int(config["NPOL"])
-  ndim = int(config["NDIM"])
-  tsamp = float(config["TSAMP"])
+  @staticmethod
+  def getStreamConfig (stream_id, cfg):
+    stream_config = cfg["STREAM_" + str(stream_id)]
+    (host, beam_id, subband_id) = stream_config.split(":")
+    return (host, beam_id, subband_id)
 
-  bytes_per_second = (nchan_int * nbit * npol * ndim * 1e6) / (8 * tsamp)
-  config["BYTES_PER_SECOND"] = str(bytes_per_second)
-  config["RESOLUTION"] = cfg["RESOLUTION"] 
-
-  return config
-
-def getStreamConfig (stream_id, cfg):
-  stream_config = cfg["STREAM_" + str(stream_id)]
-  (host, beam_id, subband_id) = stream_config.split(":")
-  return (host, beam_id, subband_id)
-
-def parseHeader(lines):
-  header = {}
-  for line in lines:
-    parts = line.split()
-    if len(parts) > 1:
-      header[parts[0]] = parts[1]
-  return header
+  @staticmethod
+  def parseHeader(lines):
+    header = {}
+    for line in lines:
+      parts = line.split()
+      if len(parts) > 1:
+        header[parts[0]] = parts[1]
+    return header
 

@@ -15,7 +15,7 @@ from spip_gen import GenDaemon
 from spip_smrb import SMRBDaemon
 from spip.log_socket import LogSocket
 from spip.utils.core import system_piped
-from spip import config
+from spip import Config
 
 DAEMONIZE = False
 DL = 2
@@ -44,7 +44,7 @@ class KAT7GenDaemon(GenDaemon):
   def gen_obs (self, fixed_config, message):
 
     self.log(1, "gen_obs: " + str(message))
-    header = config.readDictFromString(message)
+    header = Config.readDictFromString(message)
 
     in_ids = self.cfg["RECEIVING_DATA_BLOCKS"].split(" ")
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
@@ -71,8 +71,8 @@ class KAT7GenDaemon(GenDaemon):
     transmit_rate = float(header["BYTES_PER_SECOND"]) / 1000000.0
 
     self.log(3, "gen_obs: writing header to " + header1_file + " and " + header2_file)
-    config.writeDictToCFGFile (header, header1_file)
-    config.writeDictToCFGFile (header, header2_file)
+    Config.writeDictToCFGFile (header, header1_file)
+    Config.writeDictToCFGFile (header, header2_file)
 
     stream_core = self.cfg["STREAM_GEN_CORE_" + str(self.id)]
 

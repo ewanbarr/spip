@@ -229,7 +229,9 @@ class StatDaemon(Daemon,StreamBased):
       self.binary_list.append (self.cfg["STREAM_STATS_BINARY"] + " -k " + db_key)
 
        # initialize the threads
-      stat_thread = dbstatsThread (stat_cmd, stat_dir, stat_log_pipe.sock, 1)
+      stat_thread = dbstatsThread (stat_cmd, stat_dir, stat_log_pipe.sock, 2)
+
+      self.log (1, stat_cmd)
 
       self.log (2, "StatDaemon::main starting stat thread")
       stat_thread.start()

@@ -489,7 +489,7 @@ class RepackServerDaemon (RepackDaemon, ServerBased):
       self.subbands.append({ "cfreq": cfreq, "bw": bw, "nchan": nchan })
 
     freq_low  = float(self.subbands[0]["cfreq"])  - (float(self.subbands[0]["bw"]) / 2.0)
-    freq_high  =float(self.subbands[-1]["cfreq"]) + (float(self.subbands[-1]["bw"]) / 2.0)
+    freq_high =float(self.subbands[-1]["cfreq"]) + (float(self.subbands[-1]["bw"]) / 2.0)
     self.out_freq = freq_low + ((freq_high - freq_low) / 2.0)
 
     return 0

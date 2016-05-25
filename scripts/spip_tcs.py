@@ -10,7 +10,7 @@
 import os, threading, sys, socket, select, signal, traceback, xmltodict
 import errno
 
-from spip import config
+from spip.config import Config
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
@@ -18,7 +18,7 @@ from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 
 DAEMONIZE = True
-DL = 1
+DL = 2
 
 ###############################################################
 # thread for reporting state of 
@@ -133,32 +133,34 @@ class TCSDaemon(Daemon):
               raw = handle.recv(4096)
 
               message = raw.strip()
-              self.log(2, "commandThread: message='" + message+"'")
-              xml = xmltodict.parse(message)
-              self.log(3, "<- " + str(xml))
 
-              # Parse XML for correctness
-              (valid, command, error) = self.parse_obs_cmd (xml, id)
+              if len(message) > 0:
+                self.log(2, "commandThread: message='" + message+"'")
+                xml = xmltodict.parse(message)
+                self.log(3, "<- " + str(xml))
 
-              if valid :
-                if command == "start":
-                  self.log(2, "commandThread: issue_start_cmd")
-                  self.issue_start_cmd (xml)
-                elif command == "stop":
-                  self.log(2, "commandThread: issue_stop_cmd")
-                  self.issue_stop_cmd (xml)
-                elif command == "configure":
-                  self.log(2, "commandThread: no action for configure command")
-          
-              else:
-                self.log(-1, "failed to parse xml: " + error)
+                # Parse XML for correctness
+                (valid, command, error) = self.parse_obs_cmd (xml, id)
 
-              response = "OK"
-              self.log(3, "-> " + response)
-              xml_response = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
-                             "<gen_response>" + response + "</gen_response>"
-              handle.send (xml_response + "\r\n")
-    
+                if valid :
+                  if command == "start":
+                    self.log(2, "commandThread: issue_start_cmd")
+                    self.issue_start_cmd (xml)
+                  elif command == "stop":
+                    self.log(2, "commandThread: issue_stop_cmd")
+                    self.issue_stop_cmd (xml)
+                  elif command == "configure":
+                    self.log(2, "commandThread: no action for configure command")
+            
+                else:
+                  self.log(-1, "failed to parse xml: " + error)
+
+                response = "OK"
+                self.log(3, "-> " + response)
+                xml_response = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
+                               "<tcs_response>" + response + "</tcs_response>"
+                handle.send (xml_response + "\r\n")
+      
             except socket.error as e:
               if e.errno == errno.ECONNRESET:
                 self.log(1, "commandThread: closing connection")
@@ -203,6 +205,9 @@ class TCSDaemon(Daemon):
               self.beam_states[b]["proc_file"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
 
               self.beam_states[b]["tobs"] = str(xml['obs_cmd']['observation_parameters']['tobs'])
+
+              # TODO make this a specialisation for MeerKAT
+              self.beam_states[b]["adc_sync_time"] = str(xml['obs_cmd']['instrument_parameters']['adc_sync_time'])
 
               self.beam_states[b]["utc_start"] = None
               self.beam_states[b]["utc_stop"]  = None
@@ -259,6 +264,7 @@ class TCSDaemon(Daemon):
           # TODO Think about these two
           obs["OBS_OFFSET"] = "0"
           obs["CALFREQ"] = "1"
+          obs["ADC_SYNC_TIME"] = self.beam_states[b]["adc_sync_time"]
 
           self.beam_states[b]["lock"].release()
 
@@ -267,7 +273,7 @@ class TCSDaemon(Daemon):
           obs["PERFORM_TRANS"] = "0"
 
           # convert to a single ascii string
-          obs_header = config.writeDictToString (obs)
+          obs_header = Config.writeDictToString (obs)
 
           self.log(1, "issue_start_cmd: beam=" + b)
 
@@ -326,7 +332,7 @@ class TCSDaemon(Daemon):
           self.beam_states[b]["lock"].release()
 
           # convert to a single ascii string
-          obs_header = config.writeDictToString (obs)
+          obs_header = Config.writeDictToString (obs)
 
           # work out which streams correspond to these beams
           for istream in range(int(self.cfg["NUM_STREAM"])):
@@ -382,6 +388,7 @@ class TCSServerDaemon (TCSDaemon, ServerBased):
       self.beam_states[b]["utc_start"] = None
       self.beam_states[b]["utc_stop"] = None
       self.beam_states[b]["tobs"] = ""
+      self.beam_states[b]["adc_sync_time"] = ""
       self.beam_states[b]["mode"] = ""
       self.beam_states[b]["state"] = "Idle"
       self.beam_states[b]["lock"] = threading.Lock()
@@ -404,6 +411,7 @@ class TCSBeamDaemon (TCSDaemon, BeamBased):
     self.beam_states[b]["utc_start"] = None
     self.beam_states[b]["utc_stop"] = None
     self.beam_states[b]["tobs"] = ""
+    self.beam_states[b]["adc_sync_time"] = ""
     self.beam_states[b]["mode"] = ""
     self.beam_states[b]["state"] = "Idle"
     self.beam_states[b]["lock"] = threading.Lock()

@@ -16,10 +16,10 @@ from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils.sockets import getHostNameShort
-from spip import config
+from spip.config import Config
 
-DAEMONIZE = True
-DL = 1
+DAEMONIZE = False
+DL = 2
 
 #################################################################
 # thread for reading .dada files into a ring buffer
@@ -52,10 +52,10 @@ class ReadDaemon(Daemon,StreamBased):
     hostname = getHostNameShort()
 
     # get the site configurationa
-    site = config.getSiteConfig()
+    config = Config()
 
     # prepare header using configuration file parameters
-    fixed_config = config.getStreamConfigFixed(site, self.cfg, self.id)
+    fixed_config = config.getStreamConfigFixed(self.id)
 
     if DL > 1:
       self.log(1, "NBIT\t"  + fixed_config["NBIT"])

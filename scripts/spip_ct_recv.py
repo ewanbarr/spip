@@ -21,7 +21,7 @@ def main (argv):
   recv_id = argv[1]
 
   # read configuration file
-  cfg = spip.getConfig()
+  config = Config()
 
   # get the beam identifier
   (req_host, beam_id) = spip.getRecvConfig(recv_id, cfg)

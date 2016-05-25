@@ -18,7 +18,6 @@ import errno, time, random, re
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
 
-from spip import config
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
@@ -26,8 +25,8 @@ from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 from spip.threads.socketed_thread import SocketedThread
 
-DAEMONIZE = False
-DL = 2
+DAEMONIZE = True
+DL = 1
 
 ###############################################################
 # PubSub daemon
@@ -88,10 +87,11 @@ class PubSubThread(SocketedThread):
           self.script.beam_configs[beam_name]["MODE"] = xml['obs_cmd']['observation_parameters']['mode']
           self.script.beam_configs[beam_name]["PROC_FILE"] = str(xml['obs_cmd']['observation_parameters']['processing_file'])
 
-          self.script.beam_configs[beam_name]["UTC_START"] = xml['obs_cmd']['observation_parameters']['utc_start']
+          #self.script.beam_configs[beam_name]["UTC_START"] = xml['obs_cmd']['observation_parameters']['utc_start']
           self.script.beam_configs[beam_name]["OBS_OFFSET"] = "0"
           self.script.beam_configs[beam_name]["TOBS"] = xml['obs_cmd']['observation_parameters']['tobs']
 
+          self.script.beam_configs[beam_name]["ADC_SYNC_TIME"] =  xml['obs_cmd']['instrument_parameters']['adc_sync_time']
           self.script.beam_configs[beam_name]["PERFORM_FOLD"] = "1"
           self.script.beam_configs[beam_name]["PERFORM_SEARCH"] = "0"
           self.script.beam_configs[beam_name]["PERFORM_TRANS"] = "0"
@@ -247,27 +247,32 @@ class KATCPDaemon(Daemon):
 
     xml =  "<?xml version='1.0' encoding='ISO-8859-1'?>"
     xml += "<obs_cmd>"
-    xml +=   "<command>init</command>"
+    xml +=   "<command>configure</command>"
     xml +=   "<beam_configuration>"
     xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
-    xml +=     "<beam_name>" + b + "</beam_name>"
+    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
     xml +=   "</beam_configuration>"
 
     xml +=   "<source_parameters>"
-    xml +=     "<name epoch='J2000'>" + self.beam_configs[b]["source"] + "</name>"
-    xml +=     "<ra units='hh:mm:ss'>" + self.beam_configs[b]["ra"] + "</ra>"
-    xml +=     "<dec units='hh:mm:ss'>" + self.beam_configs[b]["dec"] + "</dec>"
+    xml +=     "<name epoch='J2000'>" + self.beam_configs[b]["SOURCE"] + "</name>"
+    xml +=     "<ra units='hh:mm:ss'>" + self.beam_configs[b]["RA"] + "</ra>"
+    xml +=     "<dec units='hh:mm:ss'>" + self.beam_configs[b]["DEC"] + "</dec>"
     xml +=   "</source_parameters>"
 
-    xml +=   "<observation_parameters>\n";
-    xml +=     "<observer>" + self.beam_configs[b]["observer"] + "</observer>"
-    xml +=     "<project_id>" + self.beam_configs[b]["project_id"] + "</project_id>"
-    xml +=     "<tobs>" + self.beam_configs[b]["tobs"] + "</tobs>"
-    xml +=     "<mode>" + self.beam_configs[b]["mode"] + "</mode>"
-    xml +=     "<processing_file>" + self.beam_configs[b]["processing_file"] + "</processing_file>"
+    xml +=   "<observation_parameters>"
+    xml +=     "<observer>" + self.beam_configs[b]["OBSERVER"] + "</observer>"
+    xml +=     "<project_id>" + self.beam_configs[b]["PID"] + "</project_id>"
+    xml +=     "<tobs>" + self.beam_configs[b]["TOBS"] + "</tobs>"
+    xml +=     "<mode>" + self.beam_configs[b]["MODE"] + "</mode>"
+    xml +=     "<processing_file>" + self.beam_configs[b]["PROC_FILE"] + "</processing_file>"
     xml +=     "<utc_start></utc_start>"
     xml +=     "<utc_stop></utc_stop>"
     xml +=   "</observation_parameters>"
+
+    xml +=   "<instrument_parameters>"
+    xml +=     "<adc_sync_time>" + self.beam_configs[b]["ADC_SYNC_TIME"] + "</adc_sync_time>"
+    xml +=   "</instrument_parameters>"
+
     xml += "</obs_cmd>"
 
     return xml
@@ -277,6 +282,13 @@ class KATCPDaemon(Daemon):
     xml  = "<?xml version='1.0' encoding='ISO-8859-1'?>"
     xml += "<obs_cmd>"
     xml += "<command>start</command>"
+    xml +=   "<beam_configuration>"
+    xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
+    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
+    xml +=   "</beam_configuration>"
+    xml +=   "<observation_parameters>"
+    xml +=     "<utc_start></utc_start>"
+    xml +=   "</observation_parameters>"
     xml += "</obs_cmd>"
 
     return xml
@@ -286,6 +298,13 @@ class KATCPDaemon(Daemon):
     xml  = "<?xml version='1.0' encoding='ISO-8859-1'?>"
     xml += "<obs_cmd>"
     xml += "<command>stop</command>"
+    xml +=   "<beam_configuration>"
+    xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
+    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
+    xml +=   "</beam_configuration>"
+    xml +=   "<observation_parameters>"
+    xml +=     "<utc_stop></utc_stop>"
+    xml +=   "</observation_parameters>"
     xml += "</obs_cmd>"
 
     return xml
@@ -390,9 +409,10 @@ class KATCPServerDaemon (KATCPDaemon, ServerBased):
       self.beam_configs[b]["DEC"] = ""
       self.beam_configs[b]["PID"] = ""
       self.beam_configs[b]["OBSERVER"] = ""
-      self.beam_configs[b]["UTC_START"] = ""
+      #self.beam_configs[b]["UTC_START"] = ""
       self.beam_configs[b]["TOBS"] = ""
       self.beam_configs[b]["MODE"] = ""
+      self.beam_configs[b]["ADC_SYNC_TIME"] = ""
       self.beam_configs[b]["PERFORM_FOLD"] = "0"
       self.beam_configs[b]["PERFORM_SEARCH"] = "0"
       self.beam_configs[b]["PERFORM_TRANS"] = "0"
@@ -436,9 +456,10 @@ class KATCPBeamDaemon (KATCPDaemon, BeamBased):
     self.beam_configs[b]["DEC"] = ""
     self.beam_configs[b]["PID"] = ""
     self.beam_configs[b]["OBSERVER"] = ""
-    self.beam_configs[b]["UTC_START"] = ""
+    #self.beam_configs[b]["UTC_START"] = ""
     self.beam_configs[b]["TOBS"] = ""
     self.beam_configs[b]["MODE"] = ""
+    self.beam_configs[b]["ADC_SYNC_TIME"] = "0"
     self.beam_configs[b]["PERFORM_FOLD"] = "0"
     self.beam_configs[b]["PERFORM_SEARCH"] = "0"
     self.beam_configs[b]["PERFORM_TRANS"] = "0"
@@ -708,12 +729,14 @@ class KATCPServer (DeviceServer):
       """Prepare the ingest process for data capture."""
       if data_product_id in self._data_products:
         # TODO - assume data_product_id is beam name
-        host = self.script.tcs_hosts[data_product_id]
-        port = self.script.tcs_ports[data_product_id]
-        sock = sockets.openSocket (DL, host, gen_port, 1)
+        b = str(data_product_id)
+        host = self.script.tcs_hosts[b]
+        port = self.script.tcs_ports[b]
+        sock = sockets.openSocket (DL, host, int(port), 1)
         if sock:
-          xml = self.get_xml_config_for_beams (data_product_id)
-          sock.send(xml)
+          xml = self.script.get_xml_config_for_beams (b)
+          sock.send(xml + "\r\n")
+          reply = sock.recv (65536);
           sock.close()
 
         return ("ok", "")
@@ -726,12 +749,14 @@ class KATCPServer (DeviceServer):
       """Start capture of SPEAD stream for the data_product_id."""
       if data_product_id in self._data_products:
         # TODO assume data_product_id is beam name
-        host = self.script.tcs_hosts[data_product_id]
-        port = self.script.tcs_ports[data_product_id]
-        sock = sockets.openSocket (DL, host, gen_port, 1)
+        b = str(data_product_id)
+        host = self.script.tcs_hosts[b]
+        port = self.script.tcs_ports[b]
+        sock = sockets.openSocket (DL, host, int(port), 1)
         if sock:
-          xml = self.get_xml_start_cmd (data_product_id)
-          sock.send(xml)
+          xml = self.script.get_xml_start_cmd (b)
+          sock.send(xml + "\r\n")
+          reply = sock.recv (65536);
           sock.close()
 
         return ("ok", "")
@@ -744,12 +769,14 @@ class KATCPServer (DeviceServer):
       """Stop capture of SPEAD stream for the data_product_id."""
       if data_product_id in self._data_products:
         # TODO assume data_product_id is beam name
-        host = self.script.tcs_hosts[data_product_id]
-        port = self.script.tcs_ports[data_product_id]
-        sock = sockets.openSocket (DL, host, gen_port, 1)
+        b = str(data_product_id) 
+        host = self.script.tcs_hosts[b]
+        port = self.script.tcs_ports[b]
+        sock = sockets.openSocket (DL, host, int(port), 1)
         if sock:
-          xml = self.get_xml_stop_cmd (data_product_id)
-          sock.send(xml)
+          xml = self.script.get_xml_stop_cmd (b)
+          sock.send(xml + "\r\n")
+          reply = sock.recv (65536);
           sock.close()
 
         return ("ok", "")
@@ -829,10 +856,10 @@ if __name__ == "__main__":
   # for all beams, otherwise, 1 per beam
 
   if int(beam_id) == -1:
-    script = KATCPServerDaemon ("katcp")
+    script = KATCPServerDaemon ("spip_katcp")
     beam_id = 0
   else:
-    script = KATCPBeamDaemon ("katcp", int(beam_id))
+    script = KATCPBeamDaemon ("spip_katcp", int(beam_id))
 
   state = script.configure (DAEMONIZE, DL, "katcp", "katcp")
   if state != 0:
@@ -860,6 +887,7 @@ if __name__ == "__main__":
 
     script.log(2, "__main__: script.main()")
     script.main (beam_id)
+    script.log(1, "__main__: script.main() returned")
 
     if server.running():
       server.stop()

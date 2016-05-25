@@ -14,7 +14,7 @@ from atexit import register
 import time, select, errno, os, sys
 import threading, socket, subprocess
 
-from spip import config
+from spip.config import Config
 from spip.utils import sockets
 from spip.log_socket import LogSocket
 from spip.threads.control_thread import ControlThread
@@ -27,7 +27,8 @@ class Daemon(object):
     self.dl = 1
 
     self.name = name
-    self.cfg = config.getConfig()
+    self.config = Config()
+    self.cfg = self.config.getConfig()
     self.id = id
     self.hostname = sockets.getHostNameShort()
 
@@ -243,7 +244,7 @@ class Daemon(object):
     return return_code, output 
 
 
-  def system_piped (self, command, pipe, dl=2):
+  def system_piped (self, command, pipe, dl=2, env_vars=os.environ.copy()):
 
     return_code = 0
 
@@ -251,6 +252,7 @@ class Daemon(object):
 
     # setup the module object
     proc = subprocess.Popen(command,
+                            env=env_vars,
                             shell=True,
                             stdin=None,
                             stdout=pipe,

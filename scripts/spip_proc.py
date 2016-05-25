@@ -12,7 +12,7 @@ import os, threading, sys, time, socket, select, traceback
 from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
-from spip import config
+from spip.config import Config
 from spip_smrb import SMRBDaemon
 from spip.utils.core import system_piped,system
 from spip.utils.sockets import getHostNameShort
@@ -137,7 +137,7 @@ class ProcDaemon (Daemon, StreamBased):
         
         else:
 
-          header = config.parseHeader (lines)
+          header = Config.parseHeader (lines)
 
           utc_start = header["UTC_START"]
           self.log (1, "UTC_START=" + header["UTC_START"])
@@ -155,9 +155,9 @@ class ProcDaemon (Daemon, StreamBased):
             beam = self.cfg["BEAM_" + str(self.beam_id)]
 
             if not float(bw) == float(header["BW"]):
-              self.log (-2, "configured bandwidth ["+bw+"] != header["+header["BW"]+"]")
+              self.log (-1, "configured bandwidth ["+bw+"] != header["+header["BW"]+"]")
             if not float(cfreq) == float(header["FREQ"]):
-              self.log (-2, "configured cfreq ["+cfreq+"] != header["+header["FREQ"]+"]")
+              self.log (-1, "configured cfreq ["+cfreq+"] != header["+header["FREQ"]+"]")
             if not int(nchan) == int(header["NCHAN"]):
               self.log (-2, "configured nchan ["+nchan+"] != header["+header["NCHAN"]+"]")
 
@@ -189,10 +189,8 @@ class ProcDaemon (Daemon, StreamBased):
               fold_cmd = "dspsr -Q " + db_key_filename + " -cuda " + gpu_id + " -D 0 -minram 512 -b 1024 -L 10 -no_dyn"
               #fold_cmd = "dada_dbdisk -k " + db_key_in + " -s -D " + fold_dir
 
-              fold_cmd = "numactl -C " + cpu_core + " -- " + fold_cmd
-
               header_file = fold_dir + "/obs.header"
-              config.writeDictToCFGFile (header, header_file)
+              Config.writeDictToCFGFile (header, header_file)
 
             if search or trans:
               os.makedirs (search_dir, 0755)
@@ -224,6 +222,7 @@ class ProcDaemon (Daemon, StreamBased):
 
           # create processing threads
           self.log (1, "creating processing threads")      
+          fold_cmd = "numactl -C " + cpu_core + " -- " + fold_cmd
           fold_thread = procThread (fold_cmd, fold_dir, fold_log_pipe.sock, 1)
 
           #trans_thread = procThread (trans_cmd, self.log_sock.sock, 2)

@@ -18,7 +18,7 @@ import spip_lmc_monitor as lmc_mon
 from spip.daemons.bases import HostBased
 from spip.daemons.daemon import Daemon
 from spip.utils.sockets import getHostNameShort
-from spip import config
+from spip.config import Config
 from spip.utils.core import system
 
 DAEMONIZE = True
@@ -98,7 +98,7 @@ class clientThread (threading.Thread):
 
         for rank in ranks:
           for daemon in daemons[rank]: 
-            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'";
+            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "' | wc -l";
             rval, lines = self.parent.system (cmd, 2)
             self.states[daemon] = (rval == 0)
             self.parent.log(3, prefix + daemon + ": " + str(self.states[daemon]))
@@ -183,7 +183,7 @@ class LMCDaemon (Daemon,HostBased):
     # find matching client streams for this host
     client_streams = []
     for istream in range(int(self.cfg["NUM_STREAM"])):
-      (req_host, beam_id, subband_id) = config.getStreamConfig (istream, self.cfg)
+      (req_host, beam_id, subband_id) = Config.getStreamConfig (istream, self.cfg)
       if req_host == self.req_host:
         client_streams.append(istream)
 
