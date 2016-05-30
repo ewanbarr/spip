@@ -9,11 +9,12 @@
 
 import sys, traceback
 from time import sleep
+from os import environ
 
 from spip.daemons.bases import StreamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
-from spip import Config
+from spip.config import Config
 from spip_smrb import SMRBDaemon
 
 DAEMONIZE = True
@@ -30,12 +31,12 @@ class RecvSimDaemon(Daemon,StreamBased):
     db_id = self.cfg["PROCESSING_DATA_BLOCK"]
     db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
     num_stream = self.cfg["NUM_STREAM"]
-    db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
-    self.log(0, "db_key="+db_key)
+    self.db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
+    self.log(0, "db_key="+self.db_key)
 
     # wait up to 10s for the SMRB to be created
     smrb_wait = 10
-    cmd = "dada_dbmetric -k " + db_key
+    cmd = "dada_dbmetric -k " + self.db_key
     self.binary_list.append (cmd)
 
     rval = 1
@@ -48,30 +49,24 @@ class RecvSimDaemon(Daemon,StreamBased):
 
     if rval:
       self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
-                  "key=" + db_key)
+                  "key=" + self.db_key)
       self.quit_event.set()
 
     else:
 
-      # get the site configuration, things the backend configuration
-      # does not affect
-      config = Config()
-    
-      # generate the front-end configuration file for this stream
-      # the does not change from observation to observation
-      local_config = config.getStreamConfigFixed(self.id)
+      local_config = self.getConfiguration()
+
+      self.cpu_core = self.cfg["STREAM_RECV_CORE_" + str(self.id)]
+      self.ctrl_port = str(int(self.cfg["STREAM_CTRL_PORT"]) + int(self.id))
 
       # write this config to file
-      config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
-      Config.writeDictToCFGFile (local_config, config_file)
+      local_config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
+      self.log(1, "main: creating " + local_config_file)
+      Config.writeDictToCFGFile (local_config, local_config_file)
 
-      ctrl_port = str(int(script.cfg["STREAM_CTRL_PORT"]) + int(self.id))
-      cpu_core = self.cfg["STREAM_RECV_CORE_" + str(self.id)]  
+      env = self.getEnvironment()
 
-      cmd = self.cfg["STREAM_BINARY"] + " -k " + db_key \
-            + " -v -b " + cpu_core \
-            + " -c " + ctrl_port \
-            + " " + config_file
+      cmd = self.getCommand(local_config_file)
       self.binary_list.append (cmd)
 
       self.log(3, "main: sleep(1)")
@@ -96,6 +91,25 @@ class RecvSimDaemon(Daemon,StreamBased):
       self.quit_event.set()
 
       log_pipe.close ()
+
+  def getConfiguration (self):
+
+    local_config = self.config.getStreamConfigFixed (self.id)
+    return local_config
+
+  def getEnvironment (self):
+    return environ.copy()
+
+  def getCommand (self, config_file):
+
+    (stream_ip, stream_port) =  self.cfg["STREAM_UDP_" + str(self.id)].split(":")
+    cmd = self.cfg["STREAM_BINARY"] + " -k " + self.db_key \
+            + " -b " + self.cpu_core \
+            + " -c " + self.ctrl_port \
+            + " -p " + stream_port \
+            + " " + config_file + " " + stream_ip
+    return cmd
+
 #
 # main
 ###############################################################################

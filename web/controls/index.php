@@ -46,8 +46,11 @@ class controls extends spip_webpage
     $list = explode (" ", $this->config["SERVER_DAEMONS"]);
     foreach ($list as $item)
     {
-      list ($daemon, $level) = explode (":", $item);
-      array_push ($this->server_daemons, array("daemon" => $daemon, "level" => $level));
+      if ($item != "none")
+      {
+        list ($daemon, $level) = explode (":", $item);
+        array_push ($this->server_daemons, array("daemon" => $daemon, "level" => $level));
+      }
     }
 
     // prepare client daemons

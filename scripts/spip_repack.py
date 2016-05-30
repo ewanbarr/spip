@@ -257,6 +257,7 @@ class RepackDaemon(Daemon):
                            fin_dir + "/" + "obs.header." + subband["cfreq"])
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
+              os.removedirs (fin_dir)
 
       if processed_this_loop == 0:
         self.log (3, "time.sleep(1)")

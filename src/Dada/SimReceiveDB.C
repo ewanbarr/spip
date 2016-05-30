@@ -17,10 +17,7 @@
 #include <new>
 #include <pthread.h>
 
-#define SimReceiveDB_CMD_NONE 0
-#define SimReceiveDB_CMD_START 1
-#define SimReceiveDB_CMD_STOP 2
-#define SimReceiveDB_CMD_QUIT 3
+#define DELTA_START 5
 
 using namespace std;
 
@@ -320,7 +317,8 @@ void spip::SimReceiveDB::open ()
 // write the ascii header to the datablock, then
 void spip::SimReceiveDB::open (const char * header_str)
 {
-  cerr << "spip::SimReceiveDB::open()" << endl;
+  if (verbose)
+    cerr << "spip::SimReceiveDB::open()" << endl;
   // open the data block for writing  
   db->open();
 
@@ -330,10 +328,12 @@ void spip::SimReceiveDB::open (const char * header_str)
 
 void spip::SimReceiveDB::close ()
 {
-  cerr << "spip::SimReceiveDB::close()" << endl;
+  if (verbose)
+    cerr << "spip::SimReceiveDB::close()" << endl;
   if (db->is_block_open())
   {
-    cerr << "spip::SimReceiveDB::close db->close_block(" << db->get_data_bufsz() << ")" << endl;
+    if (verbose)
+      cerr << "spip::SimReceiveDB::close db->close_block(" << db->get_data_bufsz() << ")" << endl;
     db->close_block(db->get_data_bufsz());
   }
 
@@ -344,14 +344,11 @@ void spip::SimReceiveDB::close ()
 // Generate Data into the DB at the specified data rate
 bool spip::SimReceiveDB::generate (int tobs)
 {
-  cerr << "spip::UDPGenerator::transmit tobs=" << tobs << " bytes_per_second=" << bytes_per_second << endl;
+  if (verbose)
+    cerr << "spip::SimReceiveDB::transmit tobs=" << tobs << " bytes_per_second=" << bytes_per_second << endl;
 
   uint64_t bytes_to_gen = (uint64_t) (tobs * bytes_per_second);
   uint64_t total_bytes_gend = 0;
-
-  struct timeval timestamp;
-  gettimeofday (&timestamp, 0);
-  time_t start_second = timestamp.tv_sec + 1;
 
   // block control logic
   char * block;
@@ -371,6 +368,9 @@ bool spip::SimReceiveDB::generate (int tobs)
   format->set_noise_buffer_size (2 * data_bufsz);
   format->generate_noise_buffer (nbit);
 
+  struct timeval timestamp;
+  time_t start_second = 0;
+
   // Main loop
   while (keep_generating)
   {
@@ -378,6 +378,8 @@ bool spip::SimReceiveDB::generate (int tobs)
     if (control_state == Idle && control_cmd == Start)
     {
       control_state = Active;
+      gettimeofday (&timestamp, 0);
+      start_second = timestamp.tv_sec + DELTA_START;
     }
 
     // if started
@@ -427,7 +429,8 @@ bool spip::SimReceiveDB::generate (int tobs)
       // check for stop command
     if (control_cmd == Stop)
     {
-      cerr << "spip::SimReceiveDB::receive control_cmd == Stop" << endl;
+      if (verbose)
+        cerr << "spip::SimReceiveDB::receive control_cmd == Stop" << endl;
       keep_generating = false;
       control_state = Idle;
       control_cmd = None;

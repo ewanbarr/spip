@@ -250,7 +250,11 @@ class KATCPDaemon(Daemon):
     xml +=   "<command>configure</command>"
     xml +=   "<beam_configuration>"
     xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
-    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
+    for i in range(len(self.beams)):
+      if self.beams[i] == b:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>on</beam_state_" + str(i) + ">"
+      else:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>off</beam_state_" + str(i) + ">"
     xml +=   "</beam_configuration>"
 
     xml +=   "<source_parameters>"
@@ -284,7 +288,11 @@ class KATCPDaemon(Daemon):
     xml += "<command>start</command>"
     xml +=   "<beam_configuration>"
     xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
-    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
+    for i in range(len(self.beams)):
+      if self.beams[i] == b:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>on</beam_state_" + str(i) + ">"
+      else:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>off</beam_state_" + str(i) + ">"
     xml +=   "</beam_configuration>"
     xml +=   "<observation_parameters>"
     xml +=     "<utc_start></utc_start>"
@@ -300,7 +308,11 @@ class KATCPDaemon(Daemon):
     xml += "<command>stop</command>"
     xml +=   "<beam_configuration>"
     xml +=     "<nbeam>" + str(len(self.beams)) + "</nbeam>"
-    xml +=     "<beam_state_0 name='" + b + "'>on</beam_state_0>"
+    for i in range(len(self.beams)):
+      if self.beams[i] == b:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>on</beam_state_" + str(i) + ">"
+      else:
+        xml +=     "<beam_state_" + str(i) + " name='" + self.beams[i] + "'>off</beam_state_" + str(i) + ">"
     xml +=   "</beam_configuration>"
     xml +=   "<observation_parameters>"
     xml +=     "<utc_stop></utc_stop>"
@@ -727,18 +739,19 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_capture_init(self, req, data_product_id):
       """Prepare the ingest process for data capture."""
+      self.script.log (2, "request_capture_init()")
       if data_product_id in self._data_products:
         # TODO - assume data_product_id is beam name
         b = str(data_product_id)
         host = self.script.tcs_hosts[b]
         port = self.script.tcs_ports[b]
+        self.script.log (2, "request_capture_init: opening socket to " + host + ":" + str(port))
         sock = sockets.openSocket (DL, host, int(port), 1)
         if sock:
           xml = self.script.get_xml_config_for_beams (b)
           sock.send(xml + "\r\n")
           reply = sock.recv (65536);
           sock.close()
-
         return ("ok", "")
       else:
         return ("fail", "data product " + str (data_product_id) + " was not configured")
@@ -796,7 +809,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_data_product_configure(self, req, msg):
       """Prepare and configure for the reception of the data_product_id."""
-
+      self.script.log (2, "request_data_product_configure ()")
       if len(msg.arguments) == 0:
         return ("ok", "configured data products: TBD")
 

@@ -15,7 +15,8 @@ dist_bin_SCRIPTS = spip_gen.py \
                    kat7_merge.py \
                    kat7_read.py \
                    meerkat_read.py \
-                   meerkat_recv.py
+                   meerkat_recv.py \
+                   meerkat_recvsim.py
 
 SUBDIRS = spip
 
