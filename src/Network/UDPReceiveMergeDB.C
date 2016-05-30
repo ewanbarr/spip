@@ -55,9 +55,8 @@ spip::UDPReceiveMergeDB::UDPReceiveMergeDB (const char * key_string)
   pthread_cond_init( &cond_db, NULL);
   pthread_mutex_init( &mutex_db, NULL);
 
-
-  heap_size = 4194304;
-  overflow = (char *) malloc (heap_size);
+  chunk_size = 0;
+  overflow = NULL;
 
   verbose = 1;
 }
@@ -130,6 +129,10 @@ int spip::UDPReceiveMergeDB::configure (const char * config)
   npol = 2;
   if (header.set("NPOL", "%u", npol) < 0)
     throw invalid_argument ("failed to write NPOL to header"); 
+
+  // get the resolution from one of the polarisations
+  chunk_size = formats[0]->get_resolution() + formats[1]->get_resolution();
+  overflow = (char *) malloc (chunk_size);
 
   for (unsigned i=0; i<2; i++)
   {
@@ -462,7 +465,7 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
 #ifdef _DEBUG
         cerr << "spip::UDPReceiveMergeDB::data_block overflow saved " << overflow_lastbyte << " bytes" << endl;
 #endif
-        //memcpy (block, overflow, overflow_lastbyte);
+        memcpy (block, overflow, overflow_lastbyte);
       }
     }
 
@@ -538,13 +541,13 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
   int64_t next_byte_offset = 0;
 
   // overflow buffer
-  const int64_t overflow_bufsz = heap_size;
+  const int64_t overflow_bufsz = chunk_size;
   int64_t overflow_maxbyte = 0;
   int64_t overflowed_bytes = 0;
 
   uint64_t bytes_this_buf = 0;
   int64_t byte_offset;
-  uint64_t pol_offset = p * 2097152;
+  uint64_t pol_offset = p * (chunk_size / 2);
 
   bool filled_this_buffer = false;
   unsigned bytes_received, bytes_dropped;
@@ -584,8 +587,8 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
       if (p == 1)
         cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] filling buffer " 
              << ibuf << " [" <<  curr_byte_offset << " - " << next_byte_offset
-             << " - " << overflow_maxbyte << "] overflow=" << overflow_lastbytes[p] << " overflow_bufsz=" <<
-overflow_bufsz << endl;
+             << " - " << overflow_maxbyte << "] overflow=" << overflow_lastbytes[p] 
+             << " overflow_bufsz=" << overflow_bufsz << endl;
 #endif
 
       // signal other threads waiting on the condition

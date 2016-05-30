@@ -41,7 +41,7 @@ spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
   // nchan is variable depending on number of active paritions
   nchan = 4096;
   nbytes_per_heap = nsamp_per_heap * nchan * nbytes_per_samp; 
-  timestamp_to_samples = nchan * nbytes_per_samp;
+  samples_to_byte_offset = 1;
   heap_size = nbytes_per_heap;
 
   // this is the average size 
@@ -67,12 +67,16 @@ void spip::UDPFormatMeerKATSPEAD::configure(const spip::AsciiHeader& config, con
     throw invalid_argument ("END_CHANNEL did not exist in config");
   if (config.get ("TSAMP", "%lf", &tsamp) != 1)
     throw invalid_argument ("TSAMP did not exist in config");
+  if (config.get ("TSAMP", "%lf", &tsamp) != 1)
+    throw invalid_argument ("TSAMP did not exist in config");
   if (config.get ("ADC_SAMPLE_RATE", "%lu", &adc_sample_rate) != 1)
     throw invalid_argument ("ADC_SAMPLE_RATE did not exist in config");
+  if (config.get ("BW", "%lf", &bw) != 1)
+    throw invalid_argument ("BW did not exist in config");
 
   nchan = (end_channel - start_channel) + 1;
   nbytes_per_heap = nsamp_per_heap * nchan * nbytes_per_samp;
-  timestamp_to_samples = nchan * nbytes_per_samp;
+  samples_to_byte_offset = (double) (bw * 1e6 * ndim * header_npol) / adc_sample_rate; 
   heap_size = nbytes_per_heap;
 
   configured = true;
@@ -101,7 +105,9 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
   if (modulus > 0)
     obs_start_sample += (heap_size - modulus);
 
+#ifdef _DEBUG
   cerr << "UTC_START=" << key<< " obs_start_sample=" << obs_start_sample << " modulus=" << modulus << endl;
+#endif
 
   free (key);
 
@@ -127,10 +133,8 @@ uint64_t spip::UDPFormatMeerKATSPEAD::get_samples_for_bytes (uint64_t nbytes)
 
 uint64_t spip::UDPFormatMeerKATSPEAD::get_resolution ()
 {
-  uint64_t nbits = nchan * nbytes_per_samp * npol * nbit * ndim * nsamp_per_heap;
-  return nbits / 8;
+  return heap_size;
 }
-
 
 void spip::UDPFormatMeerKATSPEAD::set_channel_range (unsigned start, unsigned end) 
 {
@@ -180,7 +184,7 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
         return -1;
 
       curr_heap_cnt = header.heap_cnt;
-      curr_heap_offset = (uint64_t) obs_sample * header_npol;
+      curr_heap_offset = (uint64_t) (obs_sample * samples_to_byte_offset);
 
 #ifdef _DEBUG
       double t_offset = (double) obs_sample / adc_sample_rate;

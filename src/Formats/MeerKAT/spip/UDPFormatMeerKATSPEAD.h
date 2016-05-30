@@ -77,6 +77,10 @@ namespace spip {
 
       int64_t obs_start_sample;
 
+      double samples_to_byte_offset;
+
+      double bw;
+
       double tsamp;
 
       double adc_to_cbf;

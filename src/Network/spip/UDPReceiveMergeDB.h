@@ -163,7 +163,7 @@ namespace spip {
 
       int64_t overflow_lastbytes[2];
 
-      unsigned heap_size;
+      unsigned chunk_size;
 
       uint64_t timestamp;
 
