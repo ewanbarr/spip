@@ -313,6 +313,13 @@ class LMCDaemon (Daemon,HostBased):
                 if command == "daemon_status":
                   response = ""
                   response += "<lmc_reply>"
+
+                  for stream in server_streams:
+                    response += "<stream id='" + str(stream) +"'>"
+                    for daemon in daemon_states[stream].keys():
+                      response += "<daemon name='" + daemon + "'>" + str(daemon_states[stream][daemon]) + "</daemon>"
+                    response += "</stream>"
+
                   for stream in client_streams:
                     response += "<stream id='" + str(stream) +"'>"
                     for daemon in daemon_states[stream].keys():

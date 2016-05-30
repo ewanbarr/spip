@@ -28,7 +28,7 @@ class MeerKATConfig(Config):
 
     cfg["ADC_SAMPLE_RATE"] = self.config["ADC_SAMPLE_RATE"]
 
-    (freq, bw, nchan) = self.config["SUBBAND_CONFIG_" + str(id)].split(":")
+    (freq, bw, nchan) = self.config["SUBBAND_CONFIG_" + cfg["STREAM_SUBBAND_ID"]].split(":")
     chan_bw = float(bw) / float(nchan)
     cfg["FREQ"] = str(float(freq) - chan_bw / 2)
 

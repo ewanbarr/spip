@@ -209,7 +209,7 @@ class StatDaemon(Daemon,StreamBased):
     # stat will use the stream config file created for the recv command
     stream_config_file = "/tmp/spip_stream_" + str(self.id) + ".cfg"
     while (not os.path.exists(stream_config_file)):
-      self.log (2, "StatDaemon::main waiting for stream_config file to be created by recv")
+      self.log (2, "StatDaemon::main waiting for stream_config file [" + stream_config_file +"] to be created by recv")
       time.sleep(1)    
 
     # this stat command will not change from observation to observation

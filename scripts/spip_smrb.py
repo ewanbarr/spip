@@ -121,8 +121,8 @@ class monThread (threading.Thread):
     rval, lines = system (cmd, False)
     if rval == 0:
       a = lines[0].split(',')
-      hdr = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
-      dat = {'nbufs':a[5], 'full':a[6], 'clear':a[7], 'written':a[8],'read':a[9]}
+      dat = {'nbufs':a[0], 'full':a[1], 'clear':a[2], 'written':a[3],'read':a[4]}
+      hdr = {'nbufs':a[5], 'full':a[6], 'clear':a[7], 'written':a[8],'read':a[9]}
       return 0, hdr, dat
     else:
       return 1, {}, {}

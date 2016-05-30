@@ -99,6 +99,9 @@ class Config(object):
 
     # determine subband for this stream
     (host, beam, subband) = self.config["STREAM_" + str(id)].split(":")
+    cfg["STREAM_HOST"] = host
+    cfg["STREAM_BEAM_ID"] = beam 
+    cfg["STREAM_SUBBAND_ID"] = subband 
 
     (freq, bw, nchan) = self.config["SUBBAND_CONFIG_" + str(subband)].split(":")
     cfg["FREQ"] = freq
