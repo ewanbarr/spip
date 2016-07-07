@@ -18,7 +18,7 @@ from spip.utils import sockets
 from spip.config import Config
 from spip_smrb import SMRBDaemon
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL = 1
 
 class RecvDaemon(Daemon,StreamBased):
