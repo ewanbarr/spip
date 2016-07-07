@@ -18,6 +18,10 @@ namespace spip {
 
       void unlock ();
 
+      char * read_header ();
+
+      void close ();
+
       void * open_block ();
 
       ssize_t close_block (uint64_t nbytes);
