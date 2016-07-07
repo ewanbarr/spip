@@ -78,57 +78,57 @@ spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
   delete db;
 }
 
-int spip::UDPReceiveMergeDB::configure (const char * config)
+int spip::UDPReceiveMergeDB::configure (const char * config_str)
 {
-  // save the header for use on the first open block
-  header.load_from_str (config);
+  // save the config for use on the first open block
+  config.load_from_str (config_str);
 
-  if (header.get ("NCHAN", "%u", &nchan) != 1)
-    throw invalid_argument ("NCHAN did not exist in header");
+  if (config.get ("NCHAN", "%u", &nchan) != 1)
+    throw invalid_argument ("NCHAN did not exist in config");
 
-  if (header.get ("NBIT", "%u", &nbit) != 1)
-    throw invalid_argument ("NBIT did not exist in header");
+  if (config.get ("NBIT", "%u", &nbit) != 1)
+    throw invalid_argument ("NBIT did not exist in config");
 
-  if (header.get ("NPOL", "%u", &npol) != 1)
-    throw invalid_argument ("NPOL did not exist in header");
+  if (config.get ("NPOL", "%u", &npol) != 1)
+    throw invalid_argument ("NPOL did not exist in config");
 
-  if (header.get ("NDIM", "%u", &ndim) != 1)
-    throw invalid_argument ("NDIM did not exist in header");
+  if (config.get ("NDIM", "%u", &ndim) != 1)
+    throw invalid_argument ("NDIM did not exist in config");
 
-  if (header.get ("TSAMP", "%f", &tsamp) != 1)
-    throw invalid_argument ("TSAMP did not exist in header");
+  if (config.get ("TSAMP", "%f", &tsamp) != 1)
+    throw invalid_argument ("TSAMP did not exist in config");
 
-  if (header.get ("BW", "%f", &bw) != 1)
-    throw invalid_argument ("BW did not exist in header");
+  if (config.get ("BW", "%f", &bw) != 1)
+    throw invalid_argument ("BW did not exist in config");
 
   char * buffer = (char *) malloc (128);
 
-  if (header.get ("DATA_HOST_0", "%s", buffer) != 1)
-    throw invalid_argument ("DATA_HOST_0 did not exist in header");
+  if (config.get ("DATA_HOST_0", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_0 did not exist in config");
   data_hosts[0] = string (buffer);
-  if (header.get ("DATA_HOST_1", "%s", buffer) != 1)
-    throw invalid_argument ("DATA_HOST_1 did not exist in header");
+  if (config.get ("DATA_HOST_1", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_1 did not exist in config");
   data_hosts[1] = string (buffer);
 
-  if (header.get ("DATA_PORT_0", "%d", &data_ports[0]) != 1)
-    throw invalid_argument ("DATA_PORT_0 did not exist in header");
-  if (header.get ("DATA_PORT_1", "%d", &data_ports[1]) != 1)
-    throw invalid_argument ("DATA_PORT_1 did not exist in header");
+  if (config.get ("DATA_PORT_0", "%d", &data_ports[0]) != 1)
+    throw invalid_argument ("DATA_PORT_0 did not exist in config");
+  if (config.get ("DATA_PORT_1", "%d", &data_ports[1]) != 1)
+    throw invalid_argument ("DATA_PORT_1 did not exist in config");
 
-  if (header.get ("DATA_MCAST_0", "%s", buffer) == 1)
+  if (config.get ("DATA_MCAST_0", "%s", buffer) == 1)
     data_mcasts[0] = string (buffer);
-  if (header.get ("DATA_MCAST_1", "%s", buffer) == 1)
+  if (config.get ("DATA_MCAST_1", "%s", buffer) == 1)
     data_mcasts[1] = string (buffer);
 
   bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
   bytes_per_second = bits_per_second / 8;
 
-  formats[0]->configure(header, "_0");
-  formats[1]->configure(header, "_1");
+  formats[0]->configure(config, "_0");
+  formats[1]->configure(config, "_1");
 
   npol = 2;
-  if (header.set("NPOL", "%u", npol) < 0)
-    throw invalid_argument ("failed to write NPOL to header"); 
+  if (config.set("NPOL", "%u", npol) < 0)
+    throw invalid_argument ("failed to write NPOL to config"); 
 
   // get the resolution from one of the polarisations
   chunk_size = formats[0]->get_resolution() + formats[1]->get_resolution();
@@ -233,6 +233,7 @@ void spip::UDPReceiveMergeDB::control_thread()
       if (strcmp (cmd, "START") == 0)
       {
         // append cmds to header
+        header = config;
         header.append_from_str (cmds);
         if (header.del ("COMMAND") < 0)
           throw runtime_error ("Could not remove COMMAND from header");
@@ -272,6 +273,9 @@ bool spip::UDPReceiveMergeDB::open ()
     return false;
   } 
 
+  if (header.get_header_length() == 0)
+    header = config;
+ 
   // check if UTC_START has been set
   char * buffer = (char *) malloc (128);
   if (header.get ("UTC_START", "%s", buffer) == -1)
@@ -330,6 +334,8 @@ void spip::UDPReceiveMergeDB::close ()
 
   // close the data block, ending the observation
   db->close();
+
+  header.reset();
 }
 
 void spip::UDPReceiveMergeDB::start_threads (int c1, int c2)
