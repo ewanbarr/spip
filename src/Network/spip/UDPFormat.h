@@ -25,7 +25,7 @@ namespace spip {
 
       virtual void configure (const AsciiHeader& config, const char* suffix) = 0;
 
-      virtual void prepare (const AsciiHeader& header, const char* suffix) = 0;
+      virtual void prepare (AsciiHeader& header, const char* suffix) = 0;
 
       virtual void conclude () = 0;
 
