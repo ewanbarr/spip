@@ -27,12 +27,21 @@ spip::AsciiHeader::AsciiHeader()
 {
   header_size = DEFAULT_HEADER_SIZE;
   header = (char *) malloc (header_size);
+  header[0] = '\0';
 }
 
 spip::AsciiHeader::AsciiHeader(size_t nbytes)
 {
   header_size = nbytes;
   header = (char *) malloc (header_size);
+  header[0] = '\0';
+}
+
+spip::AsciiHeader::AsciiHeader (const AsciiHeader &obj)
+{
+  header_size = obj.get_header_size();
+  header = (char *) malloc (header_size);
+  strcpy (header, obj.raw()); 
 }
 
 spip::AsciiHeader::~AsciiHeader()
@@ -52,6 +61,16 @@ void spip::AsciiHeader::resize (size_t new_size)
       throw runtime_error ("could not allocate memory for header");
     header_size = new_size;
   }
+}
+
+size_t spip::AsciiHeader::get_header_size () const
+{
+  return header_size;
+}
+
+size_t spip::AsciiHeader::get_header_length() const
+{
+  return strlen(header);
 }
 
 int spip::AsciiHeader::load_from_file (const char * filename)
