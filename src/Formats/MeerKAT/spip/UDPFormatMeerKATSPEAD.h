@@ -28,7 +28,7 @@ namespace spip {
 
       void configure (const spip::AsciiHeader& config, const char* suffix);
 
-      void prepare (const spip::AsciiHeader& header, const char* suffix);
+      void prepare (spip::AsciiHeader& header, const char* suffix);
 
       void conclude ();
 
@@ -56,6 +56,7 @@ namespace spip {
 
       void print_packet_header ();
       void print_packet_timestamp ();
+      bool check_stream_stop ();
 
 
       inline void gen_packet (char * buf, size_t bufsz);
@@ -74,6 +75,8 @@ namespace spip {
       time_t adc_sync_time;
 
       uint64_t adc_sample_rate;
+
+      uint64_t adc_samples_per_heap;
 
       int64_t obs_start_sample;
 
@@ -114,6 +117,8 @@ namespace spip {
       bool first_heap;
 
       unsigned header_npol;
+
+      int offset ;
 
   };
 
