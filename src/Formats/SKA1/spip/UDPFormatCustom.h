@@ -52,7 +52,7 @@ namespace spip {
 
       void configure (const spip::AsciiHeader& config, const char* suffix);
 
-      void prepare (const spip::AsciiHeader& header, const char* suffix);
+      void prepare (spip::AsciiHeader& header, const char* suffix);
 
       void conclude () { ; } ;
 

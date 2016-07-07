@@ -52,7 +52,7 @@ void spip::UDPFormatMeerKATSimple::configure(const spip::AsciiHeader& config, co
   configured = true;
 }
 
-void spip::UDPFormatMeerKATSimple::prepare (const spip::AsciiHeader& hdr, const char * suffix)
+void spip::UDPFormatMeerKATSimple::prepare (spip::AsciiHeader& hdr, const char * suffix)
 {
   prepared = true;
 }

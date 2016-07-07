@@ -18,10 +18,8 @@ from spip.utils.sockets import getHostNameShort
 from spip.config import Config
 from spip_smrb import SMRBDaemon
 
-
 DAEMONIZE = False
 DL = 2
-
 
 class MeerkatReadDaemon(Daemon,StreamBased):
 
@@ -45,7 +43,17 @@ class MeerkatReadDaemon(Daemon,StreamBased):
     num_stream = self.cfg["NUM_STREAM"]
     db_key = SMRBDaemon.getDBKey (db_prefix, stream_id, num_stream, db_id)
 
-    cmd = "dada_diskdb -k " + db_key + " -f /data/spip/scratch/spectral_leakage_2/3/2016-04-26-04:56:58_0000000000000000.000000.dada -z -s "
+    cmd = "dada_diskdb -k " + db_key + " -z -s " + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000000000000000.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000000000000000.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000034359738368.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000068719476736.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000103079215104.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000137438953472.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000171798691840.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000206158430208.000000.dada" + \
+          "-f /data/spip/first_light/single_dish/2016-04-28-13:27:30_0000240518168576.000000.dada"
+
     self.log (0, "cmd=" + cmd)
     (rval, lines) = self.system (cmd)
     self.log (0, "rval=" + str(rval))

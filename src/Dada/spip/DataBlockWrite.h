@@ -34,6 +34,8 @@ namespace spip {
 
       ssize_t update_block (uint64_t bytes);
 
+      void zero_next_block ();
+
     protected:
 
     private:

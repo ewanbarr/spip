@@ -195,12 +195,12 @@ class LMCDaemon (Daemon,HostBased):
     daemon_states = {}
 
     for stream in server_streams:
-      self.log(1, "main: client_thread[-1] = clientThread(-1)")
+      self.log(2, "main: client_thread[-1] = clientThread(-1)")
       daemon_states[-1] = {}
       server_thread = clientThread(-1, self, daemon_states[-1])
-      self.log(1, "main: client_thread[-1].start()")
+      self.log(2, "main: client_thread[-1].start()")
       server_thread.start()
-      self.log(1, "main: client_thread[-1] started")
+      self.log(2, "main: client_thread[-1] started")
 
     sleep(1)
 

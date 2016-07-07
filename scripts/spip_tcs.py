@@ -257,8 +257,10 @@ class TCSDaemon(Daemon):
           obs["OBSERVER"] = self.beam_states[b]["observer"]
           obs["PID"] = self.beam_states[b]["pid"]
           obs["MODE"] = self.beam_states[b]["mode"]
+
+          # if no UTC_START has been specified, set it to +5 seconds
           if self.beam_states[b]["utc_start"] == None:
-            self.beam_states[b]["utc_start"] = times.getUTCTime()
+            self.beam_states[b]["utc_start"] = times.getUTCTime(5)
           obs["UTC_START"] = self.beam_states[b]["utc_start"]
 
           # TODO Think about these two

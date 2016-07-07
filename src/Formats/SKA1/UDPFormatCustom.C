@@ -43,7 +43,7 @@ void spip::UDPFormatCustom::configure(const spip::AsciiHeader& config, const cha
   header.channel_number = start_channel;
 }
 
-void spip::UDPFormatCustom::prepare (const spip::AsciiHeader& header, const char * suffix)
+void spip::UDPFormatCustom::prepare (spip::AsciiHeader& header, const char * suffix)
 {
   // conversion factor for a sequence number to byte offset
   seq_to_bytes = (UDP_FORMAT_CUSTOM_PACKET_NSAMP * nchan * ndim * npol * nbit) / 8;

@@ -424,6 +424,9 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
   // while the receiving state is Active
   while (control_state == Active)
   {
+    // zero the next buffer that DB would provide
+    //db->zero_next_block();
+
     // wait for RECV threads to fill buffer
     pthread_mutex_lock (&mutex_db);
 
@@ -575,6 +578,7 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
     // wait until the datablock thread sets the state of this buffer
     // to empty (i.e. when it has provided a new buffer to fill
     pthread_mutex_lock (mutex_recv);
+
     while (full[p] && control_states[p] == Active)
     {
 #ifdef _DEBUG
@@ -686,10 +690,17 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
 
         byte_offset = format->decode_packet (buf_ptr, &bytes_received);
 
-        // ignore if byte_offset is -1
         if (byte_offset < 0)
         {
+          // ignore if byte_offset is -ve
           have_packet = false;
+
+          // data stream is finished
+          if (byte_offset == -2)
+          {
+            set_control_cmd(Stop);
+            keep_receiving = false;
+          } 
         }
         // packet that is part of this observation
         else
@@ -711,8 +722,6 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
             format->insert_last_packet (overflow + (byte_offset - next_byte_offset));
 
             overflow_lastbytes[p] = std::max((byte_offset - next_byte_offset) + bytes_received, overflow_lastbytes[p]);
-            //if (p == 1)
-            //  cerr << "byte_offset=" << byte_offset << " old overflow_lastbytes=" << overflow_lastbytes[p] << endl;
             overflowed_bytes += bytes_received;
             have_packet = false;
           }

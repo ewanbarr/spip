@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <bitset>
 #include <stdexcept>
 
@@ -82,9 +83,14 @@ void spip::UDPFormatMeerKATSPEAD::configure(const spip::AsciiHeader& config, con
   configured = true;
 }
 
-void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, const char * suffix)
+void spip::UDPFormatMeerKATSPEAD::prepare (spip::AsciiHeader& header, const char * suffix)
 {
   char * key = (char *) malloc (128);
+
+  if (strcmp(suffix, "_0") == 0)
+    offset = 0;
+  else
+    offset = 1;
 
   if (header.get ("ADC_SYNC_TIME", "%ld", &adc_sync_time) != 1)
     throw invalid_argument ("ADC_SYNC_TIME did not exist in config");
@@ -99,11 +105,33 @@ void spip::UDPFormatMeerKATSPEAD::prepare (const spip::AsciiHeader& header, cons
   cerr << "adc_sample_rate=" << adc_sample_rate << endl;
 #endif
 
+  // the start sample (at ADC_SAMPLE_RATE), relative to sync time  for the exact UTC start second
   obs_start_sample = (int64_t) (adc_sample_rate * (utc_start.get_time() - adc_sync_time));
 
-  int64_t modulus = obs_start_sample % heap_size;
+  // sample rate of PFB/CBF
+  double sample_rate = double(1e6) / tsamp;
+
+  // number of ADC samples per PFB sample
+  uint64_t adc_samples_per_sample = uint64_t(rint(double(adc_sample_rate) / sample_rate));
+
+  // number of ADC samples per PFB heap - this should always be 2097152
+  adc_samples_per_heap = adc_samples_per_sample * nsamp_per_heap;
+  if (adc_samples_per_heap != 2097152)
+    throw invalid_argument("ADC samples per heap != 2097152");
+
+  // observation should begin on first heap after UTC_START, add offset in picoseconds to header
+  int64_t modulus = obs_start_sample % adc_samples_per_heap;
   if (modulus > 0)
-    obs_start_sample += (heap_size - modulus);
+  {
+    int64_t adc_samples_to_add = adc_samples_per_heap - modulus;   
+    obs_start_sample += adc_samples_to_add;
+    double offset_seconds = double(adc_samples_to_add) / double(adc_sample_rate);
+    uint64_t offset_picoseconds = uint64_t(rintf(offset_seconds * 1e9));
+#ifdef _DEBUG
+    cerr << "obs_start_sample=" << obs_start_sample << " modulus=" << modulus << " adc_samples_to_add=" << adc_samples_to_add << " offset_picoseconds=" << offset_picoseconds << endl;
+#endif
+    header.set ("PICOSECONDS", "%lu", offset_picoseconds);
+  }
 
 #ifdef _DEBUG
   cerr << "UTC_START=" << key<< " obs_start_sample=" << obs_start_sample << " modulus=" << modulus << endl;
@@ -176,12 +204,23 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
     // test for a packet of expected size
     if (header.n_items == 2 && header.heap_length == heap_size)
     {
+      // heap timestamp is assumed to be the start of the heap!
       int64_t adc_sample = get_timestamp_fast();
       int64_t obs_sample = adc_sample - obs_start_sample;
 
       // if this packet pre-dates our start time, ignore
       if (obs_sample < 0)
         return -1;
+      if (curr_heap_cnt == -1)
+      {
+#ifdef _DEBUG
+        if (offset == 0)
+          cerr << "FIRST timestamp= " << get_timestamp_fast() 
+               << " adc_sample=" << adc_sample << " obs_sample=" << obs_sample
+               << " samples_to_byte_offset=" << samples_to_byte_offset
+               << " curr_heap_offset=" << (uint64_t) (obs_sample * samples_to_byte_offset) << endl;
+#endif
+      }
 
       curr_heap_cnt = header.heap_cnt;
       curr_heap_offset = (uint64_t) (obs_sample * samples_to_byte_offset);
@@ -191,11 +230,30 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
       cerr << "spip::UDPFormatMeerKATSPEAD::decode_packet adc=" << adc_sample << " t_offset=" << t_offset << endl;
 #endif
     }
-    // ignore
     else
     {
-      return -1;
+#ifdef _DEBUG
+      print_packet_header();
+#endif
+      // check for the end of stream
+      if (check_stream_stop ())
+      {
+        return -2;
+      }
+      // ignore
+      else
+      {
+        return -1;
+      }
     }
+  }
+  else
+  {
+    if (header.n_items != 2 && header.heap_length != heap_size)
+      if (check_stream_stop ())
+        return -2;
+      else
+        return -1;
   }
   return (int64_t) curr_heap_offset + header.payload_offset;
 }
@@ -244,6 +302,20 @@ int64_t spip::UDPFormatMeerKATSPEAD::get_timestamp_fast ()
     }
   }
   return timestamp;
+}
+
+bool spip::UDPFormatMeerKATSPEAD::check_stream_stop ()
+{
+  spead2::recv::pointer_decoder decoder(header.heap_address_bits);
+  for (int i = 0; i < header.n_items; i++)
+  {
+    spead2::item_pointer_t pointer = spead2::load_be<spead2::item_pointer_t>(header.pointers + i * sizeof(spead2::item_pointer_t));
+    spead2::s_item_pointer_t item_id = decoder.get_id(pointer);
+    if (item_id == spead2::STREAM_CTRL_ID && decoder.is_immediate(pointer) &&
+        decoder.get_immediate(pointer) == spead2::CTRL_STREAM_STOP)
+      return true;
+  }
+  return false;
 }
 
 void spip::UDPFormatMeerKATSPEAD::print_packet_header()
