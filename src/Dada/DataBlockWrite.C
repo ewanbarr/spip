@@ -160,3 +160,16 @@ ssize_t spip::DataBlockWrite::update_block (uint64_t bytes)
   return ipcio_update_block_write (data_block, bytes);
 }
 
+void spip::DataBlockWrite::zero_next_block ()
+{
+  if (!connected)
+    throw runtime_error ("not connected to data block");
+
+  if (!locked)
+    throw runtime_error ("not locked as writer");
+
+  if (ipcio_zero_next_block (data_block) < 0)
+    throw runtime_error ("could not zero next block");
+
+}
+
