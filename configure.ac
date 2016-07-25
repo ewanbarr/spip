@@ -41,6 +41,7 @@ AC_CONFIG_FILES([Makefile
   src/Affinity/Makefile
   src/Network/Makefile
   src/Formats/Makefile
+  src/Formats/BPSR/Makefile
   src/Formats/CASPSR/Makefile
   src/Formats/SKA1/Makefile
   src/Formats/MeerKAT/Makefile
