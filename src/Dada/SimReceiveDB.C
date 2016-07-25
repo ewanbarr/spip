@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <iostream>
+#include <iomanip>      // std::setprecision
 #include <stdexcept>
 #include <new>
 #include <pthread.h>
@@ -261,7 +262,8 @@ void spip::SimReceiveDB::stats_thread()
         gb_recv_ps = (mb_recv_ps * 8)/1000;
 
         // determine how much memory is free in the receivers
-        fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
+        cerr << "Recv " << std::setprecision(3) << gb_recv_ps << " [Gb/s] "
+             << "Sleeps " << s_1sec << " Dropped " << b_drop_curr << endl;
         sleep (1);
       }
     }
