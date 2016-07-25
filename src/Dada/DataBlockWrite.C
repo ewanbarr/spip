@@ -21,6 +21,9 @@ spip::DataBlockWrite::DataBlockWrite (const char * key_string) : spip::DataBlock
 
 spip::DataBlockWrite::~DataBlockWrite ()
 {
+#ifdef _DEBUG
+  cerr << "spip::DataBlockWrite::~DataBlockWrite()" << endl;
+#endif
 }
 
 void spip::DataBlockWrite::open ()
@@ -57,12 +60,14 @@ void spip::DataBlockWrite::page ()
 
 void spip::DataBlockWrite::close ()
 {
+#ifdef _DEBUG
+  cerr << "spip::DataBlockWrite::close()" << endl;
+#endif
   if (!connected)
     throw runtime_error ("not connected to data block");
 
   if (!locked)
     throw runtime_error ("not locked for writing on data block");
-
   if (ipcio_is_open (data_block))
     if (ipcio_close (data_block) < 0)
       throw runtime_error ("could not unlock data block from writing");
@@ -70,6 +75,9 @@ void spip::DataBlockWrite::close ()
 
 void spip::DataBlockWrite::unlock ()
 {
+#ifdef _DEBUG
+  cerr << "spip::DataBlockWrite::unlock()" << endl;
+#endif
   if (!connected)
     throw runtime_error ("not connected to data block");
 
@@ -168,8 +176,8 @@ void spip::DataBlockWrite::zero_next_block ()
   if (!locked)
     throw runtime_error ("not locked as writer");
 
-  if (ipcio_zero_next_block (data_block) < 0)
-    throw runtime_error ("could not zero next block");
+  //if (ipcio_zero_next_block (data_block) < 0)
+  //  throw runtime_error ("could not zero next block");
 
 }
 
