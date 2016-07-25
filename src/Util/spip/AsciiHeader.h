@@ -20,6 +20,8 @@ namespace spip {
 
       ~AsciiHeader ();
 
+      void clone (const spip::AsciiHeader &obj);
+
       char * raw () const { return header; };
 
       void resize (size_t new_size);

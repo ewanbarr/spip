@@ -11,9 +11,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <cstdarg>
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
 #include <iostream>
 #include <stdexcept>
 
@@ -37,7 +40,7 @@ spip::AsciiHeader::AsciiHeader(size_t nbytes)
   header[0] = '\0';
 }
 
-spip::AsciiHeader::AsciiHeader (const AsciiHeader &obj)
+spip::AsciiHeader::AsciiHeader (const spip::AsciiHeader &obj)
 {
   header_size = obj.get_header_size();
   header = (char *) malloc (header_size);
@@ -46,8 +49,21 @@ spip::AsciiHeader::AsciiHeader (const AsciiHeader &obj)
 
 spip::AsciiHeader::~AsciiHeader()
 {
-  free (header);
+  if (header)
+    free (header);
   header = 0;
+}
+
+void spip::AsciiHeader::clone (const spip::AsciiHeader &obj)
+{
+  if (header_size != obj.get_header_size())
+  {
+    if (header)
+      free (header);
+    header_size = obj.get_header_size();
+    header = (char *) malloc (header_size);
+  }
+  strcpy (header, obj.raw());
 }
 
 void spip::AsciiHeader::resize (size_t new_size)
