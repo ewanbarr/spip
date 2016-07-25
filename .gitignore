@@ -42,6 +42,10 @@ config/missing
 config/py-compile
 configure
 libtool
+src/Formats/CASPSR/caspsr_dbstats
+src/Formats/CASPSR/caspsr_udpmergedb
+src/Formats/CASPSR/caspsr_udprecv
+src/Formats/CASPSR/caspsr_utctimestamp
 src/Formats/SKA1/ska1_udpgen
 src/Formats/SKA1/ska1_udprecv
 src/Formats/SKA1/ska1_udpdb
