@@ -18,20 +18,20 @@ AC_DEFUN([SWIN_LIB_SPEAD2],
     # spead2 requires C++
     AC_LANG_PUSH(C++)
 
-    ac_save_CXXFLAGS="$CXXFLAGS"
-    CXXFLAGS="$ac_save_CXXFLAGS -std=c++11"
+    ac_tmp_CXXFLAGS="$CXXFLAGS"
+    CXXFLAGS="$ac_tmp_CXXFLAGS -std=c++11"
 
     SWIN_PACKAGE_FIND([spead2],[spead2/recv_udp.h])
     SWIN_PACKAGE_TRY_COMPILE([spead2],[#include <spead2/recv_udp.h>])
 
-    CXXFLAGS="$ac_save_CXXFLAGS $spead2_CFLAGS -std=c++11"
+    CXXFLAGS="$ac_tmp_CXXFLAGS $spead2_CFLAGS -std=c++11"
 
     SWIN_PACKAGE_FIND([spead2],[lib$SPEAD2.*])
     SWIN_PACKAGE_TRY_LINK([spead2],[#include <spead2/common_defines.h>],
                       [spead2::item_pointer_t sort_mask],
                       [-l$SPEAD2 -lboost_system])
 
-    CXXFLAGS="$ac_save_CXXFLAGS"
+    CXXFLAGS="$ac_tmp_CXXFLAGS"
 
     AC_LANG_POP()
 
