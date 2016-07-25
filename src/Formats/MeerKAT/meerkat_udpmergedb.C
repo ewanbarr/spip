@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 
 void usage();
 void signal_handler (int signal_value);
