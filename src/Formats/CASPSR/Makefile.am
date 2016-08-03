@@ -10,6 +10,7 @@ bin_PROGRAMS = caspsr_dbstats caspsr_udpmergedb caspsr_udprecv caspsr_utctimesta
 caspsr_dbstats_SOURCES = caspsr_dbstats.C
 caspsr_udpmergedb_SOURCES = caspsr_udpmergedb.C
 caspsr_udprecv_SOURCES = caspsr_udprecv.C
+caspsr_utctimestamp_SOURCES = caspsr_utctimestamp.C
 
 AM_CXXFLAGS = -I. \
 	-I$(top_builddir)/src/Affinity \

@@ -18,6 +18,8 @@ libspipdsp_la_SOURCES = Container.C \
 
 bin_PROGRAMS = delay_pipeline
 
+delay_pipeline_SOURCES = delay_pipeline.C
+
 AM_CXXFLAGS = @PSRDADA_CFLAGS@ \
 	-I$(top_builddir)/src/Affinity\
 	-I$(top_builddir)/src/Util \
