@@ -2,6 +2,8 @@
 #ifndef __UDPFormatBPSR_h
 #define __UDPFormatBPSR_h
 
+#define NO_1PPS_RESET
+
 #include "spip/bpsr_def.h"
 #include "spip/UDPFormat.h"
 #include "spip/AsciiHeader.h"
@@ -59,27 +61,25 @@ namespace spip {
       //! pointer to most recently decoded packet payload
       char * payload;
 
-      //! correction to raw sequence number so that it is modulo 8192 bytes
-      int64_t global_offset;
+      unsigned acc_len;
 
-      int64_t adc_sync_time;
+      unsigned seq_inc;
 
-      // 
       uint64_t seq_no;
 
-      uint64_t ch_id;
-
-      uint64_t seq_inc;
-
       uint64_t seq_offset;
-
-      uint64_t start_seq_no;
 
       uint64_t seq_to_byte;
 
       unsigned offset;
 
       double tsamp;
+
+      uint64_t adc_sync_time;
+
+#ifdef NO_1PPS_RESET
+      uint64_t start_seq_no;
+#endif
 
       bool started;
   };

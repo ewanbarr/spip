@@ -75,6 +75,7 @@ void spip::UDPFormatBPSR::prepare (spip::AsciiHeader& header, const char * suffi
   int64_t offset_seq = (int64_t) ((offset_seconds * 1e6) / tsamp);
   start_seq_no = offset_seq / 4;
 
+  started = false;
   cerr << "spip::UDPFormatBPSR::prepare start_seq_no=" << start_seq_no << endl;
 #endif
 
@@ -150,47 +151,22 @@ inline int64_t spip::UDPFormatBPSR::decode_packet (char* buf, unsigned * pkt_siz
   }
 
 #ifdef NO_1PPS_RESET
-  // wait for start packet (if start_seq_set
+  // wait for start packet (if start_seq_set)
   if (raw_seq_no < start_seq_no)
     return -1;
 
   raw_seq_no -= start_seq_no;
 #endif
   
-  // handle the global offset in sequence numbers
-  int64_t fixed_raw_seq_no = raw_seq_no + global_offset;
-
-  // check the remainder of the sequence number, for errors in global offset
-  int64_t remainder = fixed_raw_seq_no % seq_inc;
-
-  if (remainder == 0)
-  {
-    // do nothing
-  }
-  else if (fixed_raw_seq_no < seq_inc)
-  {
-    cerr << "1: adjusting global offset from " << global_offset
-         << " to " << global_offset - remainder << endl;
-    global_offset -= remainder;
-    fixed_raw_seq_no = raw_seq_no + global_offset;
-    remainder = 0;
-  }
-  else
-  {
-    cerr << "2: adjusting global offset from " << global_offset 
-         << " to " << global_offset + (seq_inc - remainder) << endl;
-    global_offset += (seq_inc - remainder);
-    fixed_raw_seq_no = raw_seq_no + global_offset;
-    remainder = 0;
-  }
-
-  seq_no = (fixed_raw_seq_no) / seq_inc;
+  // convert to a sequence number that increments by 1 per packet
+  seq_no = raw_seq_no / seq_inc;
 
   if (!started)
-    cerr << "fixed_raw_seq_no=" << fixed_raw_seq_no << " seq_no=" << seq_no << endl; 
+    cerr << "raw_seq_no=" << raw_seq_no << " seq_no=" << seq_no << endl; 
 
   if (!started)
     started = true;
+
   return seq_no * seq_to_byte;
 }
 
