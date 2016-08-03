@@ -42,6 +42,9 @@ config/missing
 config/py-compile
 configure
 libtool
+src/Formats/BPSR/bpsr_dbstats
+src/Formats/BPSR/bpsr_udprecv
+src/Formats/BPSR/bpsr_utctimestamp
 src/Formats/CASPSR/caspsr_dbstats
 src/Formats/CASPSR/caspsr_udpmergedb
 src/Formats/CASPSR/caspsr_udprecv
@@ -61,3 +64,6 @@ src/Formats/MeerKAT/meerkat_speadtimestamp
 src/Formats/MeerKAT/meerkat_udpmergedb
 src/Formats/MeerKAT/meerkat_udprecv
 src/Formats/KAT7/kat7_dbstats
+src/Formats/VDIF/vdif_udpgen
+src/Formats/VDIF/vdif_udprecv
+src/SignalProcessing/delay_pipeline
