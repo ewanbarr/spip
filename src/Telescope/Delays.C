@@ -43,6 +43,7 @@ void spip::Delays::compute (double projected_delay,
   // for each antenna
   for (unsigned iant=0; iant<nant; iant++)
   {
+#if 0
     instrumental_delay = antennae.get_instrumental_delay ();
     distance = antennae.get_dist ();
     geometric_delay = (projected_delay * distance) / C;
@@ -64,6 +65,7 @@ void spip::Delays::compute (double projected_delay,
     {
       phases_dat[iant] = (float) (twopi * channels[ichan].get_cfreq_hz() * geometric_delay);
     }
+#endif
   }
 }
 
