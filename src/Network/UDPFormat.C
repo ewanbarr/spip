@@ -35,16 +35,11 @@ spip::UDPFormat::UDPFormat()
 
   prepared = false;
   configured = false;
-  
+  self_start = false;
 }
 
 spip::UDPFormat::~UDPFormat()
 {
-}
-
-void spip::UDPFormat::generate_signal ()
-{
-
 }
 
 double spip::UDPFormat::rand_normal (double mean, double stddev)
