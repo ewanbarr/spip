@@ -81,7 +81,6 @@ int spip::SimReceiveDB::configure (const char * config)
   uint64_t resolution = format->get_resolution();
   if (header.set("RESOLUTION", "%lu", resolution) < 0)
     throw invalid_argument ("failed to write RESOLUTION to header");
-
 }
 
 void spip::SimReceiveDB::prepare ()

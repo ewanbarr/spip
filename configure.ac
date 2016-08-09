@@ -46,6 +46,7 @@ AC_CONFIG_FILES([Makefile
   src/Formats/SKA1/Makefile
   src/Formats/MeerKAT/Makefile
   src/Formats/KAT7/Makefile
+  src/Formats/UWB/Makefile
   src/Formats/VDIF/Makefile
   src/Dada/Makefile
   src/SignalProcessing/Makefile
