@@ -106,8 +106,7 @@ class RecvSimDaemon(Daemon,StreamBased):
     cmd = self.cfg["STREAM_BINARY"] + " -k " + self.db_key \
             + " -b " + self.cpu_core \
             + " -c " + self.ctrl_port \
-            + " -p " + stream_port \
-            + " " + config_file + " " + stream_ip
+            + " " + config_file
     return cmd
 
 #
