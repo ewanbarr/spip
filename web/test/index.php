@@ -176,6 +176,10 @@ class tests extends spip_webpage
     $xml .=   "<utc_stop></utc_stop>\n";
     $xml .= "</observation_parameters>\n";
 
+    $xml .= "<instrument_parameters>\n";
+    $xml .=   "<adc_sync_time>0</adc_sync_time>\n";
+    $xml .= "</instrument_parameters>\n";
+
     $html = "";
 
     # If we can have independent control of the beams 
@@ -238,7 +242,7 @@ class tests extends spip_webpage
       $beam_xml .=   "<beam_configuration>\n";
       $beam_xml .=   "<nbeam>".$get["nbeam"]."</nbeam>\n";
       for ($i=0; $i<$get["nbeam"]; $i++)
-        $beam_xml .=   "<beam_state_".$i.">".$get["beam_state_".$i]."</beam_state_".$i.">\n";
+        $beam_xml .=   "<beam_state_".$i." name='".$this->config["BEAM_".$i]."'>".$get["beam_state_".$i]."</beam_state_".$i.">\n";
       $beam_xml .=   "</beam_configuration>\n";
       $beam_xml .= "</obs_cmd>\n";
 
