@@ -28,15 +28,23 @@ body {
 /* @group Header */
 
 #hdr-overlay {
-  position: relative; top: -15px; left: 14px;
+  position: relative; top: -15px; left: 0px;
   width: 1018px; height: 105px;
+  background: url('images/spip_background.png') bottom left no-repeat;
   /*background: url('header-light.png') top right no-repeat;*/
   }
 #header h1 {
-  position: absolute; top: 55px; left: 20px;
+  position: absolute; top: 15px; left: 20px;
   margin: 0;
   font-size: 18px;
   color: rgba(255,255,255,0.5);
+  }
+#header h2.sub {
+  position: absolute; top: 45px; left: 20px;
+  margin: 0;
+  text-align: left;
+  font-size: 16px;
+  color: rgba(255,255,255,1.0);
   }
 #header .box {
   position: absolute; top: 6px;

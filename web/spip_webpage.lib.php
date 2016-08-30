@@ -134,12 +134,9 @@ function handleDirect($child_class)
     echo "<div id='main'>\n";
 
     echo "  <div id='header'>\n";
+    echo "    <h1>SPIP</h1>\n";
+    echo "    <h2 class='sub'>".$obj->config["INSTRUMENT"]."</h2>\n";
     echo "    <div id='hdr-overlay'></div>\n";
-    echo "    <div id='hdr-box1' class='box'></div>\n";
-    echo "    <div id='hdr-box2' class='box'></div>\n";
-    echo "    <div id='hdr-box3' class='box'></div>\n";
-    echo "    <div id='hdr-box4' class='box'></div>\n";
-    echo "    <h1>".$obj->config["INSTRUMENT"]." - Swinburne Pulsar Instrumentation Package</h1>\n";
     echo "  </div>\n";
 
     // print the main navigation panel
