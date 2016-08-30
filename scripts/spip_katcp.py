@@ -11,12 +11,16 @@ from katcp import DeviceServer, Sensor, ProtocolFlags, AsyncReply
 from katcp.kattypes import (Str, Int, Float, Bool, Timestamp, Discrete,
                             request, return_reply)
 
+import logging
+import tornado.gen
+from katportalclient import KATPortalClient
 
 import os, threading, sys, socket, select, signal, traceback, xmltodict
 import errno, time, random, re
 
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
+
 
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
@@ -25,12 +29,56 @@ from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 from spip.threads.socketed_thread import SocketedThread
 
-DAEMONIZE = True
+DAEMONIZE = False
 DL = 1
 
 ###############################################################
 # PubSub daemon
-class PubSubThread(SocketedThread):
+class PubSubThread (threading.Thread):
+
+  def __init__ (self, script, id):
+    threading.Thread.__init__(self)
+    self.script = script
+   
+    self.script.log(1, "PubSubThread.__init__()")
+   
+    #self.metadata_server = script.cfg["MEERKAT_PUBSUB_SERVER"]
+    self.metadata_server = "ws://monctl.mkat.devlab.camlab.kat.ac.za/katmetadata/subarray-1/custom/websocket"
+
+    self.logger = logging.getLogger('katportalclient.example') 
+    self.logger.setLevel(logging.INFO)
+
+    self.io_loop = tornado.ioloop.IOLoop.current()
+    self.io_loop.add_callback (self.connect, self.logger)
+
+  def run (self):
+    self.script.log(1, "PubSubThread.run()")
+    self.io_loop.start()
+    self.script.log(1, "PubSubThread.io_loop started...")
+
+  def join (self):
+    self.script.log(1, "PubSubThread.join()")
+    self.stop()
+
+  def stop (self):
+    self.script.log(1, "PubSubThread.stop()")
+    self.io_loop.stop()
+
+  def connect (self, logger):
+    self.script.log(1, "PubSubThread.connect()")
+    self.ws_client = KATPortalClient(self.metadata_server, self.on_update_callback, logger=logger)
+    yield self.ws_client.connect()
+    result = yield self.ws_client.subscribe('ptuse_test')
+    result = yield self.ws_client.set_sampling_strategies(
+        'ptuse_test', ['mode', 'azim', 'elev'], 'period 10.0')
+
+  def on_update_callback (self, msg):
+    if self.script.quit_event.isSet():
+      self.stop()
+    self.script.log(1, "PubSubThread.join:" + str(msg))
+
+
+class PubSubSimThread(SocketedThread):
 
   def __init__ (self, script, id):
     self.script = script
@@ -49,7 +97,7 @@ class PubSubThread(SocketedThread):
     retain = False
     raw = handle.recv(4096)
     message = raw.strip()
-    self.script.log (2, "PubSubThread: message="+str(message))
+    self.script.log (2, "PubSubSimThread: message="+str(message))
 
     if len(message) == 0:
       handle.close()
@@ -105,11 +153,14 @@ class PubSubThread(SocketedThread):
       self.script.log(3, "<- " + str(xml))
       handle.send (reply)
       if not retain:
-        self.script.log (2, "PubSubThread: closing connection")
+        self.script.log (2, "PubSubSimThread: closing connection")
         handle.close()
         for i, x in enumerate(self.can_read):
           if (x == handle):
                 del self.can_read[i]
+
+
+
 
 
 ###############################################################
