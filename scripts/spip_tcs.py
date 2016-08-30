@@ -283,7 +283,7 @@ class TCSDaemon(Daemon):
           for istream in range(int(self.cfg["NUM_STREAM"])):
             (host, beam_idx, subband) = self.cfg["STREAM_"+str(istream)].split(":")
             beam = self.cfg["BEAM_" + beam_idx]
-            self.log(1, "issue_start_cmd: host="+host+"beam="+beam+"subband="+subband)
+            self.log(1, "issue_start_cmd: host="+host+" beam="+beam+" subband="+subband)
 
             # connect to streams for this beam only
             if beam == b:
