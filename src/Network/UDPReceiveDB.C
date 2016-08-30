@@ -386,7 +386,7 @@ void spip::UDPReceiveDB::open ()
     cerr << "spip::UDPReceiveDB::open UTC_START=" << utc_str  << endl;
     if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
       throw invalid_argument ("failed to write UTC_START to header");
-    }
+  }
 
   uint64_t obs_offset;
   if (header.get("OBS_OFFSET", "%lu", &obs_offset) == -1)

@@ -41,10 +41,16 @@ AC_CONFIG_FILES([Makefile
   src/Affinity/Makefile
   src/Network/Makefile
   src/Formats/Makefile
+  src/Formats/BPSR/Makefile
+  src/Formats/CASPSR/Makefile
   src/Formats/SKA1/Makefile
   src/Formats/MeerKAT/Makefile
   src/Formats/KAT7/Makefile
+  src/Formats/UWB/Makefile
+  src/Formats/VDIF/Makefile
   src/Dada/Makefile
+  src/SignalProcessing/Makefile
+  src/Telescope/Makefile
   src/Util/Makefile
   scripts/Makefile
   scripts/spip/Makefile

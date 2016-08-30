@@ -5,11 +5,17 @@
  *
  ***************************************************************************/
 
+#include "config.h"
+
+#ifdef HAVE_HWLOC
 #include "spip/HardwareAffinity.h"
+#endif
+
 #include "spip/TCPSocketServer.h"
 #include "spip/UDPReceiveMergeDB.h"
 #include "spip/Time.h"
 
+#include <pthread.h>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -18,8 +24,6 @@
 #ifdef  HAVE_VMA
 #include <mellanox/vma_extra.h>
 #endif
-
-//#define _DEBUG
 
 using namespace std;
 
@@ -39,8 +43,6 @@ spip::UDPReceiveMergeDB::UDPReceiveMergeDB (const char * key_string)
   for (unsigned i=0; i<2; i++)
   {
     control_states[i] = Idle;
-    cond_recvs[i] = PTHREAD_COND_INITIALIZER;
-    mutex_recvs[i] = PTHREAD_MUTEX_INITIALIZER;
 
     pthread_cond_init( &(cond_recvs[i]), NULL);
     pthread_mutex_init( &(mutex_recvs[i]), NULL);
@@ -50,8 +52,6 @@ spip::UDPReceiveMergeDB::UDPReceiveMergeDB (const char * key_string)
     stats[i] = NULL;
   }
 
-  cond_db = PTHREAD_COND_INITIALIZER;
-  mutex_db = PTHREAD_MUTEX_INITIALIZER;
   pthread_cond_init( &cond_db, NULL);
   pthread_mutex_init( &mutex_db, NULL);
 
@@ -66,6 +66,7 @@ spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
 #ifdef _DEBUG
   cerr << "spip::UDPReceiveMergeDB::~UDPReceiveMergeDB" << endl;
 #endif
+
   for (unsigned i=0; i<2; i++)
   {
     delete stats[i];
@@ -78,59 +79,59 @@ spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
   delete db;
 }
 
-int spip::UDPReceiveMergeDB::configure (const char * config)
+int spip::UDPReceiveMergeDB::configure (const char * config_str)
 {
-  // save the header for use on the first open block
-  header.load_from_str (config);
+  // save the config for use on the first open block
+  config.load_from_str (config_str);
 
-  if (header.get ("NCHAN", "%u", &nchan) != 1)
-    throw invalid_argument ("NCHAN did not exist in header");
+  if (config.get ("NCHAN", "%u", &nchan) != 1)
+    throw invalid_argument ("NCHAN did not exist in config");
 
-  if (header.get ("NBIT", "%u", &nbit) != 1)
-    throw invalid_argument ("NBIT did not exist in header");
+  if (config.get ("NBIT", "%u", &nbit) != 1)
+    throw invalid_argument ("NBIT did not exist in config");
 
-  if (header.get ("NPOL", "%u", &npol) != 1)
-    throw invalid_argument ("NPOL did not exist in header");
+  if (config.get ("NPOL", "%u", &npol) != 1)
+    throw invalid_argument ("NPOL did not exist in config");
 
-  if (header.get ("NDIM", "%u", &ndim) != 1)
-    throw invalid_argument ("NDIM did not exist in header");
+  if (config.get ("NDIM", "%u", &ndim) != 1)
+    throw invalid_argument ("NDIM did not exist in config");
 
-  if (header.get ("TSAMP", "%f", &tsamp) != 1)
-    throw invalid_argument ("TSAMP did not exist in header");
+  if (config.get ("TSAMP", "%f", &tsamp) != 1)
+    throw invalid_argument ("TSAMP did not exist in config");
 
-  if (header.get ("BW", "%f", &bw) != 1)
-    throw invalid_argument ("BW did not exist in header");
+  if (config.get ("BW", "%f", &bw) != 1)
+    throw invalid_argument ("BW did not exist in config");
 
   char * buffer = (char *) malloc (128);
 
-  if (header.get ("DATA_HOST_0", "%s", buffer) != 1)
-    throw invalid_argument ("DATA_HOST_0 did not exist in header");
+  if (config.get ("DATA_HOST_0", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_0 did not exist in config");
   data_hosts[0] = string (buffer);
-  if (header.get ("DATA_HOST_1", "%s", buffer) != 1)
-    throw invalid_argument ("DATA_HOST_1 did not exist in header");
+  if (config.get ("DATA_HOST_1", "%s", buffer) != 1)
+    throw invalid_argument ("DATA_HOST_1 did not exist in config");
   data_hosts[1] = string (buffer);
 
-  if (header.get ("DATA_PORT_0", "%d", &data_ports[0]) != 1)
-    throw invalid_argument ("DATA_PORT_0 did not exist in header");
-  if (header.get ("DATA_PORT_1", "%d", &data_ports[1]) != 1)
-    throw invalid_argument ("DATA_PORT_1 did not exist in header");
+  if (config.get ("DATA_PORT_0", "%d", &data_ports[0]) != 1)
+    throw invalid_argument ("DATA_PORT_0 did not exist in config");
+  if (config.get ("DATA_PORT_1", "%d", &data_ports[1]) != 1)
+    throw invalid_argument ("DATA_PORT_1 did not exist in config");
 
-  if (header.get ("DATA_MCAST_0", "%s", buffer) == 1)
+  if (config.get ("DATA_MCAST_0", "%s", buffer) == 1)
     data_mcasts[0] = string (buffer);
-  if (header.get ("DATA_MCAST_1", "%s", buffer) == 1)
+  if (config.get ("DATA_MCAST_1", "%s", buffer) == 1)
     data_mcasts[1] = string (buffer);
 
-  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
+  bits_per_second  = (unsigned) ((nchan * npol * ndim * nbit * 1000000) / tsamp);
   bytes_per_second = bits_per_second / 8;
 
-  formats[0]->configure(header, "_0");
-  formats[1]->configure(header, "_1");
+  formats[0]->configure(config, "_0");
+  formats[1]->configure(config, "_1");
 
   npol = 2;
-  if (header.set("NPOL", "%u", npol) < 0)
-    throw invalid_argument ("failed to write NPOL to header"); 
+  if (config.set("NPOL", "%u", npol) < 0)
+    throw invalid_argument ("failed to write NPOL to config"); 
 
-  // get the resolution from one of the polarisations
+  // get the resolution from the two formats
   chunk_size = formats[0]->get_resolution() + formats[1]->get_resolution();
   overflow = (char *) malloc (chunk_size);
 
@@ -233,6 +234,7 @@ void spip::UDPReceiveMergeDB::control_thread()
       if (strcmp (cmd, "START") == 0)
       {
         // append cmds to header
+        header.clone(config);
         header.append_from_str (cmds);
         if (header.del ("COMMAND") < 0)
           throw runtime_error ("Could not remove COMMAND from header");
@@ -272,6 +274,9 @@ bool spip::UDPReceiveMergeDB::open ()
     return false;
   } 
 
+  if (header.get_header_length() == 0)
+    header.clone(config);
+ 
   // check if UTC_START has been set
   char * buffer = (char *) malloc (128);
   if (header.get ("UTC_START", "%s", buffer) == -1)
@@ -330,6 +335,8 @@ void spip::UDPReceiveMergeDB::close ()
 
   // close the data block, ending the observation
   db->close();
+
+  header.reset();
 }
 
 void spip::UDPReceiveMergeDB::start_threads (int c1, int c2)
@@ -489,9 +496,11 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
 
 bool spip::UDPReceiveMergeDB::receive_thread (int p)
 {
+#ifdef HAVE_HWLOC
   spip::HardwareAffinity hw_affinity;
   hw_affinity.bind_thread_to_cpu_core (cores[p]);
   hw_affinity.bind_to_memory (cores[p]);
+#endif
 
 #ifdef HAVE_VMA
   struct vma_api_t * vma_api = vma_get_api();
@@ -737,8 +746,10 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
         {
 #ifdef _DEBUG
           if (p == 1)
-            cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] close_block bytes_this_buf="
-                 << bytes_this_buf << " pol_bufsz=" << pol_bufsz << " overflow_lastbytes=" << overflow_lastbytes[p]
+            cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] close_block "
+                 << " bytes_this_buf=" << bytes_this_buf 
+                 << " pol_bufsz=" << pol_bufsz 
+                 << " overflow_lastbytes=" << overflow_lastbytes[p]
                  << " filled_this_buffer=" << filled_this_buffer << endl;
 #endif
           stat->dropped_bytes (pol_bufsz - bytes_this_buf);

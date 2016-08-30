@@ -6,6 +6,7 @@
 #include <inttypes.h>
 
 #include "spip/AsciiHeader.h"
+#include "spip/Time.h"
 
 #define UDP_FORMAT_PACKET_NSAMP 1024;
 
@@ -29,8 +30,6 @@ namespace spip {
 
       virtual void conclude () = 0;
 
-      void generate_signal ();
-
       bool is_configured() { return configured; } ;
 
       bool is_prepared() { return prepared; } ;
@@ -47,15 +46,7 @@ namespace spip {
 
       virtual void encode_header (char * buf) = 0;
 
-      //virtual uint64_t decode_header_seq (char * buf) = 0;
-
-      //virtual unsigned decode_header (char * buf) = 0;
-
       virtual int64_t decode_packet (char * buf, unsigned * payload_size) = 0;
-
-      //virtual int check_packet () = 0;
-
-      //virtual int insert_packet (char * buf, char * pkt, uint64_t start_samp, uint64_t next_samp) = 0;
 
       virtual int insert_last_packet (char * buf) = 0;
 
@@ -77,14 +68,32 @@ namespace spip {
 
       void set_noise_buffer_size (unsigned nbytes);
 
-      void set_start_sample (uint64_t s) { start_sample = s; };
+      //! set whether this format will determine the UTC_START itself
+      void set_self_start (bool ss) { self_start = ss; };
+
+      //! get whether this format is self starting
+      bool get_self_start () { return self_start; };
+
+      //! return the UTC second start time for this format
+      Time get_utc_start () { return utc_start; };
+
+      //! return the offset from the utc_startin pico seconds
+      uint64_t get_pico_seconds () { return pico_seconds; };
+
+      //void set_start_sample (uint64_t s) { start_sample = s; };
 
     protected:
 
-      uint64_t start_sample;
+      //! start time of the observation
+      Time utc_start;
 
+      //! offset from start time in pico seconds
+      uint64_t pico_seconds;
+
+      //! size of the header in the UDP packet payload
       unsigned packet_header_size;
 
+      //! size of the data in the UDP packet payload
       unsigned packet_data_size;
 
       unsigned ndim;
@@ -101,10 +110,6 @@ namespace spip {
 
       unsigned nchan;
 
-      //unsigned channel_stride;
-
-      //unsigned chanpol_stride;
-
       double n2;
       
       double n2_cached;
@@ -116,6 +121,8 @@ namespace spip {
       bool configured;
 
       bool prepared;
+
+      bool self_start;
 
     private:
 

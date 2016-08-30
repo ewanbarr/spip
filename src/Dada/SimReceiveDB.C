@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <iostream>
+#include <iomanip>      // std::setprecision
 #include <stdexcept>
 #include <new>
 #include <pthread.h>
@@ -80,7 +81,6 @@ int spip::SimReceiveDB::configure (const char * config)
   uint64_t resolution = format->get_resolution();
   if (header.set("RESOLUTION", "%lu", resolution) < 0)
     throw invalid_argument ("failed to write RESOLUTION to header");
-
 }
 
 void spip::SimReceiveDB::prepare ()
@@ -261,7 +261,8 @@ void spip::SimReceiveDB::stats_thread()
         gb_recv_ps = (mb_recv_ps * 8)/1000;
 
         // determine how much memory is free in the receivers
-        fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
+        cerr << "Recv " << std::setprecision(3) << gb_recv_ps << " [Gb/s] "
+             << "Sleeps " << s_1sec << " Dropped " << b_drop_curr << endl;
         sleep (1);
       }
     }

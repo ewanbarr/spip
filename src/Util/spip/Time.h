@@ -10,6 +10,10 @@
 #endif
 #include <time.h>
 
+#define MJD_1970_01_01 40587
+
+#define UNIX_TIME_TO_MJD(t) ( MJD_1970_01_01 + ((t) / 86400.0) )
+#define MJD_TO_UNIX_TIME(m) ( (long) (((m) - MJD_1970_01_01) * 86400.0) )
 
 namespace spip {
 
@@ -17,13 +21,25 @@ namespace spip {
 
     public:
 
+      Time ();
+
       Time (const char * str);
 
       Time (time_t now);
 
       ~Time ();
-         
+ 
+      void set_time (const char * str);
+
+      void set_time (time_t now) { epoch = now; };
+
       time_t get_time() { return epoch; };
+
+      int get_mjd_day() { return (int) UNIX_TIME_TO_MJD (epoch); };
+
+      int get_gm_year ();
+
+      int get_gm_month ();
 
       static time_t mjd2utctm (double mjd);
 

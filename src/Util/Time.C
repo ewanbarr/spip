@@ -17,7 +17,26 @@
 
 using namespace std;
 
+spip::Time::Time ()
+{
+  epoch = 0;
+}
+
 spip::Time::Time(const char * s)
+{
+  set_time (s);
+}
+
+spip::Time::Time (time_t now)
+{
+  epoch = now;
+}
+
+spip::Time::~Time()
+{
+}
+
+void spip::Time::set_time (const char * s)
 {
   char * str_utc = (char *) malloc(sizeof(char) * (strlen(s) + 4 + 1));
   sprintf (str_utc, "%s UTC", s);
@@ -29,15 +48,6 @@ spip::Time::Time(const char * s)
   epoch = timegm (&time_tm);
 
   free(str_utc);
-}
-
-spip::Time::Time (time_t now)
-{
-  epoch = now;
-}
-
-spip::Time::~Time()
-{
 }
 
 time_t spip::Time::mjd2utctm (double mjd)
@@ -102,5 +112,17 @@ string spip::Time::format_gmtime (time_t e)
   struct tm * timeinfo = gmtime (&e);
   strftime (time_str, 20, format, timeinfo);
   return string (time_str);
+}
+
+int spip::Time::get_gm_year ()
+{
+  struct tm * timeinfo = gmtime (&epoch);
+  return timeinfo->tm_year + 1900;
+}
+
+int spip::Time::get_gm_month ()
+{
+  struct tm * timeinfo = gmtime (&epoch);
+  return timeinfo->tm_mon;
 }
 

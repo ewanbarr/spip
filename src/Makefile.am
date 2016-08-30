@@ -1,5 +1,5 @@
 
-SUBDIRS = Affinity Dada Network Util . Formats
+SUBDIRS = Affinity Dada Network Util . Formats SignalProcessing Telescope
 
 lib_LTLIBRARIES = libspip.la
 

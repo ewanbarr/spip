@@ -7,6 +7,9 @@ libska1_la_SOURCES = UDPFormatCustom.C
 
 bin_PROGRAMS = ska1_udpgen ska1_udprecv
 
+ska1_udpgen_SOURCES = ska1_udpgen.C
+ska1_udprecv_SOURCES = ska1_udprecv.C
+
 AM_CXXFLAGS = -I. \
   -I$(top_builddir)/src/Affinity \
 	-I$(top_builddir)/src/Network \
@@ -20,6 +23,8 @@ if HAVE_PSRDADA
 
 bin_PROGRAMS += ska1_udpdb
 AM_CXXFLAGS += -I$(top_builddir)/src/Dada
+
+ska1_udpdb_SOURCES = ska1_udpdb.C
 
 endif
 

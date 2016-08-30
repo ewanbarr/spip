@@ -81,6 +81,8 @@ namespace spip {
       unsigned bytes_per_second;
 
       bool keep_receiving;
+
+      bool have_utc_start;
   };
 
 }

@@ -22,6 +22,7 @@ using namespace std;
 spip::UDPReceiver::UDPReceiver()
 {
   keep_receiving = true;
+  have_utc_start = false;
   format = NULL;
   verbose = 1;
 
@@ -33,7 +34,6 @@ spip::UDPReceiver::UDPReceiver()
 #else
   vma_api = 0;
 #endif
-
 }
 
 spip::UDPReceiver::~UDPReceiver()
@@ -126,18 +126,23 @@ void spip::UDPReceiver::prepare ()
   if (verbose)
     cerr << "spip::UDPReceiver::prepare finished" << endl;
 
-  // check if UTC_START has been set
-  char * buffer = (char *) malloc (128);
-  if (header.get ("UTC_START", "%s", buffer) == -1)
+  // if this format is not self starting, check for the UTC_START
+  if (!format->get_self_start ())
   {
-    cerr << "spip::UDPReceiver::open no UTC_START in header" << endl;
-    time_t now = time(0);
-    spip::Time utc_start (now);
-    utc_start.add_seconds (2);
-    std::string utc_str = utc_start.get_gmtime();
-    cerr << "spip::UDPReceiver::open UTC_START=" << utc_str  << endl;
-    if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
-      throw invalid_argument ("failed to write UTC_START to header");
+    // check if UTC_START has been set
+    char * buffer = (char *) malloc (128);
+    if (header.get ("UTC_START", "%s", buffer) == -1)
+    {
+      cerr << "spip::UDPReceiver::open no UTC_START in header" << endl;
+      time_t now = time(0);
+      spip::Time utc_start (now);
+      utc_start.add_seconds (2);
+      std::string utc_str = utc_start.get_gmtime();
+      cerr << "spip::UDPReceiver::open UTC_START=" << utc_str  << endl;
+      if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
+        throw invalid_argument ("failed to write UTC_START to header");
+    }
+    have_utc_start = true;
   }
 
   format->prepare (header, "");
@@ -170,13 +175,18 @@ void spip::UDPReceiver::receive ()
   socklen_t addr_size = sizeof(struct sockaddr);
 
   // virtual block
-  size_t data_bufsz = 256*1024*1024;
+  size_t data_bufsz = bytes_per_second;
   char * block = (char *) malloc (data_bufsz);
   bool need_next_block = false;
 
   // block accounting 
   int64_t curr_byte_offset = 0;
   int64_t next_byte_offset = data_bufsz;
+
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiver::receive [" << curr_byte_offset << " - "
+       << next_byte_offset << "] (" << 0 << ")" << endl;
+#endif
 
   // overflow buffer
   const int64_t overflow_bufsz = 2097152;
@@ -292,6 +302,14 @@ void spip::UDPReceiver::receive ()
 
       // decode the header so that the format knows what to do with the packet
       byte_offset = format->decode_packet (buf_ptr, &bytes_received);
+
+      // if we do not yet have a UTC start, get it from the format
+      if (!have_utc_start)
+      {
+        Time utc_start = format->get_utc_start ();
+        uint64_t pico_seconds = format->get_pico_seconds();
+        have_utc_start = true;
+      }
 
       // packet belongs in current buffer
       if ((byte_offset >= curr_byte_offset) && (byte_offset < next_byte_offset))

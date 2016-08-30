@@ -16,11 +16,21 @@ namespace spip {
 
       AsciiHeader (size_t header_size);
 
+      AsciiHeader (const AsciiHeader &obj);
+
       ~AsciiHeader ();
 
-      char * raw () { return header; };
+      void clone (const spip::AsciiHeader &obj);
+
+      char * raw () const { return header; };
 
       void resize (size_t new_size);
+
+      size_t get_header_size () const;
+
+      size_t get_header_length() const;
+
+      void reset () { header[0] = '\0'; };
 
       int load_from_file (const char* filename);
 

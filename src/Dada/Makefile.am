@@ -27,5 +27,7 @@ AM_CXXFLAGS = \
 	@PSRDADA_CFLAGS@ \
 	-I$(top_builddir)/src/Network \
 	-I$(top_builddir)/src/Util
+
+libspipdada_la_LIBADD = @PSRDADA_LIBS@
  
 endif

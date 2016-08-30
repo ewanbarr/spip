@@ -6,6 +6,7 @@
  ***************************************************************************/
 
 #include "spip/UDPGenerator.h"
+#include "spip/Time.h"
 #include "sys/time.h"
 
 #include <cstring>
@@ -113,6 +114,21 @@ void spip::UDPGenerator::prepare ()
   // create and open a UDP sending socket
   sock = new UDPSocketSend();
   sock->open (data_host, data_port);
+
+  char * buffer = (char *) malloc (128);
+  if (header.get ("UTC_START", "%s", buffer) == -1)
+  {
+    cerr << "spip::UDPGenerator::prepare no UTC_START in header" << endl;
+    time_t now = time(0);
+    spip::Time utc_start (now);
+    utc_start.add_seconds (2);
+    std::string utc_str = utc_start.get_gmtime();
+    cerr << "spip::UDPGenerator::open UTC_START=" << utc_str  << endl;
+    if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
+      throw invalid_argument ("failed to write UTC_START to header");
+  }
+
+  format->prepare (header, "");
   
   unsigned header_size = format->get_header_size();
   unsigned data_size   = format->get_data_size();

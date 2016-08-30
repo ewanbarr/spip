@@ -167,6 +167,8 @@ namespace spip {
 
       uint64_t timestamp;
 
+      AsciiHeader config;
+
       AsciiHeader header;
 
   };
