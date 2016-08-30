@@ -84,32 +84,35 @@ class stat extends spip_webpage
                     {
                       var dimension = dimensions[k];
                       var dim_name = dimension.getAttribute("name")
-                      var hg_mean   = parseFloat(dimension.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue);
-                      var hg_stddev = parseFloat(dimension.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue);
-                      var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;
-                      var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
-            
-                      document.getElementById(hg_mean_id).innerHTML = hg_mean.toFixed(2);
-                      document.getElementById(hg_stddev_id).innerHTML = hg_stddev.toFixed(2);
-                    }
-
-                    plots = polarisation.getElementsByTagName("plot");
-                    for (k=0; k<plots.length; k++)
-                    {
-                      var plot = plots[k]
-                      var plot_type = plot.getAttribute("type")  
-                      var plot_timestamp = plot.getAttribute("timestamp")  
-    
-                      var plot_id = stream_id + "_" + plot_type + "_" + pol_name
-                      var plot_ts = stream_id + "_" + plot_type + "_" + pol_name + "_ts"
-
-                      // if the image has been updated, reacquire it
-                      //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
-                      if (plot_timestamp != document.getElementById(plot_ts).value)
+                      if (dim_name != "none")
                       {
-                        url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&ts="+plot_timestamp;
-                        document.getElementById(plot_id).src = url;
-                        document.getElementById(plot_ts).value = plot_timestamp;
+                        var hg_mean   = parseFloat(dimension.getElementsByTagName("histogram_mean")[0].childNodes[0].nodeValue);
+                        var hg_stddev = parseFloat(dimension.getElementsByTagName("histogram_stddev")[0].childNodes[0].nodeValue);
+                        var hg_mean_id = stream_id + "_histogram_mean_" + pol_name + "_" + dim_name;
+                        var hg_stddev_id = stream_id + "_histogram_stddev_" + pol_name + "_" + dim_name;
+              
+                        document.getElementById(hg_mean_id).innerHTML = hg_mean.toFixed(2);
+                        document.getElementById(hg_stddev_id).innerHTML = hg_stddev.toFixed(2);
+                      }
+
+                      plots = dimension.getElementsByTagName("plot");
+                      for (l=0; l<plots.length; l++)
+                      {
+                        var plot = plots[l]
+                        var plot_type = plot.getAttribute("type")  
+                        var plot_timestamp = plot.getAttribute("timestamp")  
+    
+                        var plot_id = stream_id + "_" + plot_type + "_" + pol_name + "_" + dim_name
+                        var plot_ts = stream_id + "_" + plot_type + "_" + pol_name + "_" + dim_name + "_ts"
+
+                        // if the image has been updated, reacquire it
+                        //alert (plot_timestamp + " ?=? " + document.getElementById(plot_ts).value)
+                        if (plot_timestamp != document.getElementById(plot_ts).value)
+                        {
+                          url = "/spip/stats/index.php?update=true&istream="+stream_id+"&type=plot&plot="+plot_type+"&pol="+pol_name+"&dim="+dim_name+"&ts="+plot_timestamp;
+                          document.getElementById(plot_id).src = url;
+                          document.getElementById(plot_ts).value = plot_timestamp;
+                        }
                       }
                     }
                   }
@@ -140,7 +143,7 @@ class stat extends spip_webpage
 
       function stat_request() 
       {
-        var url = "?update=true";
+        var url = "?update=true&pref_chan=10";
 
         if (window.XMLHttpRequest)
           t_xml_request = new XMLHttpRequest();
@@ -207,6 +210,7 @@ class stat extends spip_webpage
     $xml_req .= "<stat_request>";
     $xml_req .= "<requestor>stat page</requestor>";
     $xml_req .= "<type>state</type>";
+    $xml_req .= "<pref_chan>".$get["pref_chan"]."</pref_chan>";
     $xml_req .= "</stat_request>";
 
     foreach ($this->streams as $istream => $stream)
@@ -249,6 +253,7 @@ class stat extends spip_webpage
     $xml_req .= "<type>plot</type>";
     $xml_req .= "<plot>".$get["plot"]."</plot>";
     $xml_req .= "<pol>".$get["pol"]."</pol>";
+    $xml_req .= "<dim>".$get["dim"]."</dim>";
     $xml_req .= "</stat_request>";
 
     $stat_socket = new spip_socket(); 
@@ -334,11 +339,21 @@ class stat extends spip_webpage
 
     echo "<table  width='100%' id='plotTable'>\n";
     echo "<tr>\n";
-    echo   "<td><img id='".$stream."_histogram_0' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_ts'/></td>\n";
-    echo   "<td><img id='".$stream."_freq_vs_time_0' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_0_ts'/></td>\n";
-    echo   "<td><img id='".$stream."_histogram_1' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_ts'/></td>\n";
-    echo   "<td><img id='".$stream."_freq_vs_time_1' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_1_ts'/></td>\n";
-    echo "<tr><td>Input HG</td><td>Freq vs Time</td><td>Input HG</td><td>Freq vs Time</td></tr>\n";
+    echo   "<td><img id='".$stream."_histogram_0_real' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_real_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_0_imag' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_imag_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_1_real' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_real_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_1_imag' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_imag_ts'/></td>\n";
+    echo "</tr>\n";
+    echo "<tr><td>Input HG Real</td><td>Input HG Imag</td><td>Input HG Real</td><td>Input HG Imag</td></tr>\n";
+
+    echo "<tr>\n";
+    echo   "<td><img id='".$stream."_freq_vs_time_0_none' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_0_none_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_0_none' ".$img_params."/><input type='hidden' id='".$stream."_histogram_0_none_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_freq_vs_time_1_none' ".$img_params."/><input type='hidden' id='".$stream."_freq_vs_time_1_none_ts'/></td>\n";
+    echo   "<td><img id='".$stream."_histogram_1_none' ".$img_params."/><input type='hidden' id='".$stream."_histogram_1_none_ts'/></td>\n";
+    echo "<td></td>\n";
+    echo "</tr>\n";
+    echo "<tr><td>Freq v Time</td><td></td><td>Freq v Time</td><td></td></tr>\n";
 
     echo "</table>\n";
   }

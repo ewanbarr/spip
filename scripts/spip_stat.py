@@ -53,32 +53,43 @@ class StatReportingThread(ReportingThread):
 
       if self.script.results["valid"]:
 
+        if "pref_chan" in req:
+          self.script.pref_freq = int(req["pref_chan"])
+     
         self.script.log (3, "StatReportingThread::parse_message: stream is valid!")
 
         xml += "<polarisation name='0'>"
         xml += "<dimension name='real'>"
         xml += "<histogram_mean>" + str(self.script.results["hg_mean_0_re"]) + "</histogram_mean>"
         xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_0_re"]) + "</histogram_stddev>"
+        xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "</dimension>"
         xml += "<dimension name='imag'>"
         xml += "<histogram_mean>" + str(self.script.results["hg_mean_0_im"]) + "</histogram_mean>"
         xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_0_im"]) + "</histogram_stddev>"
-        xml += "</dimension>"
         xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "</dimension>"
+        xml += "<dimension name='none'>"
         xml += "<plot type='freq_vs_time' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "</dimension>"
         xml += "</polarisation>"
 
         xml += "<polarisation name='1'>"
         xml += "<dimension name='real'>"
         xml += "<histogram_mean>" + str(self.script.results["hg_mean_1_re"]) + "</histogram_mean>"
         xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_1_re"]) + "</histogram_stddev>"
+        xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
         xml += "</dimension>"
         xml += "<dimension name='imag'>"
         xml += "<histogram_mean>" + str(self.script.results["hg_mean_1_im"]) + "</histogram_mean>"
         xml += "<histogram_stddev>" + str(self.script.results["hg_stddev_1_im"]) + "</histogram_stddev>"
-        xml += "</dimension>"
         xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "</dimension>"
+        xml += "<dimension name='none'>"
         xml += "<plot type='freq_vs_time' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "<plot type='histogram' timestamp='" + str(self.script.results["timestamp"]) + "'/>"
+        xml += "</dimension>"
         xml += "</polarisation>"
 
       xml += "</stream>"
@@ -91,15 +102,16 @@ class StatReportingThread(ReportingThread):
       return True, xml + "\r\n"
 
     elif req["type"] == "plot":
-     
+
       if req["plot"] in self.script.valid_plots:
 
         self.script.results["lock"].acquire()
         self.script.log (2, "StatReportingThread::parse_message: " + \
-                         " plot=" + req["plot"] + " pol=" + req["pol"]) 
+                         " plot=" + req["plot"] + " pol=" + req["pol"] + " dim=" + req["dim"]) 
 
         if self.script.results["valid"]:
-          plot = req["plot"] + "_" + req["pol"]
+          plot = req["plot"] + "_" + req["pol"] + "_" + req["dim"]
+          self.script.log (2, "StatReportingThread::parse_message plot=" + plot)
           if plot in self.script.results.keys():
             if len (self.script.results[plot]) > 64:
               bin_data = copy.deepcopy(self.script.results[plot])
@@ -107,7 +119,7 @@ class StatReportingThread(ReportingThread):
               self.script.results["lock"].release()
               return False, bin_data
             else:
-              self.script.log (1, "StatReportingThread::parse_message len <= 64")
+              self.script.log (1, "StatReportingThread::parse_message image length=" + str(len (self.script.results[plot])) + " <= 64")
           else:
             self.script.log (1, "StatReportingThread::parse_message plot ["+plot+"] not in keys [" + str(self.script.results.keys()))
         else:
@@ -167,6 +179,8 @@ class StatDaemon(Daemon,StreamBased):
     self.hg_valid = False
     self.ft_valid = False
     self.ms_valid = False
+
+    self.pref_freq = 0
 
   #################################################################
   # main
@@ -236,6 +250,8 @@ class StatDaemon(Daemon,StreamBased):
       self.log (2, "StatDaemon::main starting stat thread")
       stat_thread.start()
       self.log (2, "StatDaemon::main stat thread started")
+
+      pref_freq = 0
      
       while stat_thread.is_alive():
 
@@ -304,24 +320,26 @@ class StatDaemon(Daemon,StreamBased):
           #stddevs = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
           #ms_fptr.close()
 
-          self.process_hg (utc_dir)
-          self.process_ft (utc_dir)
+          self.process_hg (utc_dir, pref_freq)
+          self.process_ft (utc_dir, pref_freq)
           self.process_ms (utc_dir)
 
           self.results["lock"].acquire()
+
+          pref_freq = self.pref_freq
           self.results["timestamp"] = times.getCurrentTime()
           self.results["valid"] = self.hg_valid and self.ft_valid and self.ms_valid
 
-          #self.hg_plot.plot_binned (240, 180, True, hg_data[0][0], hg_data[0][1], nbin)
+          #self.hg_plot.plot_binned (240, 160, True, hg_data[0][0], hg_data[0][1], nbin)
           #self.results["histogram_0"] = self.hg_plot.getRawImage()
 
-          #self.hg_plot.plot_binned (240, 180, True, hg_data[1][0], hg_data[1][1], nbin)
+          #self.hg_plot.plot_binned (240, 160, True, hg_data[1][0], hg_data[1][1], nbin)
           #self.results["histogram_1"] = self.hg_plot.getRawImage()
 
-          #self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
+          #self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
           #self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
 
-          #self.ft_plot.plot (240, 180, True, ft_data[1], nfreq, ntime)
+          #self.ft_plot.plot (240, 160, True, ft_data[1], nfreq, ntime)
           #self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
 
           #self.results["hg_mean_0_re"] = means[0]
@@ -345,7 +363,7 @@ class StatDaemon(Daemon,StreamBased):
         self.quit_event.set()
 
   
-  def process_hg (self, utc_dir):
+  def process_hg (self, utc_dir, ifreq=-1):
 
     # find the most recent HG stats file
     files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".hg.stats")]
@@ -359,24 +377,46 @@ class StatDaemon(Daemon,StreamBased):
       # only 1 channel in the histogram
       hg_fptr = open (utc_dir + "/" + str(hg_file), "rb")
       npol = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
+      nfreq = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
       ndim = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
       nbin = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
 
-      self.log (3, "StatDaemon::process_hg npol=" + str(npol) +" ndim=" + str(ndim) + " nbin=" + str(nbin))
+      self.log (3, "StatDaemon::process_hg npol=" + str(npol) + " ndim=" + str(ndim) + " nbin=" + str(nbin))
       hg_data = {}
       for ipol in range(npol):
         hg_data[ipol] = {}
         for idim in range(ndim):
-          hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nbin)
+          hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nfreq*nbin)
+          hg_data[ipol][idim].shape = (nfreq, nbin)
       hg_fptr.close()
 
       self.results["lock"].acquire()
-      self.hg_plot.plot_binned (240, 180, True, hg_data[0][0], hg_data[0][1], nbin)
-      self.results["histogram_0"] = self.hg_plot.getRawImage()
-      self.hg_plot.plot_binned (240, 180, True, hg_data[1][0], hg_data[1][1], nbin)
-      self.results["histogram_1"] = self.hg_plot.getRawImage()
-      self.hg_plot.plot_binned4 (240, 180, True, hg_data[0][0], hg_data[0][1], hg_data[1][0], hg_data[1][1], nbin)
-      self.results["histogram_s"] = self.hg_plot.getRawImage()
+      if nfreq > 1:
+        self.hg_plot.plot_binned_image (240, 160, True, hg_data[0][0], nfreq, nbin)
+        self.results["histogram_0_real"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (240, 160, True, hg_data[0][1], nfreq, nbin)
+        self.results["histogram_0_imag"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (240, 160, True, hg_data[1][0], nfreq, nbin)
+        self.results["histogram_1_real"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (240, 160, True, hg_data[1][1], nfreq, nbin)
+        self.results["histogram_1_imag"] = self.hg_plot.getRawImage()
+
+      if nfreq == 1:
+        ifreq = 0
+      if ifreq == -1:
+        ifreq = nfreq / 2
+
+      chan_real = hg_data[0][0][0,:]
+      chan_imag = hg_data[0][1][0,:]
+      self.hg_plot.plot_binned (240, 160, True, chan_real, chan_imag, nbin)
+      self.results["histogram_0_none"] = self.hg_plot.getRawImage()
+
+      chan_real = hg_data[1][0][0,:]
+      chan_imag = hg_data[1][1][0,:]
+      self.hg_plot.plot_binned (240, 160, True, chan_real, chan_imag, nbin)
+      self.results["histogram_1_none"] = self.hg_plot.getRawImage()
+      #self.hg_plot.plot_binned4 (240, 160, True, hg_data[0][0][ifreq,:], hg_data[0][1][ifreq,:], hg_data[1][0][ifreq,:], hg_data[1][1][ifreq,:], nbin)
+      #self.results["histogram_s_none"] = self.hg_plot.getRawImage()
 
       self.hg_valid = True
       self.results["lock"].release()
@@ -385,7 +425,7 @@ class StatDaemon(Daemon,StreamBased):
         os.remove (utc_dir + "/" + file)
 
 
-  def process_ft (self, utc_dir):
+  def process_ft (self, utc_dir, ifreq=-1):
     
     self.log (2, "StatDaemon::process_ft("+utc_dir+")")
 
@@ -414,12 +454,12 @@ class StatDaemon(Daemon,StreamBased):
       self.log (3, "StatDaemon::process_ft plotting")
       self.results["lock"].acquire()
 
-      self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
-      self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
-      self.ft_plot.plot (240, 180, True, ft_data[1], nfreq, ntime)
-      self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
-      self.ft_plot.plot (240, 180, True, ft_data[0], nfreq, ntime)
-      self.results["freq_vs_time_s"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_0_none"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (240, 160, True, ft_data[1], nfreq, ntime)
+      self.results["freq_vs_time_1_none"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_s_none"] = self.ft_plot.getRawImage()
       
       self.ft_valid = True
       self.results["lock"].release()

@@ -74,8 +74,8 @@ class InlinePlot (object):
     else:
       self.ax = self.fig.add_subplot(1,1,1)
 
-    #set_foregroundcolor(self.ax, 'black')
-    #set_backgroundcolor(self.ax, 'white')
+    set_foregroundcolor(self.ax, 'black')
+    set_backgroundcolor(self.ax, 'white')
 
     if not plain:
       self.ax.set_title(self.title)
@@ -117,6 +117,13 @@ class HistogramPlot (InlinePlot):
     self.ax.plot(self.bins, imag, color='green', label='imag')
     self.closePlot()
 
+  def plot_binned_image (self, xres, yres, plain, data, nfreq, nbins):
+    self.openPlot(xres, yres, plain)
+    self.ax.imshow(data, extent=(0, nbins, 0, nfreq), aspect='auto',
+                   origin='lower', interpolation='nearest',
+                   cmap=cm.get_cmap('summer'))
+    self.closePlot()
+
   def plot_binned4 (self, xres, yres, plain, real0, imag0, real1, imag1, nbins):
     self.openPlot(xres, yres, plain)
     self.bins = numpy.arange(-128,128,1)
@@ -125,7 +132,6 @@ class HistogramPlot (InlinePlot):
     self.ax.plot(self.bins, real1, color='yellow', label='real1')
     self.ax.plot(self.bins, imag1, color='blue', label='imag1')
     self.closePlot()
-
 
   def plot (self, xres, yres, plain, real, imag, nbins):
     self.openPlot(xres, yres, plain)

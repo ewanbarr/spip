@@ -47,23 +47,25 @@ void spip::BlockFormat::prepare (unsigned _nbin, unsigned _ntime, unsigned _nfre
   means.resize (npol * ndim);
   variances.resize (npol * ndim);
   stddevs.resize (npol * ndim);
-  hist.resize(npol);
-  for (unsigned ipol=0; ipol<npol; ipol++)
-  {
-    hist[ipol].resize(ndim);
-    for (unsigned idim=0; idim<ndim; idim++)
-    {
-      hist[ipol][idim].resize(nbin);
-    }
-  }
 
   freq_time.resize(npol);
+  hist.resize(npol);
+
   for (unsigned ipol=0; ipol<npol; ipol++)
   {
     freq_time[ipol].resize(nfreq);
+    hist[ipol].resize(ndim);
+    for (unsigned idim=0; idim<ndim; idim++)
+    {
+      hist[ipol][idim].resize(nfreq);
+    }
     for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
     {
       freq_time[ipol][ifreq].resize(ntime);
+      for (unsigned idim=0; idim<ndim; idim++)
+      {
+        hist[ipol][idim][ifreq].resize(nbin);
+      }
     }
   }
 }
@@ -72,13 +74,13 @@ void spip::BlockFormat::reset()
 {
   for (unsigned ipol=0; ipol<npol; ipol++)
   {
-    for (unsigned idim=0; idim<ndim; idim++)
-    {
-      fill ( hist[ipol][idim].begin(), hist[ipol][idim].end(), 0);
-    }
     for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
     {
       fill(freq_time[ipol][ifreq].begin(), freq_time[ipol][ifreq].end(), 0);
+      for (unsigned idim=0; idim<ndim; idim++)
+      {
+        fill ( hist[ipol][idim][ifreq].begin(), hist[ipol][idim][ifreq].end(), 0);
+      }
     }
   }
 
@@ -92,14 +94,18 @@ void spip::BlockFormat::write_histograms(string hg_filename)
   ofstream hg_file (hg_filename.c_str(), ofstream::binary);
 
   hg_file.write (reinterpret_cast<const char *>(&npol), sizeof(npol));
+  hg_file.write (reinterpret_cast<const char *>(&nfreq), sizeof(nfreq));
   hg_file.write (reinterpret_cast<const char *>(&ndim), sizeof(ndim));
   hg_file.write (reinterpret_cast<const char *>(&nbin), sizeof(nbin));
   for (unsigned ipol=0; ipol<npol; ipol++)
   {
     for (unsigned idim=0; idim<ndim; idim++)
     {
-      const char * buffer = reinterpret_cast<const char *>(&hist[ipol][idim][0]);
-      hg_file.write(buffer, hist[ipol][idim].size() * sizeof(unsigned));
+      for (unsigned ifreq=0; ifreq<nfreq; ifreq++)
+      {  
+        const char * buffer = reinterpret_cast<const char *>(&hist[ipol][idim][ifreq][0]);
+        hg_file.write(buffer, hist[ipol][idim][ifreq].size() * sizeof(unsigned));
+      }
     }
   }
   hg_file.close();

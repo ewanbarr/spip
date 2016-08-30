@@ -64,7 +64,7 @@ namespace spip {
 
       std::vector <float> stddevs;
 
-      std::vector <std::vector <std::vector <unsigned> > > hist;
+      std::vector <std::vector <std::vector <std::vector <unsigned> > > > hist;
 
       std::vector <std::vector <std::vector <float> > > freq_time;
 
