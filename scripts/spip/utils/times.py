@@ -6,6 +6,7 @@
 ###############################################################################
 
 from datetime import datetime
+from datetime import timedelta
 
 def getCurrentTimeUS():
   now = datetime.today()
@@ -15,7 +16,7 @@ def getCurrentTimeUS():
 def getCurrentTime(toadd=0):
   now = datetime.today()
   if (toadd > 0):
-    delta = datetime.timedelta(0, toadd)
+    delta = timedelta(0, toadd)
     now = now + delta
   now_str = now.strftime("%Y-%m-%d-%H:%M:%S")
   return now_str
