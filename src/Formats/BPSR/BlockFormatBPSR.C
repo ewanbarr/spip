@@ -59,10 +59,10 @@ void spip::BlockFormatBPSR::unpack_hgft (char * buffer, uint64_t nbytes)
           sums[ipol*ndim + 1] += (float) im;
 
           ibin = re + 128;
-          hist[ipol][0][ibin]++;
+          hist[ipol][0][ifreq][ibin]++;
 
           ibin = im + 128;
-          hist[ipol][1][ibin]++;
+          hist[ipol][1][ifreq][ibin]++;
 
           // detect and average the timesamples into a NPOL sets of NCHAN * 512 waterfalls
           power = (unsigned) ((re * re) + (im * im));
