@@ -87,7 +87,7 @@ class clientThread (threading.Thread):
 
         for rank in self.ranks:
           for daemon in self.daemons[rank]: 
-            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix + "' | wc -l";
+            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix + "' | wc -l"
             rval, lines = self.parent.system (cmd, 2)
             self.states[daemon] = (rval == 0)
         counter = 5
@@ -95,9 +95,9 @@ class clientThread (threading.Thread):
           sleep(1)
           counter -= 1
 
-      self.parent.log(1, self.prefix + " asking daemons to quit")
+      self.parent.log(1, self.prefix + "asking daemons to quit")
       self.stop_daemons (self.ranks)
-      self.parent.log(1, self.prefix + " thread exiting")
+      self.parent.log(1, self.prefix + "thread exiting")
 
     except:
       self.parent.quit_event.set()
