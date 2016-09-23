@@ -1126,7 +1126,8 @@ if __name__ == "__main__":
     script.log(1, "__main__: server.start()")
     server.start()
 
-    pubsub_thread = PubSubThread (script, beam_id)
+    #pubsub_thread = PubSubThread (script, beam_id)
+    pubsub_thread = PubSubSimThread (script, beam_id)
     pubsub_thread.start()
 
     script.log(1, "__main__: script.main()")
