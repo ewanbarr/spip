@@ -26,5 +26,5 @@ LDADD = libuwb.la \
 	$(top_builddir)/src/Formats/VDIF/libvdif.la \
 	$(top_builddir)/src/libspip.la -lpthread 
 
-AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@
-LDADD += @PSRDADA_LIBS@ @HWLOC_LIBS@
+AM_CXXFLAGS += @PSRDADA_CFLAGS@ @HWLOC_CFLAGS@ @CUDA_CFLAGS@
+LDADD += @PSRDADA_LIBS@ @HWLOC_LIBS@ @BOOST_SYSTEM_LDFLAGS@ @SPEAD2_LIBS@

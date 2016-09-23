@@ -23,7 +23,8 @@ delay_pipeline_SOURCES = delay_pipeline.C
 AM_CXXFLAGS = @PSRDADA_CFLAGS@ \
 	-I$(top_builddir)/src/Affinity\
 	-I$(top_builddir)/src/Util \
-	-I$(top_builddir)/src/Dada
+	-I$(top_builddir)/src/Dada \
+  @CUDA_CFLAGS@
 
 LDADD = libspipdsp.la \
 	$(top_builddir)/src/Affinity/libspipaffinity.la \

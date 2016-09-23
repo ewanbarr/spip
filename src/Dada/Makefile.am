@@ -30,4 +30,7 @@ AM_CXXFLAGS = \
 
 libspipdada_la_LIBADD = @PSRDADA_LIBS@
  
+AM_CXXFLAGS += @CUDA_CFLAGS@
+libspipdada_la_LIBADD += @CUDA_LIBS@
+
 endif

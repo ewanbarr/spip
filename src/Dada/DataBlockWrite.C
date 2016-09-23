@@ -13,10 +13,19 @@
 #include <cstring>
 #include <stdexcept>
 
+#ifdef HAVE_CUDA
+#include "ipcio_cuda.h"
+#endif
+
 using namespace std;
 
 spip::DataBlockWrite::DataBlockWrite (const char * key_string) : spip::DataBlock(key_string)
 {
+#if HAVE_CUDA
+  dev_id = -1;
+  dev_bytes = 0;
+  dev_ptr = NULL;
+#endif
 }
 
 spip::DataBlockWrite::~DataBlockWrite ()
@@ -24,7 +33,31 @@ spip::DataBlockWrite::~DataBlockWrite ()
 #ifdef _DEBUG
   cerr << "spip::DataBlockWrite::~DataBlockWrite()" << endl;
 #endif
+#ifdef HAVE_CUDA
+  if (dev_ptr)
+  {
+    cudaError_t error_id = cudaFree (dev_ptr);
+    if (error_id != cudaSuccess)
+      throw runtime_error ("could not deallocate dev_ptr");
+    dev_ptr = NULL;
+  }
+#endif
 }
+
+#ifdef HAVE_CUDA
+void spip::DataBlockWrite::set_device (int id)
+{
+  dev_id = id;
+  cudaError_t error_id = cudaSetDevice (dev_id);
+  if (error_id != cudaSuccess)
+    throw runtime_error ("could not set cuda device");
+
+  dev_bytes = data_bufsz;
+  error_id = cudaMalloc (&(dev_ptr), dev_bytes);  
+  if (error_id != cudaSuccess)
+    throw runtime_error ("could not allocate bytes for dev_ptr");
+}
+#endif
 
 void spip::DataBlockWrite::open ()
 {
@@ -176,8 +209,18 @@ void spip::DataBlockWrite::zero_next_block ()
   if (!locked)
     throw runtime_error ("not locked as writer");
 
-  //if (ipcio_zero_next_block (data_block) < 0)
-  //  throw runtime_error ("could not zero next block");
-
+#ifdef HAVE_CUDA
+  if (dev_ptr)
+  {
+    if (ipcio_zero_next_block_cuda (data_block, dev_ptr, dev_bytes, stream) < 0)
+      throw runtime_error ("could not zero next block");
+  }
+  else
+  if (ipcio_zero_next_block (data_block) < 0)
+    throw runtime_error ("could not zero next block");
+#else
+  if (ipcio_zero_next_block (data_block) < 0)
+    throw runtime_error ("could not zero next block");
+#endif
 }
 

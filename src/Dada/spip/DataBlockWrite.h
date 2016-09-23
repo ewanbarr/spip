@@ -2,7 +2,12 @@
 #ifndef __DataBlockWrite_h
 #define __DataBlockWrite_h
 
+#include "config.h"
 #include "spip/DataBlock.h"
+
+#ifdef HAVE_CUDA
+#include <cuda_runtime.h>
+#endif
 
 namespace spip {
 
@@ -13,6 +18,10 @@ namespace spip {
       DataBlockWrite (const char * key);
 
       ~DataBlockWrite ();
+
+#ifdef HAVE_CUDA
+      void set_device (int id);
+#endif
 
       void open ();
 
@@ -39,6 +48,16 @@ namespace spip {
     protected:
 
     private:
+
+#ifdef HAVE_CUDA
+      int dev_id;
+
+      char * dev_ptr;
+
+      size_t dev_bytes;
+
+      cudaStream_t stream;
+#endif
 
   };
 
