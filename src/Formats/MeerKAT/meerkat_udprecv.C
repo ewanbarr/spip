@@ -160,6 +160,7 @@ int main(int argc, char *argv[])
     cerr << "meerkat_udprecv: ERROR: " << exc.what() << endl;
     return -1;
   }
+  cerr << "meerkat_udprecv: exiting" << endl;
 
   return 0;
 }
@@ -217,26 +218,28 @@ void * stats_thread (void * arg)
 
   while (!quit_threads)
   {
-    // get a snapshot of the data as quickly as possible
-    b_recv_curr = udprecv->get_stats()->get_data_transmitted();
-    b_drop_curr = udprecv->get_stats()->get_data_dropped();
-    s_curr = udprecv->get_stats()->get_nsleeps();
+    if (!quit_threads)
+    {
+      // get a snapshot of the data as quickly as possible
+      b_recv_curr = udprecv->get_stats()->get_data_transmitted();
+      b_drop_curr = udprecv->get_stats()->get_data_dropped();
+      s_curr = udprecv->get_stats()->get_nsleeps();
 
-    // calc the values for the last second
-    b_recv_1sec = b_recv_curr - b_recv_total;
-    s_1sec = s_curr - s_total;
+      // calc the values for the last second
+      b_recv_1sec = b_recv_curr - b_recv_total;
+      s_1sec = s_curr - s_total;
 
-    // update the totals
-    b_recv_total = b_recv_curr;
-    s_total = s_curr;
+      // update the totals
+      b_recv_total = b_recv_curr;
+      s_total = s_curr;
 
-    mb_recv_ps = (double) b_recv_1sec / 1000000;
-    gb_recv_ps = (mb_recv_ps * 8)/1000;
+      mb_recv_ps = (double) b_recv_1sec / 1000000;
+      gb_recv_ps = (mb_recv_ps * 8)/1000;
 
-    // determine how much memory is free in the receivers
-    fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
-    sleep(1);
+      // determine how much memory is free in the receivers
+      fprintf (stderr,"Recv %6.3f [Gb/s] Sleeps %lu Dropped %lu B\n", gb_recv_ps, s_1sec, b_drop_curr);
+      sleep(1);
+    }
   }
-  cerr << "stats_thread: exiting" << endl;
 }
 
