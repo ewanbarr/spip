@@ -21,7 +21,6 @@ import errno, time, random, re
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
 
-
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
@@ -29,7 +28,7 @@ from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 from spip.threads.socketed_thread import SocketedThread
 
-DAEMONIZE = False
+DAEMONIZE = True
 DL = 1
 
 ###############################################################
@@ -40,10 +39,9 @@ class PubSubThread (threading.Thread):
     threading.Thread.__init__(self)
     self.script = script
    
-    self.script.log(1, "PubSubThread.__init__()")
+    self.script.log(2, "PubSubThread.__init__()")
    
-    #self.metadata_server = script.cfg["MEERKAT_PUBSUB_SERVER"]
-    self.metadata_server = "ws://monctl.mkat.devlab.camlab.kat.ac.za/katmetadata/subarray-1/custom/websocket"
+    self.metadata_server = "ws://portal.mkat.devlab.camlab.kat.ac.za/katmetadata/subarray-1/custom/websocket"
 
     self.logger = logging.getLogger('katportalclient.example') 
     self.logger.setLevel(logging.INFO)
@@ -51,32 +49,117 @@ class PubSubThread (threading.Thread):
     self.io_loop = tornado.ioloop.IOLoop.current()
     self.io_loop.add_callback (self.connect, self.logger)
 
+    prefix = "subarray_" + str(int(id+1)) + "_script"
+
+    self.subs = ['cbf.*.bandwidth', 'cbf.*.centerfrequency', 'cbf.*.channels']
+    self.subs.append ('cbf.synchronisation.epoch')
+    self.subs.append ('script.observer')
+    self.subs.append ('script.target')
+    self.subs.append ('product')
+
+    self.adc_start_re = re.compile ("data_\d_cbf_synchronisation_epoch")
+    self.bandwidth_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_bandwidth")
+    self.centerfreq_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_centerfrequency")
+    self.channels_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_channels")
+    self.target_re = re.compile ("subarray_\d_script_target")
+    self.ra_re = re.compile ("subarray_\d_script_ra")
+    self.dec_re = re.compile ("subarray_\d_script_dec")
+    self.observer_re = re.compile ("subarray_\d_script_observer")
+    self.tsubint_re = re.compile ("subarray_\d_script_tsubint")
+
   def run (self):
-    self.script.log(1, "PubSubThread.run()")
+    self.script.log(2, "PubSubThread.run()")
+    self.script.log(3, "PubSubThread.io_loop starting...")
     self.io_loop.start()
-    self.script.log(1, "PubSubThread.io_loop started...")
 
   def join (self):
-    self.script.log(1, "PubSubThread.join()")
+    self.script.log(2, "PubSubThread.join()")
     self.stop()
 
   def stop (self):
-    self.script.log(1, "PubSubThread.stop()")
+    self.script.log(2, "PubSubThread.stop()")
     self.io_loop.stop()
+    return
 
+  @tornado.gen.coroutine
   def connect (self, logger):
-    self.script.log(1, "PubSubThread.connect()")
+    self.script.log(2, "PubSubThread.connect()")
     self.ws_client = KATPortalClient(self.metadata_server, self.on_update_callback, logger=logger)
     yield self.ws_client.connect()
     result = yield self.ws_client.subscribe('ptuse_test')
+
+    list = ['cbf.*.bandwidth', 'cbf.*.centerfrequency', 'cbf.*.channels']
+    list.append ('cbf.synchronisation.epoch')
+    list.append ('subarray_1')
+    list.append ('script.observer')
+    list.append ('script.target')
+    list.append ('product')
+
     result = yield self.ws_client.set_sampling_strategies(
-        'ptuse_test', ['mode', 'azim', 'elev'], 'period 10.0')
+        'ptuse_test', list, 'period 10.0')
 
   def on_update_callback (self, msg):
-    if self.script.quit_event.isSet():
-      self.stop()
-    self.script.log(1, "PubSubThread.join:" + str(msg))
 
+    # determine how to know which beam this corresponds to!
+    ibeam = 0
+    beam_name = self.script.cfg["BEAM_" + str(ibeam)]
+
+    self.script.beam_configs[beam_name]["lock"].acquire()
+
+    self.update_config (self.script.beam_configs[beam_name],  msg)
+
+    self.script.beam_configs[beam_name]["lock"].release()
+
+    if self.script.quit_event.isSet():
+      self.script.log(1, "PubSubThread::on_update_callback: self.stop()")
+      self.stop()
+
+  def update_config (self, bcfg, msg):
+
+    # ignore empty messages
+    if msg == []: 
+      return
+
+    status = msg["msg_data"]["status"]
+    value = msg["msg_data"]["value"]
+    name = msg["msg_data"]["name"]
+
+    self.script.log(3, "PubSubThread::update_config " + name + "=" + str(value))
+
+    # get the ADC_SYNC_TIME
+    if self.adc_start_re.match (name):
+      bcfg["ADC_SYNC_TIME"] = str(int(value))
+      self.script.log(2, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
+
+    elif self.target_re.match (name):
+      bcfg["SOURCE"] = value
+      self.script.log(2, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
+
+    # TODO check if exists already
+    elif self.ra_re.match (name):
+      bcfg["RA"] = value
+      self.script.log(2, "PubSubThread::update_config RA=" + str(value) + " from " + name)
+
+    # TODO check if exists already
+    elif self.dec_re.match (name):
+      bcfg["DEC"] = value
+      self.script.log(2, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
+
+    elif self.observer_re.match (name):
+      bcfg["OBSERVER"] = value
+      self.script.log(2, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
+
+    elif self.bandwidth_re.match (name):
+      self.script.log(2, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
+
+    elif self.centerfreq_re.match (name):
+      self.script.log(2, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
+
+    elif self.tsubint_re.match (name):
+      bcfg["TSUBINT"] = value
+      self.script.log(2, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
+
+    self.script.log(3, "PubSubThread::update_config done")
 
 class PubSubSimThread(SocketedThread):
 
@@ -217,6 +300,24 @@ class KATCPDaemon(Daemon):
                       "<type>state</type>" + \
                       "</repack_request>"
 
+  # reset the sepcified beam configuration
+  def reset_beam_config (self, bcfg):
+    bcfg["lock"].acquire()
+    bcfg["SOURCE"] = "J0835-4510"
+    bcfg["RA"] = "None"
+    bcfg["DEC"] = "None"
+    bcfg["PID"] = "None"
+    bcfg["OBSERVER"] = "None"
+    bcfg["TOBS"] = "None"
+    bcfg["MODE"] = "PSR"
+    bcfg["PROC_FILE"] = "None"
+    bcfg["ADC_SYNC_TIME"] = "0"
+    bcfg["PERFORM_FOLD"] = "1"
+    bcfg["PERFORM_SEARCH"] = "0"
+    bcfg["PERFORM_TRANS"] = "0"
+    bcfg["lock"].release()
+
+
   #############################################################################
   # configure fixed sensors (for lifetime of script)
   def set_katcp (self, server):
@@ -285,7 +386,7 @@ class KATCPDaemon(Daemon):
           self.log(2, "KATCPDaemon::main update_repack_sensors("+host+",[xml])")
           self.update_repack_sensors(host, xml)
 
-      self.log(2, "KATCPDaemon::main sleep(5)")
+      self.log(1, "KATCPDaemon::main sleep(5)")
       time.sleep(5)
 
       if not self.katcp.running():
@@ -467,18 +568,7 @@ class KATCPServerDaemon (KATCPDaemon, ServerBased):
 
       self.beam_configs[b] = {}
       self.beam_configs[b]["lock"] = threading.Lock()
-      self.beam_configs[b]["SOURCE"] = ""
-      self.beam_configs[b]["RA"] = ""
-      self.beam_configs[b]["DEC"] = ""
-      self.beam_configs[b]["PID"] = ""
-      self.beam_configs[b]["OBSERVER"] = ""
-      #self.beam_configs[b]["UTC_START"] = ""
-      self.beam_configs[b]["TOBS"] = ""
-      self.beam_configs[b]["MODE"] = ""
-      self.beam_configs[b]["ADC_SYNC_TIME"] = ""
-      self.beam_configs[b]["PERFORM_FOLD"] = "0"
-      self.beam_configs[b]["PERFORM_SEARCH"] = "0"
-      self.beam_configs[b]["PERFORM_TRANS"] = "0"
+      self.reset_beam_config (self.beam_configs[b])
 
       # if each beam is used independently of the others
       if self.cfg["INDEPENDENT_BEAMS"] == "true":
@@ -514,18 +604,7 @@ class KATCPBeamDaemon (KATCPDaemon, BeamBased):
 
     self.beam_configs[b] = {}
     self.beam_configs[b]["lock"] = threading.Lock()
-    self.beam_configs[b]["SOURCE"] = ""
-    self.beam_configs[b]["RA"] = ""
-    self.beam_configs[b]["DEC"] = ""
-    self.beam_configs[b]["PID"] = ""
-    self.beam_configs[b]["OBSERVER"] = ""
-    #self.beam_configs[b]["UTC_START"] = ""
-    self.beam_configs[b]["TOBS"] = ""
-    self.beam_configs[b]["MODE"] = ""
-    self.beam_configs[b]["ADC_SYNC_TIME"] = "0"
-    self.beam_configs[b]["PERFORM_FOLD"] = "0"
-    self.beam_configs[b]["PERFORM_SEARCH"] = "0"
-    self.beam_configs[b]["PERFORM_TRANS"] = "0"
+    self.reset_beam_config (self.beam_configs[b])
 
     # if each beam is used independently of the others
     if self.cfg["INDEPENDENT_BEAMS"] == "true":
@@ -556,7 +635,8 @@ class KATCPServer (DeviceServer):
       self._host_sensors = {}
       self._beam_sensors = {}
       self._data_products = {}
-
+      self.configured_beams = 0
+      self.available_beams = int(self.script.cfg["NUM_BEAM"])
 
       self.script.log(2, "KATCPServer::__init__ starting DeviceServer on " + server_host + ":" + str(server_port))
       DeviceServer.__init__(self, server_host, server_port)
@@ -786,54 +866,41 @@ class KATCPServer (DeviceServer):
       else:
         return ("fail", 0)
 
-    @request(Int())
+    @request(Str())
     @return_reply(Str())
-    def request_capture_init(self, req, data_product_id):
+    def request_capture_init (self, req, data_product_id):
       """Prepare the ingest process for data capture."""
       self.script.log (2, "request_capture_init()")
-      if data_product_id in self._data_products:
-        # TODO - assume data_product_id is beam name
-        b = str(data_product_id)
+      if not data_product_id in self._data_products.keys():
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+      for ibeam in self._data_products[data_product_id]['beams']:
+        b = self.script.beams[ibeam]
         host = self.script.tcs_hosts[b]
         port = self.script.tcs_ports[b]
-        self.script.log (2, "request_capture_init: opening socket to " + host + ":" + str(port))
+        self.script.log (2, "request_capture_init: opening socket for beam " + b + " to " + host + ":" + str(port))
         sock = sockets.openSocket (DL, host, int(port), 1)
         if sock:
           xml = self.script.get_xml_config_for_beams (b)
           sock.send(xml + "\r\n")
           reply = sock.recv (65536);
-          sock.close()
-        return ("ok", "")
-      else:
-        return ("fail", "data product " + str (data_product_id) + " was not configured")
 
-    @request(Int())
-    @return_reply(Str())
-    def request_capture_start(self, req, data_product_id):
-      """Start capture of SPEAD stream for the data_product_id."""
-      if data_product_id in self._data_products:
-        # TODO assume data_product_id is beam name
-        b = str(data_product_id)
-        host = self.script.tcs_hosts[b]
-        port = self.script.tcs_ports[b]
-        sock = sockets.openSocket (DL, host, int(port), 1)
-        if sock:
           xml = self.script.get_xml_start_cmd (b)
           sock.send(xml + "\r\n")
           reply = sock.recv (65536);
-          sock.close()
 
-        return ("ok", "")
-      else:
+          sock.close()
+      return ("ok", "")
+
+    @request(Str())
+    @return_reply(Str())
+    def request_capture_done(self, req, data_product_id):
+      """Terminte the ingest process for the specified data_product_id."""
+      if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
 
-    @request(Int())
-    @return_reply(Str())
-    def request_capture_stop(self, req, data_product_id):
-      """Stop capture of SPEAD stream for the data_product_id."""
-      if data_product_id in self._data_products:
-        # TODO assume data_product_id is beam name
-        b = str(data_product_id) 
+      for ibeam in self._data_products[data_product_id]['beams']:
+        b = self.script.beams[ibeam]
         host = self.script.tcs_hosts[b]
         port = self.script.tcs_ports[b]
         sock = sockets.openSocket (DL, host, int(port), 1)
@@ -842,20 +909,7 @@ class KATCPServer (DeviceServer):
           sock.send(xml + "\r\n")
           reply = sock.recv (65536);
           sock.close()
-
-        return ("ok", "")
-      else:
-        return ("fail", "data product " + str (data_product_id) + " was not configured")
-
-    @request(Int())
-    @return_reply(Str())
-    def request_capture_done(self, req, data_product_id):
-      """Terminte the ingest process for the specified data_product_id."""
-      if data_product_id in self._data_products:
-        # TODO instruct SPIP backend for beam to conclude observation 
-        return ("ok", "")
-      else:
-        return ("fail", "data product " + str (data_product_id) + " was not configured")
+      return ("ok", "")
 
     @return_reply(Str())
     def request_data_product_configure(self, req, msg):
@@ -864,7 +918,8 @@ class KATCPServer (DeviceServer):
       if len(msg.arguments) == 0:
         return ("ok", "configured data products: TBD")
 
-      data_product_id = int(msg.arguments[0])
+      # the sub-array identifier
+      data_product_id = msg.arguments[0]
 
       if len(msg.arguments) == 1:
         if data_product_id in self._data_products:
@@ -878,12 +933,51 @@ class KATCPServer (DeviceServer):
         else:
           return ("fail", "no configuration existed for " + str(data_product_id))
 
-      if msg.arguments[1] == "":
-        return ("ok", "deconfigured data_product " + str (data_product_id))
+      # The data product is deconfigured, and beams released
+      if len(msg.arguments) == 5:
+        self.script.log (1, "data_product_configure: deconfiguring " + str(data_product_id))
+
+        if not data_product_id in self._data_products.keys():
+          return ("fail", data_product_id + " was not a configured data product")
+
+        # check if the data_product was configured
+        if len(self._data_products[data_product_id]['beams']) == 0:
+          return ("fail", data_product_id + " had 0 beams configured")
+
+        # update config file for beams to match the cbf_source
+        for ibeam in self._data_products[data_product_id]['beams']:
+          b = self.script.beams[ibeam]
+          for istream in range(int(self.script.cfg["NUM_STREAM"])):
+            (host, beam_idx, subband) = self.script.cfg["STREAM_" + str(istream)].split(":")
+            beam = self.script.cfg["BEAM_" + beam_idx]
+            if b == beam:
+              port = int(self.script.cfg["STREAM_RECV_PORT"]) + istream
+              self.script.log (3, "data_product_configure: connecting to " + host + ":" + str(port))
+              sock = sockets.openSocket (DL, host, port, 1)
+              if sock:
+
+                req =  "<?req version='1.0' encoding='ISO-8859-1'?>"
+                req += "<recv_cmd>"
+                req +=   "<command>deconfigure</command>"
+                req += "</recv_cmd>"
+
+                sock.send(req)
+                recv_reply = sock.recv (65536)
+                sock.close()
+
+          # remove the data product
+          self.script.log (1, "data_product_configure: self.configured_beams=" + str(self.configured_beams))
+          self.configured_beams -= int(self._data_products[data_product_id]['n_beams'])
+          self.script.log (1, "data_product_configure: self.configured_beams=" + str(self.configured_beams))
+          self._data_products.pop(data_product_id, None)
+          self.script.log (1, "data_product_configure: keys=" + str(self._data_products))
+
+        return ("ok", "data product " + str (data_product_id) + " deconfigured")
 
       if len(msg.arguments) == 6:
         # if the configuration for the specified data product matches extactly the 
         # previous specification for that data product, then no action is required
+
         if data_product_id in self._data_products and \
             self._data_products[data_product_id]['antennas'] == msg.arguments[1] and \
             self._data_products[data_product_id]['n_channels'] == msg.arguments[2] and \
@@ -895,15 +989,101 @@ class KATCPServer (DeviceServer):
         # the data product requires configuration
         else:
           self._data_products[data_product_id] = {}
-          self._data_products[data_product_id]['antennas'] = msg.arguments[1]
-          self._data_products[data_product_id]['n_channels'] = msg.arguments[2]
-          self._data_products[data_product_id]['dump_rate'] = msg.arguments[3]
-          self._data_products[data_product_id]['n_beams'] = msg.arguments[4]
-          self._data_products[data_product_id]['cbf_source'] = msg.arguments[5]
+
+          self.script.log (1, "data_product_configure: configuring " + data_product_id)
+
+          antennas = msg.arguments[1]
+          n_channels = msg.arguments[2]
+          dump_rate = msg.arguments[3]
+          n_beams = int(msg.arguments[4])
+          cbf_source = msg.arguments[5]
+
+          # check if the number of existing + new beams > available
+          if self.configured_beams + n_beams > self.available_beams:
+            self._data_products.pop(data_product_id, None)
+            return ("fail", "requested more beams than were available")
+
+          (cfreq, bwd, nchan) = self.script.cfg["SUBBAND_CONFIG_0"].split(":")
+          if nchan != n_channels:
+            self._data_products.pop(data_product_id, None)
+            return ("fail", "PTUSE configured for " + nchan + " channels")
+
+          # assign the ibeam to the list of beams for this data_product
+          self._data_products[data_product_id]['beams'] = []
+          for ibeam in range(self.configured_beams, self.configured_beams + n_beams):
+            self._data_products[data_product_id]['beams'].append(ibeam)
+          self.configured_beams += n_beams
+
+          self._data_products[data_product_id]['antennas'] = antennas
+          self._data_products[data_product_id]['n_channels'] = n_channels
+          self._data_products[data_product_id]['dump_rate'] = dump_rate
+          self._data_products[data_product_id]['n_beams'] = str(n_beams)
+          self._data_products[data_product_id]['cbf_source'] = cbf_source
+
+          if n_beams == 1:
+            sources = [cbf_source]
+          else:
+            sources = cbf_source.split(",")
+
+          for i in range(len(sources)):
+            (addr, port) = sources[i].split(":")
+            (mcast, count) = addr.split("+")
+
+            self.script.log (1, "data_product_configure: parsed " + mcast + "+" + count + ":" + port)
+
+            if not count == "1":
+              return ("fail", "CBF source did not match ip_address+1:port")
+
+            mcasts = ["",""]
+            ports = [0, 0]
+
+            quartets = mcast.split(".")
+            mcasts[0] = ".".join(quartets)
+            quartets[3] = str(int(quartets[3])+1)
+            mcasts[1] = ".".join(quartets)
+
+            ports[0] = int(port)
+            ports[1] = int(port)
+
+            ibeam = self._data_products[data_product_id]['beams'][i]
+            b = self.script.beams[ibeam]
+
+            self.script.log (1, "data_product_configure: connecting to RECV instance to update configuration")
+
+            for istream in range(int(self.script.cfg["NUM_STREAM"])):
+              (host, beam_idx, subband) = self.script.cfg["STREAM_" + str(istream)].split(":")
+              beam = self.script.cfg["BEAM_" + beam_idx]
+              if b == beam:
+                port = int(self.script.cfg["STREAM_RECV_PORT"]) + istream
+                self.script.log (3, "data_product_configure: connecting to " + host + ":" + str(port))
+                sock = sockets.openSocket (DL, host, port, 1)
+                if sock:
+
+                  req =  "<?req version='1.0' encoding='ISO-8859-1'?>"
+                  req += "<recv_cmd>"
+                  req +=   "<command>configure</command>"
+                  req +=   "<params>"
+                  req +=     "<param key='DATA_MCAST_0'>" + mcasts[0] + "</param>"
+                  req +=     "<param key='DATA_MCAST_1'>" + mcasts[1] + "</param>"
+                  req +=     "<param key='DATA_PORT_0'>" + str(ports[0]) + "</param>"
+                  req +=     "<param key='DATA_PORT_1'>" + str(ports[1]) + "</param>"
+                  req +=     "<param key='META_MCAST_0'>" + mcasts[0] + "</param>"
+                  req +=     "<param key='META_MCAST_1'>" + mcasts[1] + "</param>"
+                  req +=     "<param key='META_PORT_0'>" + str(ports[0]) + "</param>"
+                  req +=     "<param key='META_PORT_1'>" + str(ports[1]) + "</param>"
+                  req +=   "</params>"
+                  req += "</recv_cmd>"
+
+                  self.script.log (1, "data_product_configure: sending XML req");
+                  sock.send(req)
+                  recv_reply = sock.recv (65536)
+                  self.script.log (1, "data_product_configure: received " + recv_reply);
+                  sock.close()
+
           return ("ok", "data product " + str (data_product_id) + " configured")
 
       else:
-        return ("fail", "expected 0, 1 or 6 arguments") 
+        return ("fail", "expected 0, 1, 5 or 6 arguments") 
        
 ###############################################################################
 #
@@ -943,20 +1123,22 @@ if __name__ == "__main__":
 
     script.log(1, "STARTING SCRIPT")
    
-    script.log(2, "__main__: server.start()")
+    script.log(1, "__main__: server.start()")
     server.start()
 
     pubsub_thread = PubSubThread (script, beam_id)
     pubsub_thread.start()
 
-    script.log(2, "__main__: script.main()")
+    script.log(1, "__main__: script.main()")
     script.main (beam_id)
     script.log(1, "__main__: script.main() returned")
 
+    script.log(1, "__main__: stopping server")
     if server.running():
       server.stop()
     server.join()
 
+    script.log(1, "__main__: stopping pubsub_thread")
     pubsub_thread.join()
 
   except:

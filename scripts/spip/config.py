@@ -10,16 +10,19 @@
 import os, re, socket, datetime, threading, time, sys, atexit, errno
 import subprocess
 
+from tempfile import mkstemp
+from shutil import move
+
 class Config(object):
 
   def __init__ (self):
     spip_root = os.environ.get('SPIP_ROOT');
   
-    config_file = spip_root + "/share/spip.cfg"
-    self.config = self.readCFGFileIntoDict (config_file)
+    self.config_file = spip_root + "/share/spip.cfg"
+    self.config = self.readCFGFileIntoDict (self.config_file)
 
-    site_file = spip_root + "/share/site.cfg"
-    self.site = self.readCFGFileIntoDict (site_file)
+    self.site_file = spip_root + "/share/site.cfg"
+    self.site = self.readCFGFileIntoDict (self.site_file)
 
   def getSPIP_ROOT(self):
     return self.spip_root
@@ -29,6 +32,9 @@ class Config(object):
 
   def getSiteConfig(self):
     return self.site
+
+  def updateKeyValueConfig (self, key, value):
+    self.updateKeyValueCFGFile(key, value, self.config_file)
 
   @staticmethod
   def readCFGFileIntoDict(filename):
@@ -60,6 +66,28 @@ class Config(object):
       for key in sorted(cfg.keys()):
         fptr.write(key.ljust(20) + cfg[key] + "\n")
       fptr.close()
+
+  @staticmethod
+  def updateKeyValueCFGFile(key, value, filename):
+    try:
+      iptr = open(filename, 'r')
+    except IOError:
+      print "ERROR: cannot open " + filename + " for reading"
+    else:
+      try:
+        optr, abs_path = mkstemp()
+      except IOError:
+        print "ERROR: cannot open temporary file for writing"
+      else:
+        for line in iptr:
+          if line.startswith(key + " "):
+            optr.write(key.ljust(20) + value + "\n")
+          else:
+            optr.write(line)
+        os.close(iptr)
+        os.close(optr)
+        os.remove (filename)
+        move(abs_path, filename)
 
   @staticmethod
   def writeDictToString (cfg):

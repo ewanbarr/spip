@@ -32,11 +32,14 @@ DL        = 1
 class clientThread (threading.Thread):
 
   def __init__ (self, stream_id, script, states):
+
     threading.Thread.__init__(self)
     self.stream_id = stream_id
     self.daemon_exit_wait = 10
     self.states = states
     self.parent = script
+    self.daemons = {}
+    self.ranks = []
 
     if stream_id >= 0:
       self.daemon_list = script.cfg["CLIENT_DAEMONS"].split()
@@ -47,124 +50,137 @@ class clientThread (threading.Thread):
       self.control_dir = script.cfg["SERVER_CONTROL_DIR"]
       self.prefix = "serverThread "
 
+    ranked_daemons = self.daemon_list
+    for ranked_daemon in ranked_daemons:
+      daemon, rank = ranked_daemon.split(":")
+      if not rank in self.daemons:
+        self.daemons[rank] = []
+      self.daemons[rank].append(daemon)
+
+    self.ranks = self.daemons.keys()
+    self.ranks.sort()
+    self.process_suffix = " " + str(self.stream_id)
+    self.file_suffix = "_" + str(self.stream_id)
+
   def run (self):
 
-    process_suffix = " " + str(self.stream_id)
-    file_suffix = "_" + str(self.stream_id)
-    prefix = self.prefix
-    daemons = {}
-
     self.parent.log(2, self.prefix + "thread running")
-    self.parent.system_lock.acquire()  
 
     try:
-      ranked_daemons = self.daemon_list 
-      for ranked_daemon in ranked_daemons:
-        daemon, rank = ranked_daemon.split(":")
-        if not rank in daemons:
-          daemons[rank] = []
-        daemons[rank].append(daemon)
 
-      # start each of the daemons
-      ranks = daemons.keys()
-      ranks.sort()
-      to_sleep = 5
-      for rank in ranks:
-        if rank > 0:
-          sleep(to_sleep)
-          to_sleep = 0
+      # start all of the daemons
+      self.start_daemons (self.ranks)
 
-        self.parent.log(1, self.prefix + "launching daemons of rank " + rank)
-        for daemon in daemons[rank]:
-          self.states[daemon] = False
-          cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix
-          self.parent.log(1, self.prefix + cmd)
-          rval, lines = self.parent.system (cmd)
-          if rval:
-            for line in lines:
-              self.parent.log(-2, prefix + line)
-            self.parent.quit_event.set() 
-          else:
-            for line in lines:
-              self.parent.log(2, prefix + line)
-        self.parent.log (1, prefix + "launched daemons of rank " + rank)
-
-      self.parent.log(1, prefix + "launched all daemons")
-      self.parent.system_lock.release()  
-
-      # here we would monitor the daemons in each stream and 
+      # monitor the daemons in each stream and 
       # process control commands specific to the stream
       while (not self.parent.quit_event.isSet()):
 
-        for rank in ranks:
-          for daemon in daemons[rank]: 
-            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "' | wc -l";
+        # check if a reload has been requested
+        if self.stream_id >= 0 and self.parent.reload_clients[self.stream_id]:
+          self.parent.log(1, self.prefix + "reloading stream")
+          self.stop_daemons (self.ranks)
+          self.parent.log(1, self.prefix + "daemons stopped")
+          self.start_daemons (self.ranks)
+          self.parent.log(1, self.prefix + "daemons started")
+          self.parent.reload_clients[self.stream_id] = False
+          self.parent.log(1, self.prefix + "stream reloaded")
+
+        for rank in self.ranks:
+          for daemon in self.daemons[rank]: 
+            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix + "' | wc -l";
             rval, lines = self.parent.system (cmd, 2)
             self.states[daemon] = (rval == 0)
-            self.parent.log(3, prefix + daemon + ": " + str(self.states[daemon]))
-
         counter = 5
         while (not self.parent.quit_event.isSet() and counter > 0):
           sleep(1)
           counter -= 1
 
-      self.parent.log(1, prefix + " asking daemons to quit")
-
-
-      # stop each of the daemons in reverse order
-      for rank in ranks[::-1]:
-
-        # signal all daemons in rank to exit
-        if rank == 0:
-          self.parent.log (1, prefix + " sleep(5) for rank 0 daemons")
-          sleep(5)
-
-        for daemon in daemons[rank]:
-          open(self.control_dir + "/" + daemon + file_suffix + ".quit", 'w').close()
-
-        rank_timeout = self.daemon_exit_wait
-        daemon_running = 1
-
-        while daemon_running and rank_timeout > 0:
-          daemon_running = 0
-          self.parent.system_lock.acquire()
-          for daemon in daemons[rank]:
-            cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3)
-            if rval == 0 and len(lines) > 0:
-              daemon_running = 1
-              self.parent.log(2, prefix + "daemon " + daemon + " with rank " + 
-                          str(rank) + " still running")
-          self.parent.system_lock.release()
-          if daemon_running:
-            self.parent.log(3, prefix + "daemons " + "with rank " + str(rank) +
-                        " still running")
-            sleep(1)
-
-        # if any daemons in this rank timed out, hard kill them
-        if rank_timeout == 0:
-          self.parent.system_lock.acquire()
-          for daemon in daemons[rank]:
-            cmd = "pkill -f ''^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + process_suffix + "'"
-            rval, lines = self.parent.system (cmd, 3)
-          self.parent.system_lock.release()
-
-        # remove daemon.quit files for this rank
-        for daemon in daemons[rank]:
-          os.remove (self.control_dir + "/" + daemon + file_suffix + ".quit")
-
-      self.parent.log(1, prefix + " thread exiting")
+      self.parent.log(1, self.prefix + " asking daemons to quit")
+      self.stop_daemons (self.ranks)
+      self.parent.log(1, self.prefix + " thread exiting")
 
     except:
       self.parent.quit_event.set()
 
       formatted_lines = traceback.format_exc().splitlines()
-      self.parent.log(1, prefix + '-'*60)
+      self.parent.log(1, self.prefix + '-'*60)
       for line in formatted_lines:
-        self.parent.log(1, prefix + line)
-      self.parent.log(1, prefix + '-'*60)
+        self.parent.log(1, self.prefix + line)
+      self.parent.log(1, self.prefix + '-'*60)
 
-#
+  # start all the daemons in ranks (ascending)
+  def start_daemons (self, ranks):
+
+    self.parent.system_lock.acquire()
+    to_sleep = 2
+
+    for rank in ranks:
+
+      if rank > 0:
+        sleep(to_sleep)
+        to_sleep = 0
+
+      self.parent.log(1, self.prefix + "launching daemons of rank " + rank)
+      for daemon in self.daemons[rank]:
+        self.states[daemon] = False
+        cmd = "python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix
+        self.parent.log(1, self.prefix + cmd)
+        rval, lines = self.parent.system (cmd)
+        if rval:
+          for line in lines:
+            self.parent.log(-2, self.prefix + line)
+          self.parent.quit_event.set()
+        else:
+          for line in lines:
+            self.parent.log(2, self.prefix + line)
+      self.parent.log (1, self.prefix + "launched daemons of rank " + rank)
+
+    self.parent.log(1, self.prefix + "launched all daemons")
+    self.parent.system_lock.release ()
+
+  # stop the daemons listed in ranks in reverse order
+  def stop_daemons (self, ranks):
+
+    for rank in ranks[::-1]:
+      if rank == 0:
+        self.parent.log (1, self.prefix + " sleep(5) for rank 0 daemons")
+        sleep(5)
+
+      for daemon in self.daemons[rank]:
+        open(self.control_dir + "/" + daemon + self.file_suffix + ".quit", 'w').close()
+
+      rank_timeout = self.daemon_exit_wait
+      daemon_running = 1
+
+      while daemon_running and rank_timeout > 0:
+        daemon_running = 0
+        self.parent.system_lock.acquire()
+        for daemon in self.daemons[rank]:
+          cmd = "pgrep -f '^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix + "'"
+          rval, lines = self.parent.system (cmd, 3)
+          if rval == 0 and len(lines) > 0:
+            daemon_running = 1
+            self.parent.log(2, self.prefix + "daemon " + daemon + " with rank " +
+                        str(rank) + " still running")
+        self.parent.system_lock.release()
+        if daemon_running:
+          self.parent.log(3, self.prefix + "daemons " + "with rank " + str(rank) +
+                      " still running")
+          sleep(1)
+
+      # if any daemons in this rank timed out, hard kill them
+      if rank_timeout == 0:
+        self.parent.system_lock.acquire()
+        for daemon in self.daemons[rank]:
+          cmd = "pkill -f ''^python " + self.parent.cfg["SCRIPTS_DIR"] + "/" + daemon + ".py" + self.process_suffix + "'"
+          rval, lines = self.parent.system (cmd, 3)
+        self.parent.system_lock.release()
+
+      # remove daemon.quit files for this rank
+      for daemon in self.daemons[rank]:
+        os.remove (self.control_dir + "/" + daemon + self.file_suffix + ".quit")
+
+
 ################################################################$
 
 class LMCDaemon (Daemon,HostBased):
@@ -177,6 +193,7 @@ class LMCDaemon (Daemon,HostBased):
 
     control_thread = []
     self.client_threads = {}
+    self.reload_clients = {}
     self.server_thread = []
     self.system_lock = threading.Lock()
 
@@ -208,6 +225,7 @@ class LMCDaemon (Daemon,HostBased):
     for stream in client_streams:
       daemon_states[stream] = {}
       self.log(2, "main: client_thread["+str(stream)+"] = clientThread ("+str(stream)+")")
+      self.reload_clients[stream] = False
       self.client_threads[stream] = clientThread(stream, self, daemon_states[stream])
       self.log(2, "main: client_thread["+str(stream)+"].start()")
       self.client_threads[stream].start()
@@ -310,6 +328,25 @@ class LMCDaemon (Daemon,HostBased):
                 xml = xmltodict.parse(message)
 
                 command = xml["lmc_cmd"]["command"]
+
+                if command == "reload_clients":
+                  self.log(1, "Reloading clients")
+                  for stream in client_streams:
+                    self.reload_clients[stream] = True
+            
+                  all_reloaded = False
+                  while (not self.parent.quit_event.isSet() and not all_reloaded):
+                    all_reloaded = True
+                    for stream in client_streams:
+                      if not self.reload_clients[stream]:
+                        all_reloaded = False
+                    if not all_reloaded:
+                      self.log(1, "Waiting for clients to reload")
+                      sleep(1)
+
+                  self.log(1, "Clients reloaded")
+                  response = "<lmc_reply>OK</lmc_reply>"
+
                 if command == "daemon_status":
                   response = ""
                   response += "<lmc_reply>"
@@ -411,7 +448,6 @@ if __name__ == "__main__":
     script.main()
 
   except:
-
     script.quit_event.set()
 
     script.log(-2, "exception caught: " + str(sys.exc_info()[0]))

@@ -10,12 +10,15 @@
 import sys, traceback
 from time import sleep
 
-from spip_recv import RecvDaemon
+from spip_recv import RecvDaemon,ConfiguringThread
 from spip.meerkat_config import MeerKATConfig
 
 DAEMONIZE = True
-DL = 2
+DL = 1
 
+
+###############################################################################
+# 
 class MeerKATRecvDaemon(RecvDaemon):
 
   def __init__ (self, name, id):
@@ -44,9 +47,8 @@ class MeerKATRecvDaemon(RecvDaemon):
             + " " + config_file 
     return cmd
 
-#
-# main
 ###############################################################################
+# main
 
 if __name__ == "__main__":
 
@@ -65,18 +67,22 @@ if __name__ == "__main__":
   script.log(2, "STARTING SCRIPT")
 
   try:
-    
+
+    configuring_thread = ConfiguringThread (script, stream_id)
+    configuring_thread.start()
+
     script.main ()
 
+    configuring_thread.join()
+
+
   except:
-
     script.quit_event.set()
-
     script.log(-2, "exception caught: " + str(sys.exc_info()[0]))
     print '-'*60
     traceback.print_exc(file=sys.stdout)
     print '-'*60
 
-  script.log(1, "STOPPING SCRIPT")
+  script.log(2, "STOPPING SCRIPT")
   script.conclude()
   sys.exit(0)

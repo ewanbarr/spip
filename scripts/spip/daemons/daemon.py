@@ -60,10 +60,15 @@ class Daemon(object):
     self.log_file  = self.log_dir + "/" + self.name + ".log"
     self.pid_file  = self.control_dir + "/" + self.name + ".pid"
     self.quit_file = self.control_dir + "/"  + self.name + ".quit"
+    #self.reload_file = self.control_dir + "/"  + self.name + ".reload"
 
     if os.path.exists(self.quit_file):
       sys.stderr.write ("ERROR: quit file existed at launch: " + self.quit_file + "\n")
       return 1
+
+    #if os.path.exists(self.reload_file):
+    #  sys.stderr.write ("WARNING: reload file existed at launch: " + self.reload_file + "\n")
+    #  os.remove (self.reload_file)
 
     # optionally daemonize script
     if become_daemon: 
@@ -76,6 +81,7 @@ class Daemon(object):
     def signal_handler(signal, frame):
       sys.stderr.write ("CTRL + C pressed\n")
       self.quit_event.set()
+
     signal(SIGINT, signal_handler)
 
     type = self.getBasis()
@@ -88,6 +94,7 @@ class Daemon(object):
     self.log (3, "configure: log_file=" + self.log_file)
     self.log (3, "configure: pid_file=" + self.pid_file)
     self.log (3, "configure: quit_file=" + self.quit_file)
+    #self.log (3, "configure: reload_file=" + self.reload_file)
 
     return 0
 
@@ -102,12 +109,6 @@ class Daemon(object):
       pid = os.fork()
       if pid > 0:
         # exit first parent
-        #sys.stdin.close()
-        #sys.stdout.close()
-        #sys.stderr.close()
-        #os.close(0)
-        #os.close(1)
-        #os.close(2)
         sys.exit(0)
     except OSError, e:
       sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
@@ -123,12 +124,6 @@ class Daemon(object):
       pid = os.fork()
       if pid > 0:
         # exit from second parent
-        #sys.stdin.close()
-        #sys.stdout.close()
-        #sys.stderr.close()
-        #os.close(0)
-        #os.close(1)
-        #os.close(2)
         sys.exit(0)
     except OSError, e:
       sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))

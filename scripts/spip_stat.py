@@ -267,59 +267,6 @@ class StatDaemon(Daemon,StreamBased):
 
           utc_dir = stat_dir + "/" + utc
 
-          # find the most recent HG stats file
-          #hg_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".hg.stats")]
-
-          #self.log (3, "StatDaemon::main hg_files=" + str(hg_files))
-          #hg_file = hg_files[-1]
-          #self.log (3, "main: hg_file=" + str(hg_file))
-
-          # only 1 channel in the histogram
-          #hg_fptr = open (utc_dir + "/" + str(hg_file), "rb")
-         #npol = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
-          #ndim = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
-          #nbin = np.fromfile(hg_fptr, dtype=np.uint32, count=1)
-
-          #self.log (3, "StatDaemon::main npol=" + str(npol) +" ndim=" + str(ndim) + " nbin=" + str(nbin))
-          #hg_data = {}
-          #for ipol in range(npol):
-          #  hg_data[ipol] = {}
-          #  for idim in range(ndim):
-          #    hg_data[ipol][idim] = np.fromfile (hg_fptr, dtype=np.uint32, count=nbin)
-          #hg_fptr.close()
-            
-          # read the most recent freq_vs_time stats file
-          #ft_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ft.stats")]
-          #self.log (3, "StatDaemon::main ft_files=" + str(ft_files))
-          #ft_file = ft_files[-1]
-          #self.log (3, "StatDaemon::main ft_file=" + str(ft_file))
-
-          #ft_fptr = open (utc_dir + "/" + str(ft_file), "rb")
-          #npol = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          #nfreq = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          #ntime = np.fromfile(ft_fptr, dtype=np.uint32, count=1)
-          #self.log (3, "StatDaemon::main npol=" + str(npol) + " nfreq=" + str(nfreq) + " ntime=" + str(ntime))
-          
-          #ft_data = {}
-          #for ipol in range(npol):
-          #  ft_data[ipol] = np.fromfile (ft_fptr, dtype=np.uint32, count=nfreq*ntime)
-          #  ft_data[ipol].shape = (nfreq, ntime)
-          #ft_fptr.close()
-
-          # find the most recent Mean/Stddev stats files
-          #ms_files = [file for file in os.listdir(utc_dir) if file.lower().endswith(".ms.stats")]
-          
-          #self.log (3, "StatDaemon::main ms_files=" + str(ms_files))
-          #ms_file = ms_files[-1]
-          #self.log (2, "StatDaemon::main ms_file=" + str(ms_file))
-          #ms_fptr = open (utc_dir + "/" + str(ms_file), "rb")
-          #npol = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
-          #ndim = np.fromfile(ms_fptr, dtype=np.uint32, count=1)
-
-          #means = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
-          #stddevs = np.fromfile (ms_fptr, dtype=np.float32, count=npol*ndim)
-          #ms_fptr.close()
-
           self.process_hg (utc_dir, pref_freq)
           self.process_ft (utc_dir, pref_freq)
           self.process_ms (utc_dir)
@@ -330,26 +277,6 @@ class StatDaemon(Daemon,StreamBased):
           self.results["timestamp"] = times.getCurrentTime()
           self.results["valid"] = self.hg_valid and self.ft_valid and self.ms_valid
 
-          #self.hg_plot.plot_binned (240, 160, True, hg_data[0][0], hg_data[0][1], nbin)
-          #self.results["histogram_0"] = self.hg_plot.getRawImage()
-
-          #self.hg_plot.plot_binned (240, 160, True, hg_data[1][0], hg_data[1][1], nbin)
-          #self.results["histogram_1"] = self.hg_plot.getRawImage()
-
-          #self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
-          #self.results["freq_vs_time_0"] = self.ft_plot.getRawImage()
-
-          #self.ft_plot.plot (240, 160, True, ft_data[1], nfreq, ntime)
-          #self.results["freq_vs_time_1"] = self.ft_plot.getRawImage()
-
-          #self.results["hg_mean_0_re"] = means[0]
-          #self.results["hg_mean_0_im"] = means[1]
-          #self.results["hg_stddev_0_re"] = stddevs[0]
-          #self.results["hg_stddev_0_im"] = stddevs[1]
-          #self.results["hg_mean_1_re"] = means[2]
-          #self.results["hg_mean_1_im"] = means[3]
-          #self.results["hg_stddev_1_re"] = stddevs[2]
-          #self.results["hg_stddev_1_im"] = stddevs[3]
           self.results["lock"].release()
 
 
@@ -394,12 +321,23 @@ class StatDaemon(Daemon,StreamBased):
       if nfreq > 1:
         self.hg_plot.plot_binned_image (240, 160, True, hg_data[0][0], nfreq, nbin)
         self.results["histogram_0_real"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (800, 600, True, hg_data[0][0], nfreq, nbin)
+        self.results["histogram_0_real_hires"] = self.hg_plot.getRawImage()
+
         self.hg_plot.plot_binned_image (240, 160, True, hg_data[0][1], nfreq, nbin)
         self.results["histogram_0_imag"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (800, 600, True, hg_data[0][1], nfreq, nbin)
+        self.results["histogram_0_imag_hires"] = self.hg_plot.getRawImage()
+
         self.hg_plot.plot_binned_image (240, 160, True, hg_data[1][0], nfreq, nbin)
         self.results["histogram_1_real"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (800, 600, True, hg_data[1][0], nfreq, nbin)
+        self.results["histogram_1_real_hires"] = self.hg_plot.getRawImage()
+
         self.hg_plot.plot_binned_image (240, 160, True, hg_data[1][1], nfreq, nbin)
         self.results["histogram_1_imag"] = self.hg_plot.getRawImage()
+        self.hg_plot.plot_binned_image (800, 600, True, hg_data[1][1], nfreq, nbin)
+        self.results["histogram_1_imag_hires"] = self.hg_plot.getRawImage()
 
       if nfreq == 1:
         ifreq = 0
@@ -410,11 +348,15 @@ class StatDaemon(Daemon,StreamBased):
       chan_imag = hg_data[0][1][0,:]
       self.hg_plot.plot_binned (240, 160, True, chan_real, chan_imag, nbin)
       self.results["histogram_0_none"] = self.hg_plot.getRawImage()
+      self.hg_plot.plot_binned (800, 600, True, chan_real, chan_imag, nbin)
+      self.results["histogram_0_none_hires"] = self.hg_plot.getRawImage()
 
       chan_real = hg_data[1][0][0,:]
       chan_imag = hg_data[1][1][0,:]
       self.hg_plot.plot_binned (240, 160, True, chan_real, chan_imag, nbin)
       self.results["histogram_1_none"] = self.hg_plot.getRawImage()
+      self.hg_plot.plot_binned (800, 600, True, chan_real, chan_imag, nbin)
+      self.results["histogram_1_none_hires"] = self.hg_plot.getRawImage()
       #self.hg_plot.plot_binned4 (240, 160, True, hg_data[0][0][ifreq,:], hg_data[0][1][ifreq,:], hg_data[1][0][ifreq,:], hg_data[1][1][ifreq,:], nbin)
       #self.results["histogram_s_none"] = self.hg_plot.getRawImage()
 
@@ -456,10 +398,18 @@ class StatDaemon(Daemon,StreamBased):
 
       self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
       self.results["freq_vs_time_0_none"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (800, 600, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_0_none_hires"] = self.ft_plot.getRawImage()
+ 
       self.ft_plot.plot (240, 160, True, ft_data[1], nfreq, ntime)
       self.results["freq_vs_time_1_none"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (800, 600, True, ft_data[1], nfreq, ntime)
+      self.results["freq_vs_time_1_none_hires"] = self.ft_plot.getRawImage()
+
       self.ft_plot.plot (240, 160, True, ft_data[0], nfreq, ntime)
       self.results["freq_vs_time_s_none"] = self.ft_plot.getRawImage()
+      self.ft_plot.plot (800, 600, True, ft_data[0], nfreq, ntime)
+      self.results["freq_vs_time_s_none_hires"] = self.ft_plot.getRawImage()
       
       self.ft_valid = True
       self.results["lock"].release()
