@@ -108,6 +108,8 @@ int main(int argc, char *argv[])
     sock->resize_kernel_buffer (8192);
  
     int got = sock->recv ();
+    if (verbose > 1)
+      cerr << "Received a packet of " << got << " bytes" << endl;
 
     int64_t timestamp = 0;
     time_t adc_sync_time = 0;
@@ -116,6 +118,8 @@ int main(int argc, char *argv[])
     if (got > 0)
     {
       format->decode_spead (sock->get_buf());
+      if (verbose > 1)
+        format->print_packet_header();
       timestamp = format->get_timestamp_fast();
       now = time(0);
     }
