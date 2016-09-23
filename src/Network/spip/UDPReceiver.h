@@ -76,9 +76,9 @@ namespace spip {
 
       double tsamp;
 
-      unsigned bits_per_second;
+      uint64_t bits_per_second;
 
-      unsigned bytes_per_second;
+      uint64_t bytes_per_second;
 
       bool keep_receiving;
 

@@ -83,7 +83,8 @@ void spip::UDPReceiver::configure (const char * config_str)
     cerr << "spip::UDPReceiver::configure receiving on " 
          << data_host << ":" << data_port  << endl;
 
-  bits_per_second  = (nchan * npol * ndim * nbit * 1000000) / tsamp;
+  uint64_t mega = 1e6;
+  bits_per_second = (mega * nchan * npol * ndim * nbit) / tsamp;
   bytes_per_second = bits_per_second / 8;
 
   if (!format)
@@ -101,7 +102,7 @@ void spip::UDPReceiver::prepare ()
 
   if (data_mcast.size() > 0)
   {
-    cerr << "spip::UDPReceiver::prepare sock->open_multicast" << endl;
+    cerr << "spip::UDPReceiver::prepare sock->open_multicast (" << data_host << ", " << data_mcast << ", " << data_port << ")" << endl;
     sock->open_multicast (data_host, data_mcast, data_port);
   }
   else
@@ -123,8 +124,6 @@ void spip::UDPReceiver::prepare ()
   sock->resize_kernel_buffer (64*1024*1024);
 
   stats = new UDPStats (format->get_header_size(), format->get_data_size());
-  if (verbose)
-    cerr << "spip::UDPReceiver::prepare finished" << endl;
 
   // if this format is not self starting, check for the UTC_START
   if (!format->get_self_start ())
