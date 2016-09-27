@@ -116,6 +116,8 @@ class LogsDaemon(Daemon):
 
               if well_terminated:
                 line_buffers[handle] = ""
+              else:
+                to_use -= 1
 
               for i in range(to_use):
                 line = lines[i]
