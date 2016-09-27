@@ -8,6 +8,7 @@ nobase_dist_web_SCRIPTS = \
 		red_light.png \
 		grey_light.png \
 		spip_logo.png \
+		spip_background.png \
 		spip_favicon.ico \
     jsprogress/percentImage_back1.png \
     jsprogress/percentImage_back1_40.png \
