@@ -152,10 +152,11 @@ int main(int argc, char *argv[])
       while (!quit_threads)
       {
         if (verbose)
-          cerr << "meerkat_udpmergedb: receiving" << endl;
+          cerr << "meerkat_udpmergedb: starting threads" << endl;
         udpmergedb->start_threads (core1, core2);
         udpmergedb->join_threads ();
-        cerr << "meerkat_udpmergedb: receive returned" << endl;
+        if (verbose)
+          cerr << "meerkat_udpmergedb: threads ended" << endl;
         udpmergedb->set_control_cmd (spip::None);
       }
       udpmergedb->stop_control_thread ();
@@ -167,7 +168,7 @@ int main(int argc, char *argv[])
       udpmergedb->start_threads (core1, core2);
 
       if (verbose)
-        cerr << "meerkat_udpmergedb: waiting for meta-data" << endl;
+        cerr << "meerkat_udpmergedb: opening data block" << endl;
       if (udpmergedb->open ())
       {
         cerr << "meerkat_udpmergedb: issuing start command" << endl;
@@ -178,14 +179,8 @@ int main(int argc, char *argv[])
         if (verbose)
           cerr << "meerkat_udpmergedb: failed to open data stream" << endl;
       }
-      //if (nsecs > 0)
-      //  udpmergedb->set_control_cmd (spip::Stop, nsecs);
-
       udpmergedb->join_threads ();
-      cerr << "meerkat_udpmergedb: exiting" << endl;
     }
-
-    udpmergedb->close();
 
     quit_threads = 1;
     delete udpmergedb;

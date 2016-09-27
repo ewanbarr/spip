@@ -22,8 +22,8 @@ namespace spip {
       // open the socket and bind to a multicast group
       void open_multicast (std::string, std::string, int port);
 
-      // close a multicast socket
-      void close_multicast ();
+      // leave a multicast group on socket
+      void leave_multicast ();
 
       size_t resize_kernel_buffer (size_t);
 

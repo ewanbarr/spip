@@ -28,9 +28,10 @@ spip::UDPSocketReceive::UDPSocketReceive ()
 spip::UDPSocketReceive::~UDPSocketReceive ()
 {
   if (multicast)
-    close_multicast();
+    leave_multicast();
   if (buf)
     free (buf);
+  buf = 0;
 }
 
 void spip::UDPSocketReceive::open (string ip_address, int port)
@@ -77,7 +78,7 @@ void spip::UDPSocketReceive::open_multicast (string ip_address, string group, in
   multicast = true;
 }
 
-void spip::UDPSocketReceive::close_multicast ()
+void spip::UDPSocketReceive::leave_multicast ()
 {
   if (setsockopt(fd, IPPROTO_IP,IP_DROP_MEMBERSHIP,&mreq,sizeof(mreq)) < 0)
   {

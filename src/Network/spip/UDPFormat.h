@@ -30,6 +30,8 @@ namespace spip {
 
       virtual void conclude () = 0;
 
+      void reset () { prepared = false; } ;
+
       bool is_configured() { return configured; } ;
 
       bool is_prepared() { return prepared; } ;

@@ -15,15 +15,9 @@
 #include "spip/UDPReceiveMergeDB.h"
 #include "spip/Time.h"
 
-#include <pthread.h>
 #include <cstring>
-#include <iostream>
 #include <stdexcept>
 #include <new>
-
-#ifdef  HAVE_VMA
-#include <mellanox/vma_extra.h>
-#endif
 
 using namespace std;
 
@@ -73,6 +67,10 @@ spip::UDPReceiveMergeDB::~UDPReceiveMergeDB()
     delete formats[i];
   }
 
+  if (overflow)
+    free (overflow);
+  overflow = 0;
+
   db->unlock();
   db->disconnect();
 
@@ -120,6 +118,8 @@ int spip::UDPReceiveMergeDB::configure (const char * config_str)
     data_mcasts[0] = string (buffer);
   if (config.get ("DATA_MCAST_1", "%s", buffer) == 1)
     data_mcasts[1] = string (buffer);
+
+  free (buffer);
 
   bits_per_second  = (unsigned) ((nchan * npol * ndim * nbit * 1000000) / tsamp);
   bytes_per_second = bits_per_second / 8;
@@ -220,7 +220,7 @@ void spip::UDPReceiveMergeDB::control_thread()
         cerr << "control_thread : reading data from socket" << endl;
       ssize_t bytes_read = read (fd, cmds, DADA_DEFAULT_HEADER_SIZE);
 
-      if (verbose)
+      if (verbose > 1)
         cerr << "control_thread: bytes_read=" << bytes_read << endl;
 
       control_sock->close_client();
@@ -234,7 +234,7 @@ void spip::UDPReceiveMergeDB::control_thread()
       if (strcmp (cmd, "START") == 0)
       {
         // append cmds to header
-        header.clone(config);
+        header.clone (config);
         header.append_from_str (cmds);
         if (header.del ("COMMAND") < 0)
           throw runtime_error ("Could not remove COMMAND from header");
@@ -243,21 +243,16 @@ void spip::UDPReceiveMergeDB::control_thread()
           cerr << "control_thread: open()" << endl;
         open ();
 
-        // write header
         if (verbose)
           cerr << "control_thread: control_cmd = Start" << endl;
         set_control_cmd (Start);
       }
       else if (strcmp (cmd, "STOP") == 0)
       {
-        if (verbose)
-          cerr << "control_thread: control_cmd = Stop" << endl;
         set_control_cmd (Stop);
       }
       else if (strcmp (cmd, "QUIT") == 0)
       {
-        if (verbose)
-          cerr << "control_thread: control_cmd = Quit" << endl;
         set_control_cmd (Quit);
       }
     }
@@ -269,6 +264,9 @@ void spip::UDPReceiveMergeDB::control_thread()
 
 bool spip::UDPReceiveMergeDB::open ()
 {
+  if (verbose > 1)
+    cerr << "spip::UDPReceiveMergeDB::open()" << endl;
+
   if (control_cmd == Stop)
   {
     return false;
@@ -289,6 +287,8 @@ bool spip::UDPReceiveMergeDB::open ()
     if (header.set ("UTC_START", "%s", utc_str.c_str()) < 0)
       throw invalid_argument ("failed to write UTC_START to header");
   }
+  else
+    cerr << "spip::UDPReceiveMergeDB::open UTC_START=" << buffer << endl;
 
   uint64_t obs_offset;
   if (header.get("OBS_OFFSET", "%lu", &obs_offset) == -1)
@@ -299,15 +299,14 @@ bool spip::UDPReceiveMergeDB::open ()
   }
 
   if (header.get ("SOURCE", "%s", buffer) == -1)
-  {
-    cerr << "No SOURCE in header, using J047-4715" << endl;
-    if (header.set ("SOURCE", "%s", "J0437-4715") < 0)
-      throw invalid_argument ("failed to write SOURCE to header");
-  }
+    throw invalid_argument ("no SOURCE specified in header");
 
+  if (verbose > 1)
+    cerr << "spip::UDPReceiveMergeDB::open preparing formats" << endl;
   formats[0]->prepare (header, "_0");
   formats[1]->prepare (header, "_1");
 
+  free (buffer);
   open (header.raw());
   return true;
 }
@@ -349,8 +348,15 @@ void spip::UDPReceiveMergeDB::start_threads (int c1, int c2)
   full[0] = true;
   full[1] = true;
 
+  control_state = Idle;
   control_states[0] = Idle;
   control_states[1] = Idle;
+
+  formats[0]->reset();
+  formats[1]->reset();
+
+  stats[0]->reset();
+  stats[1]->reset();
 
   pthread_create (&datablock_thread_id, NULL, datablock_thread_wrapper, this);
   pthread_create (&recv_thread1_id, NULL, recv_thread1_wrapper, this);
@@ -487,6 +493,8 @@ bool spip::UDPReceiveMergeDB::datablock_thread ()
     pthread_mutex_unlock (&(mutex_recvs[1]));
   }
 
+  close ();
+
 #ifdef _DEBUG
   cerr << "spip::UDPReceiveMergeDB::data_block exiting" << endl;
 #endif
@@ -573,6 +581,10 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
   // wait for start command
   while (control_states[p] == Idle)
     pthread_cond_wait (cond_recv, mutex_recv);
+#ifdef _DEBUG
+  cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] control_states[" << p << "] now != Idle" << endl;
+#endif
+
   pthread_mutex_unlock (mutex_recv);
 
   // main data acquisition loop
@@ -775,7 +787,7 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
   cerr << "spip::UDPReceiveMergeDB::receive["<<p<<"] exiting" << endl;
 #endif
 
-  //delete sock;
+  delete sock;
 
   if (control_states[p] == Idle)
     return true;

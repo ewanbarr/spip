@@ -4,6 +4,8 @@
 
 #include "dada_def.h"
 
+#include "config.h"
+
 #include "spip/AsciiHeader.h"
 #include "spip/UDPSocketReceive.h"
 #include "spip/UDPFormat.h"
@@ -13,6 +15,10 @@
 #include <iostream>
 #include <cstdlib>
 #include <pthread.h>
+
+#ifdef  HAVE_VMA
+#include <mellanox/vma_extra.h>
+#endif
 
 namespace spip {
 
@@ -38,6 +44,12 @@ namespace spip {
 
       static void * control_thread_wrapper (void * obj)
       {
+        // ensure the control thread is not offloaded
+#ifdef HAVE_VMA
+        pthread_t id = pthread_self();
+        struct vma_api_t * vma_api = vma_get_api();
+        vma_api->thread_offload (0, id);
+#endif
         ((UDPReceiveMergeDB*) obj )->control_thread ();
       }
 
