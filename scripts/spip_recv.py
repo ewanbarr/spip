@@ -47,17 +47,17 @@ class ConfiguringThread (ReportingThread):
       if self.script.configured:
         self.deconfigure ()
       self.configure (req["params"]["param"])
-      return True, "ok\r\n"
+      return (True, "ok")
 
     elif req["command"] == "deconfigure":
       self.script.log (0, "ConfiguringThread:parse_message: deconfigure command")
       self.deconfigure ()
-      return True, "ok\r\n"
+      return (True, "ok")
 
     else:
 
       self.script.log (0, "ConfiguringThread:parse_message: unrecognised command [" + req["command"] + "]")
-      return True, "fail\r\n"
+      return (True, "fail")
 
   def configure (self, params):
     self.script.log (1, "ConfiguringThread:configure")
