@@ -107,7 +107,7 @@ class TCSDaemon(Daemon):
       did_error = []
 
       try:
-        # wait for some activity on the control socket
+        # wait for some activity on the socket
         self.log(3, "main: select")
         did_read, did_write, did_error = select.select(can_read, can_write, can_error, timeout)
         self.log(3, "main: read="+str(len(did_read))+" write="+
@@ -160,6 +160,13 @@ class TCSDaemon(Daemon):
                 xml_response = "<?xml version='1.0' encoding='ISO-8859-1'?>" + \
                                "<tcs_response>" + response + "</tcs_response>"
                 handle.send (xml_response + "\r\n")
+
+              else:
+                self.log(1, "commandThread: closing socket on 0 byte message")
+                handle.close()
+                for i, x in enumerate(can_read):
+                  if (x == handle):
+                    del can_read[i]
       
             except socket.error as e:
               if e.errno == errno.ECONNRESET:
@@ -168,6 +175,8 @@ class TCSDaemon(Daemon):
                 for i, x in enumerate(can_read):
                   if (x == handle):
                     del can_read[i]
+              else:
+                raise
 
 
   ###############################################################################
@@ -293,19 +302,21 @@ class TCSDaemon(Daemon):
 
               # connect to recv agent and provide observation configuration
               self.log(1, "issue_start_cmd: openSocket("+host+","+str(ctrl_port)+")")
-              sock = sockets.openSocket (DL, host, ctrl_port, 1)
-              if sock:
+              recv_sock = sockets.openSocket (DL, host, ctrl_port, 1)
+              if recv_sock:
                 self.log(1, "issue_start_cmd: sending obs_header")
-                sock.send(obs_header)
-                sock.close()
+                recv_sock.send(obs_header)
+                self.log(1, "issue_start_cmd: header sent")
+                recv_sock.close()
+                self.log(1, "issue_start_cmd: socket closed")
 
               # connect to spip_gen and issue start command for UTC
               # assumes gen host is the same as the recv host!
-              gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
-              sock = sockets.openSocket (DL, host, gen_port, 1)
-              if sock:
-                sock.send(obs_header)
-                sock.close()
+              # gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
+              # sock = sockets.openSocket (DL, host, gen_port, 1)
+              # if sock:
+              #   sock.send(obs_header)
+              #   sock.close()
 
           # update the dict of observing info for this beam
           self.beam_states[b]["lock"].acquire()
@@ -354,15 +365,17 @@ class TCSDaemon(Daemon):
               if sock:
                 self.log(1, "issue_stop_cmd: sending obs_header")
                 sock.send(obs_header)
+                self.log(1, "issue_stop_cmd: command sent")
                 sock.close()
+                self.log(1, "issue_stop_cmd: socket closed")
 
               # connect to spip_gen and issue stop command for UTC
               # assumes gen host is the same as the recv host!
-              gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
-              sock = sockets.openSocket (DL, host, gen_port, 1)
-              if sock:
-                sock.send(obs_header)
-                sock.close()
+              # gen_port = int(self.cfg["STREAM_GEN_PORT"]) + istream
+              # sock = sockets.openSocket (DL, host, gen_port, 1)
+              # if sock:
+              #   sock.send(obs_header)
+              #  sock.close()
 
           # update the dict of observing info for this beam
           self.beam_states[b]["lock"].acquire()
