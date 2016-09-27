@@ -13,6 +13,7 @@ from spip.daemons.bases import BeamBased,ServerBased
 from spip.daemons.daemon import Daemon
 from spip.threads.reporting_thread import ReportingThread
 from spip.utils import times,sockets
+from spip.config import Config
 from spip.plotting import SNRPlot
 
 DAEMONIZE = True
@@ -257,12 +258,50 @@ class RepackDaemon(Daemon):
                            fin_dir + "/" + "obs.header." + subband["cfreq"])
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
-              os.removedirs (fin_dir)
 
       if processed_this_loop == 0:
         self.log (3, "time.sleep(1)")
         time.sleep(1)
 
+  # 
+  # patch missing information into the PSRFITS header 
+  #
+  def patch_psrfits_header (self, input_dir, input_file):
+
+    header = Config.readCFGFileIntoDict (input_dir + "/obs.header")
+
+    new = {}
+    new["obs:observer"] = header["OBSERVER"] 
+    new["obs:projid"]   = header["PID"]
+
+    # constants that currently do not flow through CAM
+    new["be:nrcvr"]     = "2"
+
+    # need to know what these mean!
+    new["be:phase"]     = "+1"    # Phase convention of backend
+    new["be:tcycle"]    = "8"     # Correlator cycle time
+    new["be:dcc"]       = "0"     # Downconversion conjugation corrected
+    new["sub:nsblk"]    = "1"     # Samples/row (SEARCH mode, else 1)
+  
+    # this needs to come from CAM, hack for now
+    new["ext:trk_mode"] = "TRACK" # Tracking mode
+    new["ext:bpa"]      = "UNSET" # Beam position angle [?]
+    new["ext:bmaj"]     = "UNSET" # Beam major axis [degrees]
+    new["ext:bmin"]     = "UNSET" # Beam minor axis [degrees]
+
+    new["ext:obsfreq"]  = header["FREQ"]
+    new["ext:obsbw"]    = header["BW"]
+    new["ext:obsnchan"] = header["NCHAN"]
+
+    new["ext:stp_crd1"] = header["RA"]
+    new["ext:stp_crd2"] = header["DEC"]
+    new["ext:stt_date"] = header["UTC_START"][0:10]
+    new["ext:stt_time"] = header["UTC_START"][11:19]
+ 
+    # create the psredit command necessary to apply "new"
+    cmd = "psredit -m -c " + ",".join(['%s=%s' % (key, value) for (key, value) in new.items()]) + " " + input_file
+  
+    self.system(cmd)
   #
   # process and file in the directory, adding file to 
   #
@@ -278,7 +317,7 @@ class RepackDaemon(Daemon):
     cmd = "cp " + input_file + " " + output_file
     rval, lines = self.system (cmd, 3)
 
-    # add the archive to the 
+    # add the archive to the freq sum, tscrunching it
     if not os.path.exists(freq_file):
       cmd = "cp " + input_file + " " + freq_file
       rval, lines = self.system (cmd, 3)
@@ -297,7 +336,7 @@ class RepackDaemon(Daemon):
     if rval:
       return (rval, "failed to copy recent band file")
 
-
+    # add the fscrunched archive to the time sum
     cmd = "pam -m -F " + input_file
     rval, lines = self.system (cmd, 3)
     if rval:
