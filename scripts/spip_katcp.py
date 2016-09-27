@@ -25,6 +25,7 @@ from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
 from spip.log_socket import LogSocket
 from spip.utils import sockets,times
+from spip.utils import catalog
 from spip.threads.reporting_thread import ReportingThread
 from spip.threads.socketed_thread import SocketedThread
 
@@ -348,12 +349,12 @@ class KATCPDaemon(Daemon):
     # connect to the various scripts running to collect the information
     # to be provided by the KATCPServer instance as sensors
 
+    time.sleep(2)
+
     while not self.quit_event.isSet():
 
       # the primary function of the KATCPDaemon is to update the 
       # sensors in the DeviceServer periodically
-
-      time.sleep(2)
 
       # TODO compute overall device status
       self.katcp._device_status.set_value("ok")
@@ -386,8 +387,10 @@ class KATCPDaemon(Daemon):
           self.log(2, "KATCPDaemon::main update_repack_sensors("+host+",[xml])")
           self.update_repack_sensors(host, xml)
 
-      self.log(1, "KATCPDaemon::main sleep(5)")
-      time.sleep(5)
+      to_sleep = 5
+      while not self.quit_event.isSet() and to_sleep > 0:
+        to_sleep -= 1
+        time.sleep (1) 
 
       if not self.katcp.running():
         self.log (-2, "KATCP server was not running, exiting")
@@ -411,8 +414,21 @@ class KATCPDaemon(Daemon):
 
     xml +=   "<source_parameters>"
     xml +=     "<name epoch='J2000'>" + self.beam_configs[b]["SOURCE"] + "</name>"
-    xml +=     "<ra units='hh:mm:ss'>" + self.beam_configs[b]["RA"] + "</ra>"
-    xml +=     "<dec units='hh:mm:ss'>" + self.beam_configs[b]["DEC"] + "</dec>"
+
+    ra = self.beam_configs[b]["RA"]
+    if ra == "None":
+      (reply, message) = catalog.get_psrcat_param (self.beam_configs[b]["SOURCE"], "raj")
+      if reply == "ok":
+        ra = message
+
+    dec = self.beam_configs[b]["DEC"]
+    if dec == "None":
+      (reply, message) = catalog.get_psrcat_param (self.beam_configs[b]["SOURCE"], "decj")
+      if reply == "ok":
+        dec = message
+
+    xml +=     "<ra units='hh:mm:ss'>" + ra + "</ra>"
+    xml +=     "<dec units='hh:mm:ss'>" + dec+ "</dec>"
     xml +=   "</source_parameters>"
 
     xml +=   "<observation_parameters>"
@@ -866,6 +882,83 @@ class KATCPServer (DeviceServer):
       else:
         return ("fail", 0)
 
+    @request(Str(), Float())
+    @return_reply(Str())
+    def request_sync_time (self, req, data_product_id, adc_sync_time):
+      """Set the ADC_SYNC_TIME for all beams in the specified data product."""
+
+      if not data_product_id in self._data_products.keys():
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+      if len(self._data_products[data_product_id]["beams"]) <= 0:
+        return ("fail", "data product " + data_product_id + " had no configured beams")
+
+      for ibeam in self._data_products[data_product_id]['beams']:
+        b = self.script.beams[ibeam]
+        self.script.beam_configs[b]["ADC_SYNC_TIME"] = str(adc_sync_time)
+
+      return ("ok", "")
+
+    @request(Str(), Str(), Str())
+    @return_reply(Str())
+    def request_target_start (self, req, data_product_id, beam_id, target_name):
+      """Commence data processing on specific data product and beam using target."""
+      self.script.log (2, "request_target_start(" + data_product_id + "," + beam_id + "," + target_name+")")
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+
+      # check the pulsar specified is listed in the catalog
+      (result, message) = self.test_pulsar_valid (target_name)
+      if result != "ok":
+        return (result, message)
+    
+      # set the pulsar name, this should include a check if the pulsar is in the catalog
+      self.script.beam_configs[beam_id]["SOURCE"] = target_name
+
+      host = self.script.tcs_hosts[beam_id]
+      port = self.script.tcs_ports[beam_id]
+
+      self.script.log (2, "request_target_start: opening socket for beam " + beam_id + " to " + host + ":" + str(port))
+      sock = sockets.openSocket (DL, host, int(port), 1)
+      if sock:
+        xml = self.script.get_xml_config_for_beams (beam_id)
+        sock.send(xml + "\r\n")
+        reply = sock.recv (65536)
+
+        xml = self.script.get_xml_start_cmd (beam_id)
+        sock.send(xml + "\r\n")
+        reply = sock.recv (65536)
+
+        sock.close()
+        return ("ok", "")
+      else:
+        return ("fail", "could not connect to TCS")
+
+    @request(Str(), Str())
+    @return_reply(Str())
+    def request_target_stop (self, req, data_product_id, beam_id):
+      """Cease data processing with target_name."""
+      self.script.log (2, "request_target_stop(" + data_product_id+","+beam_id+")")
+
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+
+      self.script.beam_configs[beam_id]["SOURCE"] = ""
+
+      host = self.script.tcs_hosts[beam_id]
+      port = self.script.tcs_ports[beam_id]
+      sock = sockets.openSocket (DL, host, int(port), 1)
+      if sock:
+        xml = self.script.get_xml_stop_cmd (beam_id)
+        sock.send(xml + "\r\n")
+        reply = sock.recv (65536)
+        sock.close()
+        return ("ok", "")
+      else:
+        return ("fail", "could not connect to tcs[beam]")
+
     @request(Str())
     @return_reply(Str())
     def request_capture_init (self, req, data_product_id):
@@ -873,23 +966,6 @@ class KATCPServer (DeviceServer):
       self.script.log (2, "request_capture_init()")
       if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
-
-      for ibeam in self._data_products[data_product_id]['beams']:
-        b = self.script.beams[ibeam]
-        host = self.script.tcs_hosts[b]
-        port = self.script.tcs_ports[b]
-        self.script.log (2, "request_capture_init: opening socket for beam " + b + " to " + host + ":" + str(port))
-        sock = sockets.openSocket (DL, host, int(port), 1)
-        if sock:
-          xml = self.script.get_xml_config_for_beams (b)
-          sock.send(xml + "\r\n")
-          reply = sock.recv (65536);
-
-          xml = self.script.get_xml_start_cmd (b)
-          sock.send(xml + "\r\n")
-          reply = sock.recv (65536);
-
-          sock.close()
       return ("ok", "")
 
     @request(Str())
@@ -898,17 +974,6 @@ class KATCPServer (DeviceServer):
       """Terminte the ingest process for the specified data_product_id."""
       if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
-
-      for ibeam in self._data_products[data_product_id]['beams']:
-        b = self.script.beams[ibeam]
-        host = self.script.tcs_hosts[b]
-        port = self.script.tcs_ports[b]
-        sock = sockets.openSocket (DL, host, int(port), 1)
-        if sock:
-          xml = self.script.get_xml_stop_cmd (b)
-          sock.send(xml + "\r\n")
-          reply = sock.recv (65536);
-          sock.close()
       return ("ok", "")
 
     @return_reply(Str())
@@ -1029,8 +1094,7 @@ class KATCPServer (DeviceServer):
             (addr, port) = sources[i].split(":")
             (mcast, count) = addr.split("+")
 
-            self.script.log (1, "data_product_configure: parsed " + mcast + "+" + count + ":" + port)
-
+            self.script.log (2, "data_product_configure: parsed " + mcast + "+" + count + ":" + port)
             if not count == "1":
               return ("fail", "CBF source did not match ip_address+1:port")
 
@@ -1074,16 +1138,115 @@ class KATCPServer (DeviceServer):
                   req +=   "</params>"
                   req += "</recv_cmd>"
 
-                  self.script.log (1, "data_product_configure: sending XML req");
+                  self.script.log (1, "data_product_configure: sending XML req")
                   sock.send(req)
                   recv_reply = sock.recv (65536)
-                  self.script.log (1, "data_product_configure: received " + recv_reply);
+                  self.script.log (1, "data_product_configure: received " + recv_reply)
                   sock.close()
 
           return ("ok", "data product " + str (data_product_id) + " configured")
 
       else:
         return ("fail", "expected 0, 1, 5 or 6 arguments") 
+
+    @request(Str(), Str(), Int())
+    @return_reply(Str())
+    def request_output_channels (self, req, data_product_id, beam_id, nchannels):
+      """Set the number of output channels for the specified beam."""
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+      if not self.test_power_of_two (nchannels):
+        return ("fail", "number of channels not a power of two")
+      if nchannels < 64 or nchannels > 4096:
+        return ("fail", "number of channels not within range 64 - 2048")
+      self.script.beam_configs[beam_id]["OUTNCHAN"] = str(nchannels)
+      return ("ok", "")
+
+    @request(Str(), Str(), Int())
+    @return_reply(Str())
+    def request_output_bins(self, req, data_product_id, beam_id, nbin):
+      """Set the number of output phase bins for the specified beam."""
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+      if not self.test_power_of_two(nbin):
+        return ("fail", "nbin not a power of two")
+      if nbin < 64 or nbin > 2048:
+        return ("fail", "nbin not within range 64 - 2048")
+      self.script.beam_configs[beam_id]["OUTNBIN"] = str(nbin)
+      return ("ok", "")
+
+    @request(Str(), Str(), Int())
+    @return_reply(Str())
+    def request_output_tsubint (self, req, data_product_id, beam_id, tsubint):
+      """Set the length of output sub-integrations the specified beam."""
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+      if tsubint < 10 or tsubint > 60:
+        return ("fail", "length of output subints must be between 10 and 600 seconds")
+      self.script.beam_configs[beam_id]["OUTTSUBINT"] = str(tsubint)
+      return ("ok", "")
+
+    @request(Str(), Str(), Float())
+    @return_reply(Str())
+    def request_output_bins(self, req, data_product_id, beam_id, dm):
+      """Set the value of deispersion measure to be removed from the specified beam."""
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+      if dm < 0 or dm > 2000:
+        return ("fail", "dm not within range 0 - 2000")
+      self.script.beam_configs[beam_id]["DM"] = str(dm)
+      return ("ok", "")
+
+    # test if a number is a power of two
+    def test_power_of_two (self, num):
+      return num > 0 and not (num & (num - 1))
+
+    # test whether the specificed data-product-id and beam-id are currently valid
+    def test_beam_valid (self, data_product_id, beam_id):
+
+      self.script.log (2, "test_beam_valid: data_product_id="+data_product_id+" configured=" + str(self._data_products.keys()))
+      if not data_product_id in self._data_products.keys():
+        return ("fail", "data product " + str (data_product_id) + " was not configured")
+
+      self.script.log (2, "test_beam_valid: beam_id="+beam_id+" configured=" + str(self._data_products[data_product_id]["beams"]))
+      if len(self._data_products[data_product_id]["beams"]) <= 0:
+        return ("fail", "data product " + data_product_id + " had no configured beams")
+
+      for ibeam in self._data_products[data_product_id]['beams']:
+        if ibeam < len(self.script.beams) and self.script.beams[ibeam] == beam_id:
+          return ("ok", "")
+      return ("fail", "data product " + data_product_id + " did not contain beam " + beam_id)
+
+    
+    # test whether the specified target exists in the pulsar catalog
+    def test_pulsar_valid (self, target):
+
+      (reply, message) = self.get_psrcat_param (target, "name")
+      if reply != "ok":
+        return (reply, message)
+
+      if message == target:
+        return ("ok", "")
+      else:
+        return ("fail", "pulsar " + target + " did not exist in catalog")
+
+    def get_psrcat_param (self, target, param):
+      cmd = "psrcat -all " + target + " -c " + param + " -nohead -o short"
+      rval, lines = self.script.system (cmd, 3)
+      if rval != 0 or len(lines) <= 0:
+        return ("fail", "could not use psrcat")
+
+      if lines[0].startswith("WARNING"):
+        return ("fail", "pulsar " + target_name + " did not exist in catalog")
+
+      parts = lines[0].split()
+      if len(parts) == 2 and parts[0] == "1":
+        return ("ok", parts[1])
+        
        
 ###############################################################################
 #
@@ -1123,23 +1286,23 @@ if __name__ == "__main__":
 
     script.log(1, "STARTING SCRIPT")
    
-    script.log(1, "__main__: server.start()")
+    script.log(2, "__main__: server.start()")
     server.start()
 
     #pubsub_thread = PubSubThread (script, beam_id)
     pubsub_thread = PubSubSimThread (script, beam_id)
     pubsub_thread.start()
 
-    script.log(1, "__main__: script.main()")
+    script.log(2, "__main__: script.main()")
     script.main (beam_id)
-    script.log(1, "__main__: script.main() returned")
+    script.log(2, "__main__: script.main() returned")
 
-    script.log(1, "__main__: stopping server")
+    script.log(2, "__main__: stopping server")
     if server.running():
       server.stop()
     server.join()
 
-    script.log(1, "__main__: stopping pubsub_thread")
+    script.log(2, "__main__: stopping pubsub_thread")
     pubsub_thread.join()
 
   except:
