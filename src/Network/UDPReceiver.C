@@ -174,7 +174,7 @@ void spip::UDPReceiver::receive ()
   socklen_t addr_size = sizeof(struct sockaddr);
 
   // virtual block
-  size_t data_bufsz = bytes_per_second;
+  size_t data_bufsz = 32768l * nchan * ndim * npol;
   char * block = (char *) malloc (data_bufsz);
   bool need_next_block = false;
 
