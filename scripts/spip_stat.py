@@ -399,7 +399,7 @@ class StatDaemon(Daemon,StreamBased):
         smrb_sock.close()
         smrb_exists = True
       else:
-        sleep (1)
+        time.sleep (1)
         smrb_wait -= 1
 
     return smrb_exists
