@@ -979,7 +979,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_data_product_configure(self, req, msg):
       """Prepare and configure for the reception of the data_product_id."""
-      self.script.log (2, "request_data_product_configure ()")
+      self.script.log (1, "request_data_product_configure() msg=" + str(msg))
       if len(msg.arguments) == 0:
         return ("ok", "configured data products: TBD")
 
