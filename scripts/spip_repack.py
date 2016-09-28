@@ -320,12 +320,17 @@ class RepackDaemon(Daemon):
     rval, lines = self.system (cmd, 3)
 
     # now zap the bad channels
+    if self.total_channels == 2048:
+      cmd = "paz -z '1935 1936 1937 1938 1939 1940 1941 1942 1943 1944 1945 1675 1676 1677 1678' -m " + input_file
+      rval, lines = self.system (cmd, 3)
+      if rval:
+        return (rval, "failed to zap known bad channels")
+
     if self.total_channels == 4096:
       cmd = "paz -z '0 381 382 383 384 385 386 387 388 389 390 391 392 393 394 395 396 397 398 399 400 401 402 403 404 405 406 407 408 409 410 411 412 413 414 415 416 417 418 419 420 468 462 458 457 1112 1113 1114 1115 1116 1117 1118 1119 1120 1121 1122 1123 1124 1125 1126 1127 1128 1992 1993 1994 1995 1996 1997 1998 1999 2000 2001 2700 2701 2702 2960 2961 2962 2963 2964 2965 2966 2967 3440 3441 3442 3443 3444 3647 3648 3649 3650 3651 3652 3653 3654 3655 3656 3657 3658 3659 3660 3661 3662 3663 3664 3665 3666 3667 3668 3669 3670 3671 3672 3673 3674 3675 3676 3677 3678 3679 3680 3681 3682 3683 3684 3685 3686 3687' -m " + input_file
       rval, lines = self.system (cmd, 3)
       if rval:
-        return (rval, "failed to zap known bad channelsarchive to freq.sum")
-
+        return (rval, "failed to zap known bad channels")
 
     # add the archive to the freq sum, tscrunching it
     if not os.path.exists(freq_file):
