@@ -58,15 +58,15 @@ class PubSubThread (threading.Thread):
     self.subs.append ('script.target')
     self.subs.append ('product')
 
-    self.adc_start_re = re.compile ("data_\d_cbf_synchronisation_epoch")
-    self.bandwidth_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_bandwidth")
-    self.centerfreq_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_centerfrequency")
-    self.channels_re = re.compile ("data_\d_cbf_[a-zA-Z0-9]*_channels")
-    self.target_re = re.compile ("subarray_\d_script_target")
-    self.ra_re = re.compile ("subarray_\d_script_ra")
-    self.dec_re = re.compile ("subarray_\d_script_dec")
-    self.observer_re = re.compile ("subarray_\d_script_observer")
-    self.tsubint_re = re.compile ("subarray_\d_script_tsubint")
+    self.adc_start_re = re.compile ("data_1_cbf_synchronisation_epoch")
+    self.bandwidth_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_bandwidth")
+    self.centerfreq_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_centerfrequency")
+    self.channels_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_channels")
+    self.target_re = re.compile ("subarray_1_script_target")
+    self.ra_re = re.compile ("subarray_1_script_ra")
+    self.dec_re = re.compile ("subarray_1_script_dec")
+    self.observer_re = re.compile ("subarray_1_script_observer")
+    self.tsubint_re = re.compile ("subarray_1_script_tsubint")
 
   def run (self):
     self.script.log(2, "PubSubThread.run()")
@@ -125,40 +125,40 @@ class PubSubThread (threading.Thread):
     value = msg["msg_data"]["value"]
     name = msg["msg_data"]["name"]
 
-    self.script.log(3, "PubSubThread::update_config " + name + "=" + str(value))
+    self.script.log(2, "PubSubThread::update_config " + name + "=" + str(value))
 
     # get the ADC_SYNC_TIME
     if self.adc_start_re.match (name):
       bcfg["ADC_SYNC_TIME"] = str(int(value))
-      self.script.log(2, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
 
     elif self.target_re.match (name):
       bcfg["SOURCE"] = value
-      self.script.log(2, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
 
     # TODO check if exists already
     elif self.ra_re.match (name):
       bcfg["RA"] = value
-      self.script.log(2, "PubSubThread::update_config RA=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config RA=" + str(value) + " from " + name)
 
     # TODO check if exists already
     elif self.dec_re.match (name):
       bcfg["DEC"] = value
-      self.script.log(2, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
 
     elif self.observer_re.match (name):
       bcfg["OBSERVER"] = value
-      self.script.log(2, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
 
     elif self.bandwidth_re.match (name):
-      self.script.log(2, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
 
     elif self.centerfreq_re.match (name):
-      self.script.log(2, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
 
     elif self.tsubint_re.match (name):
       bcfg["TSUBINT"] = value
-      self.script.log(2, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
+      self.script.log(1, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
 
     self.script.log(3, "PubSubThread::update_config done")
 
@@ -922,7 +922,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_target_start (self, req, data_product_id, beam_id, target_name):
       """Commence data processing on specific data product and beam using target."""
-      self.script.log (2, "request_target_start(" + data_product_id + "," + beam_id + "," + target_name+")")
+      self.script.log (1, "request_target_start(" + data_product_id + "," + beam_id + "," + target_name+")")
       (result, message) = self.test_beam_valid (data_product_id, beam_id)
       if result == "fail":
         return (result, message)
@@ -958,7 +958,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_target_stop (self, req, data_product_id, beam_id):
       """Cease data processing with target_name."""
-      self.script.log (2, "request_target_stop(" + data_product_id+","+beam_id+")")
+      self.script.log (1, "request_target_stop(" + data_product_id+","+beam_id+")")
 
       (result, message) = self.test_beam_valid (data_product_id, beam_id)
       if result == "fail":
@@ -982,7 +982,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_capture_init (self, req, data_product_id):
       """Prepare the ingest process for data capture."""
-      self.script.log (2, "request_capture_init()")
+      self.script.log (1, "request_capture_init()")
       if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
       return ("ok", "")
@@ -1310,8 +1310,8 @@ if __name__ == "__main__":
     script.log(2, "__main__: server.start()")
     server.start()
 
-    #pubsub_thread = PubSubThread (script, beam_id)
-    pubsub_thread = PubSubSimThread (script, beam_id)
+    pubsub_thread = PubSubThread (script, beam_id)
+    #pubsub_thread = PubSubSimThread (script, beam_id)
     pubsub_thread.start()
 
     script.log(2, "__main__: script.main()")
