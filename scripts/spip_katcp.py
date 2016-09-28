@@ -42,8 +42,7 @@ class PubSubThread (threading.Thread):
    
     self.script.log(2, "PubSubThread.__init__()")
    
-    self.metadata_server = "ws://portal.mkat.devlab.camlab.kat.ac.za/katmetadata/subarray-1/custom/websocket"
-
+    self.metadata_server = self.script.cfg["PUBSUB_ADDRESS"]
     self.logger = logging.getLogger('katportalclient.example') 
     self.logger.setLevel(logging.INFO)
 
