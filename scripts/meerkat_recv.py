@@ -34,6 +34,7 @@ class MeerKATRecvDaemon(RecvDaemon):
     env["LD_PRELOAD"] = "libvma.so"
     env["VMA_MTU"] = "4200"
     env["VMA_RING_ALLOCATION_LOGIC_RX"] = "10"
+    env["VMA_INTERNAL_THREAD_AFFINITY"] = "6"
     env["VMA_TRACELEVEL"] = "WARNING"
     return env
 
