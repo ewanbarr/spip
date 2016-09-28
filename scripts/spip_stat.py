@@ -226,6 +226,14 @@ class StatDaemon(Daemon,StreamBased):
       self.log (2, "StatDaemon::main waiting for stream_config file [" + stream_config_file +"] to be created by recv")
       time.sleep(1)    
 
+    smrb_exists = self.waitForSMRB()
+
+    if not smrb_exists:
+      self.log(-2, "smrb["+str(self.id)+"] no valid SMRB with " +
+                  "key=" + self.db_key)
+      self.quit_event.set()
+      return
+
     # this stat command will not change from observation to observation
     stat_cmd = self.cfg["STREAM_STATS_BINARY"] + " -k " + db_key + " " + stream_config_file \
                + " -D  " + stat_dir
@@ -365,6 +373,36 @@ class StatDaemon(Daemon,StreamBased):
 
       for file in files:
         os.remove (utc_dir + "/" + file)
+
+  # wait for the SMRB to be created
+  def waitForSMRB (self):
+
+    db_id = self.cfg["PROCESSING_DATA_BLOCK"]
+    db_prefix = self.cfg["DATA_BLOCK_PREFIX"]
+    num_stream = self.cfg["NUM_STREAM"]
+    self.db_key = SMRBDaemon.getDBKey (db_prefix, self.id, num_stream, db_id)
+
+    # port of the SMRB daemon for this stream
+    smrb_port = SMRBDaemon.getDBMonPort(self.id)
+
+    # wait up to 30s for the SMRB to be created
+    smrb_wait = 30
+
+    smrb_exists = False
+    while not smrb_exists and smrb_wait > 0 and not self.quit_event.isSet():
+
+      self.log(2, "trying to open connection to SMRB")
+      smrb_sock = sockets.openSocket (DL, "localhost", smrb_port, 1)
+      if smrb_sock:
+        smrb_sock.send ("smrb_status\r\n")
+        junk = smrb_sock.recv (65536)
+        smrb_sock.close()
+        smrb_exists = True
+      else:
+        sleep (1)
+        smrb_wait -= 1
+
+    return smrb_exists
 
 
   def process_ft (self, utc_dir, ifreq=-1):
