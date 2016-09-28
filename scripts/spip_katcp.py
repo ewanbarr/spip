@@ -361,31 +361,50 @@ class KATCPDaemon(Daemon):
 
       # connect to SPIP_LMC to retreive temperature information
       for lmc in self.lmcs:
-
+        if self.quit_event.isSet():
+          return
         (host, port) = lmc.split(":")
         self.log(2, "KATCPDaemon::main openSocket("+host+","+port+")")
-        sock = sockets.openSocket (DL, host, int(port), 1)
-        if sock:
-          sock.send(self.lmc_cmd)
-          lmc_reply = sock.recv (65536)
-          xml = xmltodict.parse(lmc_reply)
-          sock.close()
+        try:
+          sock = sockets.openSocket (DL, host, int(port), 1)
+          if sock:
+            sock.send(self.lmc_cmd)
+            lmc_reply = sock.recv (65536)
+            xml = xmltodict.parse(lmc_reply)
+            sock.close()
 
-          self.log(2, "KATCPDaemon::main update_lmc_sensors("+host+",[xml])")
-          self.update_lmc_sensors(host, xml)
+            if self.quit_event.isSet():
+              return
+            self.log(2, "KATCPDaemon::main update_lmc_sensors("+host+",[xml])")
+            self.update_lmc_sensors(host, xml)
+
+        except socket.error as e:
+          if e.errno == errno.ECONNRESET:
+            self.log(1, "lmc connection was unexpectedly closed")
+            sock.close()
 
       # connect to SPIP_REPACK to retrieve Pulsar SNR performance
       for repack in self.repacks:
+        if self.quit_event.isSet():
+          return
         (host, port) = repack.split(":")
-        sock = sockets.openSocket (DL, host, int(port), 1)
-        if sock:
-          sock.send (self.repack_cmd)
-          repack_reply = sock.recv (65536)
-          xml = xmltodict.parse(repack_reply)
-          sock.close()
+        try:
+          sock = sockets.openSocket (DL, host, int(port), 1)
+          if sock:
+            sock.send (self.repack_cmd)
+            repack_reply = sock.recv (65536)
+            xml = xmltodict.parse(repack_reply)
+            sock.close()
 
-          self.log(2, "KATCPDaemon::main update_repack_sensors("+host+",[xml])")
-          self.update_repack_sensors(host, xml)
+            if self.quit_event.isSet():
+              return
+            self.log(2, "KATCPDaemon::main update_repack_sensors("+host+",[xml])")
+            self.update_repack_sensors(host, xml)
+
+        except socket.error as e:
+          if e.errno == errno.ECONNRESET:
+            self.log(1, "repack connection was unexpectedly closed")
+            sock.close()
 
       to_sleep = 5
       while not self.quit_event.isSet() and to_sleep > 0:
@@ -1225,10 +1244,12 @@ class KATCPServer (DeviceServer):
     # test whether the specified target exists in the pulsar catalog
     def test_pulsar_valid (self, target):
 
-      (reply, message) = self.get_psrcat_param (target, "name")
+      self.script.log (2, "test_pulsar_valid: get_psrcat_param (" + target + ", jname)")
+      (reply, message) = self.get_psrcat_param (target, "jname")
       if reply != "ok":
         return (reply, message)
 
+      self.script.log (2, "test_pulsar_valid: get_psrcat_param () reply=" + reply + " message=" + message)
       if message == target:
         return ("ok", "")
       else:
