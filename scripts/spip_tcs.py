@@ -18,7 +18,7 @@ from spip.utils import sockets,times
 from spip.threads.reporting_thread import ReportingThread
 
 DAEMONIZE = True
-DL = 2
+DL = 1
 
 ###############################################################
 # thread for reporting state of 
