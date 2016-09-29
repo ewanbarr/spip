@@ -386,7 +386,7 @@ class StatDaemon(Daemon,StreamBased):
     smrb_port = SMRBDaemon.getDBMonPort(self.id)
 
     # wait up to 30s for the SMRB to be created
-    smrb_wait = 30
+    smrb_wait = 60
 
     smrb_exists = False
     while not smrb_exists and smrb_wait > 0 and not self.quit_event.isSet():
