@@ -137,9 +137,11 @@ class RecvDaemon(Daemon,StreamBased):
       sleep(1)
 
       self.running = True
+
+      recv_cmd = "numactl -C 6 -- " + cmd
      
       # this should be a persistent / blocking command 
-      rval = self.system_piped (cmd, log_pipe.sock, int(DL), env)
+      rval = self.system_piped (recv_cmd, log_pipe.sock, int(DL), env)
 
       self.running = False 
       self.binary_list = []
@@ -147,9 +149,6 @@ class RecvDaemon(Daemon,StreamBased):
       if rval:
         if self.quit_event.isSet():
           self.log (-2, cmd + " failed with return value " + str(rval))
-        #if self.reload_event.isSet():
-        #  self.log (2, cmd + " failed with return value " + str(rval))
-
       log_pipe.close ()
 
 
@@ -165,7 +164,7 @@ class RecvDaemon(Daemon,StreamBased):
     smrb_port = SMRBDaemon.getDBMonPort(self.id)
 
     # wait up to 30s for the SMRB to be created
-    smrb_wait = 30
+    smrb_wait = 60
 
     smrb_exists = False
     while not smrb_exists and smrb_wait > 0 and not self.quit_event.isSet():
