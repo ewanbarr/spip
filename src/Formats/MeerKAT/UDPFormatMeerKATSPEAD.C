@@ -126,7 +126,7 @@ void spip::UDPFormatMeerKATSPEAD::prepare (spip::AsciiHeader& header, const char
     int64_t adc_samples_to_add = adc_samples_per_heap - modulus;   
     obs_start_sample += adc_samples_to_add;
     double offset_seconds = double(adc_samples_to_add) / double(adc_sample_rate);
-    uint64_t offset_picoseconds = uint64_t(rintf(offset_seconds * 1e9));
+    uint64_t offset_picoseconds = uint64_t(rintf(offset_seconds * 1e12));
 #ifdef _DEBUG
     cerr << "obs_start_sample=" << obs_start_sample << " modulus=" << modulus << " adc_samples_to_add=" << adc_samples_to_add << " offset_picoseconds=" << offset_picoseconds << endl;
 #endif
