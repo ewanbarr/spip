@@ -7,7 +7,7 @@
 # 
 ###############################################################################
 
-import os, sys, socket, select, signal, traceback, time, threading, copy
+import os, sys, socket, select, signal, traceback, time, threading, copy, string
 
 from time import sleep
 
@@ -318,6 +318,23 @@ class RepackDaemon(Daemon):
     # copy the input file to output dir
     cmd = "cp " + input_file + " " + output_file
     rval, lines = self.system (cmd, 3)
+    if rval:
+      return (rval, "failed to copy processed file to archived dir")
+
+    # bscrunch to 4 bins for the bandpass plot
+    bscr_factor = int(self.total_channels / 4)
+    cmd = "pam -b " + str(bscr_factor) + " -e bscr " + input_file
+    rval, lines = self.system (cmd, 3)
+    if rval:
+      return (rval, "could not bscrunch to 4 bins")
+
+    input_band_file = string.replace(input_file, ".ar", ".bscr")
+    if os.path.exists (band_file):
+      os.remove (band_file)
+    cmd = "mv " + input_band_file + " " + band_file
+    rval, lines = self.system (cmd, 3)
+    if rval:
+      return (rval, "failed to copy recent band file")
 
     # now zap the bad channels
     if self.total_channels == 2048:
@@ -332,6 +349,13 @@ class RepackDaemon(Daemon):
       if rval:
         return (rval, "failed to zap known bad channels")
 
+    # pscrunch and fscrunch to 512 channels for the Fsum
+    fscr_factor = int(self.total_channels / 512)
+    cmd = "pam -p -f " + str(fscr_factor) + " -m " + input_file
+    rval, lines = self.system (cmd, 3)
+    if rval:
+      return (rval, "could not fscrunch to 512 channels")
+
     # add the archive to the freq sum, tscrunching it
     if not os.path.exists(freq_file):
       cmd = "cp " + input_file + " " + freq_file
@@ -344,19 +368,13 @@ class RepackDaemon(Daemon):
       if rval:
         return (rval, "failed add archive to freq.sum")
 
-    if os.path.exists (band_file):
-      os.remove (band_file)
-    cmd = "cp " + input_file + " " + band_file
-    rval, lines = self.system (cmd, 3)
-    if rval:
-      return (rval, "failed to copy recent band file")
-
-    # add the fscrunched archive to the time sum
+    # fscrunch the  archive 
     cmd = "pam -m -F " + input_file
     rval, lines = self.system (cmd, 3)
     if rval:
       return (rval, "failed add Fscrunch archive")
 
+    # add it to the time sum
     if not os.path.exists(time_file):
       try:
         os.rename (input_file, time_file)
@@ -408,17 +426,17 @@ class RepackDaemon(Daemon):
 
     timestamp = times.getCurrentTime() 
 
-    cmd = "psrplot -p freq " + freq_file + " -jp -D -/png"
+    cmd = "psrplot -p freq " + freq_file + " -jDp -j 'F 512' -D -/png"
     rval, freq_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create freq plot")
 
-    cmd = "psrplot -p time " + time_file + " -jp -D -/png"
+    cmd = "psrplot -p time " + time_file + " -jDp -D -/png"
     rval, time_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create time plot")
 
-    cmd = "psrplot -p flux -jF " + freq_file + " -jp -D -/png"
+    cmd = "psrplot -p flux -jFD " + freq_file + " -jp -D -/png"
     rval, flux_raw = self.system_raw (cmd, 3)
     if rval < 0:
       return (rval, "failed to create time plot")
