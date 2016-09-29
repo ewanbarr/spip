@@ -116,6 +116,7 @@ class Config(object):
     cfg["HDR_VERSION"] = self.site["HDR_VERSION"]
     cfg["HDR_SIZE"]    = self.site["HDR_SIZE"]
     cfg["TELESCOPE"]   = self.site["TELESCOPE"]
+    cfg["DSB"]         = self.site["DSB"]
 
     cfg["RECEIVER"]   = self.config["RECEIVER"]
     cfg["INSTRUMENT"] = self.config["INSTRUMENT"]
