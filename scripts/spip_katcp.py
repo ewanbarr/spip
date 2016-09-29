@@ -128,36 +128,42 @@ class PubSubThread (threading.Thread):
 
     # get the ADC_SYNC_TIME
     if self.adc_start_re.match (name):
+      if bcfg["ADC_SYNC_TIME"] != str(int(value)):
+        self.script.log(1, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
       bcfg["ADC_SYNC_TIME"] = str(int(value))
-      self.script.log(1, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
 
     elif self.target_re.match (name):
+      if bcfg["SOURCE"] != value:
+        self.script.log(1, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
       bcfg["SOURCE"] = value
-      self.script.log(1, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
 
     # TODO check if exists already
     elif self.ra_re.match (name):
+      if bcfg["RA"] != value:
+        self.script.log(1, "PubSubThread::update_config RA=" + str(value) + " from " + name)
       bcfg["RA"] = value
-      self.script.log(1, "PubSubThread::update_config RA=" + str(value) + " from " + name)
 
     # TODO check if exists already
     elif self.dec_re.match (name):
+      if bcfg["DEC"] != value:
+        self.script.log(1, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
       bcfg["DEC"] = value
-      self.script.log(1, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
 
     elif self.observer_re.match (name):
+      if bcfg["OBSERVER"] != value:
+        self.script.log(1, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
       bcfg["OBSERVER"] = value
-      self.script.log(1, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
 
     elif self.bandwidth_re.match (name):
-      self.script.log(1, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
+      self.script.log(2, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
 
     elif self.centerfreq_re.match (name):
-      self.script.log(1, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
+      self.script.log(2, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
 
     elif self.tsubint_re.match (name):
+      if bcfg["TSUBINT"] != value:
+        self.script.log(1, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
       bcfg["TSUBINT"] = value
-      self.script.log(1, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
 
     self.script.log(3, "PubSubThread::update_config done")
 
