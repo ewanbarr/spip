@@ -41,6 +41,9 @@ class PubSubThread (threading.Thread):
     self.script = script
    
     self.script.log(2, "PubSubThread.__init__()")
+
+    self.curr_utc = times.getUTCTime()
+    self.prev_utc = self.curr_utc
    
     self.metadata_server = self.script.cfg["PUBSUB_ADDRESS"]
     self.logger = logging.getLogger('katportalclient.example') 
@@ -103,6 +106,12 @@ class PubSubThread (threading.Thread):
     # determine how to know which beam this corresponds to!
     ibeam = 0
     beam_name = self.script.cfg["BEAM_" + str(ibeam)]
+
+    self.curr_utc = times.getUTCTime()
+
+    if times.diffUTCTimes(self.prev_utc, self.curr_utc) > 60:
+      self.script.log(1, "PubSubThread::on_update_callback: heartbeat msg="+str(msg))
+      self.prev_utc = self.curr_utc
 
     self.script.beam_configs[beam_name]["lock"].acquire()
 
