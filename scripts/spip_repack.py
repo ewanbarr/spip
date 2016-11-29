@@ -269,6 +269,9 @@ class RepackDaemon(Daemon):
   #
   def patch_psrfits_header (self, input_dir, input_file):
 
+    header_file = input_dir + "/obs.header"
+    self.log(3, "patch_psrfits_header: header_file="+header_file)
+
     header = Config.readCFGFileIntoDict (input_dir + "/obs.header")
 
     new = {}
@@ -286,9 +289,9 @@ class RepackDaemon(Daemon):
   
     # this needs to come from CAM, hack for now
     new["ext:trk_mode"] = "TRACK" # Tracking mode
-    new["ext:bpa"]      = "UNSET" # Beam position angle [?]
-    new["ext:bmaj"]     = "UNSET" # Beam major axis [degrees]
-    new["ext:bmin"]     = "UNSET" # Beam minor axis [degrees]
+    new["ext:bpa"]      = "0" # Beam position angle [?]
+    new["ext:bmaj"]     = "0" # Beam major axis [degrees]
+    new["ext:bmin"]     = "0" # Beam minor axis [degrees]
 
     new["ext:obsfreq"]  = header["FREQ"]
     new["ext:obsbw"]    = header["BW"]
@@ -301,12 +304,19 @@ class RepackDaemon(Daemon):
 
     # create the psredit command necessary to apply "new"
     cmd = "psredit -m -c " + ",".join(['%s=%s' % (key, value) for (key, value) in new.items()]) + " " + input_file
-    self.system(cmd)
+    rval, lines = self.system(cmd, 2)
+    if rval:
+      return rval, lines[0]
+    return 0, ""
 
   #
   # process and file in the directory, adding file to 
   #
   def process_archive (self, in_dir, input_file, out_dir, source):
+
+    (rval, response) = self.acquire_obs_header (in_dir)
+    if rval:
+      return (-1, "process_archive: could not acquire obs.header")
 
     self.log (2, "process_archive() input_file=" + input_file)
 
@@ -319,11 +329,13 @@ class RepackDaemon(Daemon):
     rval, lines = self.system (cmd, 2)
     if rval:
       return (rval, "failed to copy processed file to archived dir")
-    psrfits_file = string.replace(input_file, in_dir, out_dir)
-    psrfits_file = string.replace(psrfits_file, ".ar", ".rf")
+    psrfits_file = out_dir + "/" + os.path.basename (input_file)
+    # psrfits_file = string.replace(psrfits_file, ".ar", ".rf")
+
+    self.log (2, "process_archive() psrfits_file=" + psrfits_file)
 
     # update the header parameters in the psrfits file
-    (rval, message) = patch_psrfits_header (in_dir, psrfits_file)
+    (rval, message) = self.patch_psrfits_header (in_dir, psrfits_file)
     if rval:
       return (rval, "failed to convert psrfits file")
 
@@ -390,6 +402,19 @@ class RepackDaemon(Daemon):
       except OSError, e:
         return (-1, "failed remove Fscrunched archive")
 
+    return (0, "")
+
+  def acquire_obs_header (self, in_dir):
+    if not os.path.exists (in_dir + "/obs.header"):
+      cmd = "find " + in_dir + " -mindepth 2 -maxdepth 2 -type f -name 'obs.header'"
+      rval, header_files  = self.system (cmd, 3)
+      if rval or len(header_files) == 0:
+        return (-1, "acquire_obs_header: could not find obs.header files")
+
+      cmd = "cp " + header_files[0] + " " + in_dir +"/obs.header"
+      rval, header_files  = self.system (cmd, 3)
+      if rval:
+        return (-1, "acquire_obs_header: could not copy obs.header file")
     return (0, "")
 
   #
