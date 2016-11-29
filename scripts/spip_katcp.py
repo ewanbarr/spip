@@ -316,6 +316,7 @@ class KATCPDaemon(Daemon):
     bcfg["OBSERVER"] = "None"
     bcfg["TOBS"] = "None"
     bcfg["MODE"] = "PSR"
+    bcfg["CALFREQ"] = "0"
     bcfg["PROC_FILE"] = "None"
     bcfg["ADC_SYNC_TIME"] = "0"
     bcfg["PERFORM_FOLD"] = "1"
@@ -460,6 +461,7 @@ class KATCPDaemon(Daemon):
     xml +=     "<project_id>" + self.beam_configs[b]["PID"] + "</project_id>"
     xml +=     "<tobs>" + self.beam_configs[b]["TOBS"] + "</tobs>"
     xml +=     "<mode>" + self.beam_configs[b]["MODE"] + "</mode>"
+    xml +=     "<calfreq>" + self.beam_configs[b]["CALFREQ"] + "</calfreq>"
     xml +=     "<processing_file>" + self.beam_configs[b]["PROC_FILE"] + "</processing_file>"
     xml +=     "<utc_start></utc_start>"
     xml +=     "<utc_stop></utc_stop>"
@@ -936,9 +938,17 @@ class KATCPServer (DeviceServer):
       (result, message) = self.test_pulsar_valid (target_name)
       if result != "ok":
         return (result, message)
+
+      # check the ADC_SYCN_TIME is valid for this beam
+      if self.script.beam_configs[beam_id]["ADC_SYNC_TIME"] == "0":
+        return ("fail", "ADC Synchronisation Time was not valid")
     
       # set the pulsar name, this should include a check if the pulsar is in the catalog
+      self.script.beam_configs[beam_id]["lock"].acquire()
+      if self.script.beam_configs[beam_id]["MODE"] == "CAL":
+        target_name = target_name + "_R"
       self.script.beam_configs[beam_id]["SOURCE"] = target_name
+      self.script.beam_configs[beam_id]["lock"].release()
 
       host = self.script.tcs_hosts[beam_id]
       port = self.script.tcs_ports[beam_id]
@@ -969,7 +979,9 @@ class KATCPServer (DeviceServer):
       if result == "fail":
         return (result, message)
 
+      self.script.beam_configs[beam_id]["lock"].acquire()
       self.script.beam_configs[beam_id]["SOURCE"] = ""
+      self.script.beam_configs[beam_id]["lock"].release()
 
       host = self.script.tcs_hosts[beam_id]
       port = self.script.tcs_ports[beam_id]
@@ -1040,6 +1052,12 @@ class KATCPServer (DeviceServer):
             (host, beam_idx, subband) = self.script.cfg["STREAM_" + str(istream)].split(":")
             beam = self.script.cfg["BEAM_" + beam_idx]
             if b == beam:
+
+              # reset ADC_SYNC_TIME on the beam
+              self.script.beam_configs[b]["lock"].acquire()
+              self.script.beam_configs[b]["ADC_SYNC_TIME"] = "0";
+              self.script.beam_configs[b]["lock"].release()
+
               port = int(self.script.cfg["STREAM_RECV_PORT"]) + istream
               self.script.log (3, "data_product_configure: connecting to " + host + ":" + str(port))
               sock = sockets.openSocket (DL, host, port, 1)
@@ -1142,6 +1160,12 @@ class KATCPServer (DeviceServer):
               (host, beam_idx, subband) = self.script.cfg["STREAM_" + str(istream)].split(":")
               beam = self.script.cfg["BEAM_" + beam_idx]
               if b == beam:
+
+                # reset ADC_SYNC_TIME on the beam
+                self.script.beam_configs[b]["lock"].acquire()
+                self.script.beam_configs[b]["ADC_SYNC_TIME"] = "0";
+                self.script.beam_configs[b]["lock"].release()
+
                 port = int(self.script.cfg["STREAM_RECV_PORT"]) + istream
                 self.script.log (3, "data_product_configure: connecting to " + host + ":" + str(port))
                 sock = sockets.openSocket (DL, host, port, 1)
@@ -1215,14 +1239,30 @@ class KATCPServer (DeviceServer):
 
     @request(Str(), Str(), Float())
     @return_reply(Str())
-    def request_output_bins(self, req, data_product_id, beam_id, dm):
-      """Set the value of deispersion measure to be removed from the specified beam."""
+    def request_dm(self, req, data_product_id, beam_id, dm):
+      """Set the value of dispersion measure to be removed from the specified beam."""
       (result, message) = self.test_beam_valid (data_product_id, beam_id)
       if result == "fail":
         return (result, message)
       if dm < 0 or dm > 2000:
         return ("fail", "dm not within range 0 - 2000")
       self.script.beam_configs[beam_id]["DM"] = str(dm)
+      return ("ok", "")
+
+    @request(Str(), Str(), Float())
+    @return_reply(Str())
+    def request_cal_freq(self, req, data_product_id, beam_id, cal_freq):
+      """Set the value of noise diode firing frequecny in Hz."""
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+      if cal_freq < 0 or cal_freq > 1000:
+        return ("fail", "CAL freq not within range 0 - 1000")
+      self.script.beam_configs[beam_id]["CALFREQ"] = str(cal_freq)
+      if cal_freq == 0:
+        self.script.beam_configs[beam_id]["MODE"] = "PSR"
+      else:
+        self.script.beam_configs[beam_id]["MODE"] = "CAL"
       return ("ok", "")
 
     # test if a number is a power of two
