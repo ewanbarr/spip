@@ -116,6 +116,8 @@ namespace spip {
 
       bool first_heap;
 
+      bool first_packet;
+
       unsigned header_npol;
 
       int offset ;

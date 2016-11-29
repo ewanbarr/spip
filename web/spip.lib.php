@@ -31,11 +31,11 @@ class spip {
   public static function get_config ()
   {
     $config_file = CONFIG_DIR."/spip.cfg";
+    return spip::get_config_file ($config_file);
+  }
 
-    if ($config_file == "") {
-      $config_file = $this->config_file;
-    }
-
+  public static function get_config_file ($config_file)
+  {
     $fptr = @fopen($config_file,"r");
     $returnArray = array();
 

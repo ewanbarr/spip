@@ -52,6 +52,7 @@ spip::UDPFormatMeerKATSPEAD::UDPFormatMeerKATSPEAD()
   curr_heap_cnt = -1;
   curr_heap_bytes = 0;
   first_heap = true;
+  first_packet = false;
 }
 
 spip::UDPFormatMeerKATSPEAD::~UDPFormatMeerKATSPEAD()
@@ -103,6 +104,9 @@ void spip::UDPFormatMeerKATSPEAD::prepare (spip::AsciiHeader& header, const char
   cerr << "adc_sync_time=" << adc_sync_time << endl;
   cerr << "utc_start.get_time=" << utc_start.get_time() << endl;
   cerr << "adc_sample_rate=" << adc_sample_rate << endl;
+
+  // offset from ADC sync
+  cerr << "OFFSET_TIME=" << (utc_start.get_time() - adc_sync_time) << " ADC_SYNC_TIME=" << adc_sync_time << " UTC_START_TIME=" << utc_start.get_time() << endl;
 #endif
 
   // the start sample (at ADC_SAMPLE_RATE), relative to sync time  for the exact UTC start second
@@ -119,6 +123,10 @@ void spip::UDPFormatMeerKATSPEAD::prepare (spip::AsciiHeader& header, const char
   if (adc_samples_per_heap != 2097152)
     throw invalid_argument("ADC samples per heap != 2097152");
 
+#ifdef _DEBUG
+  cerr << "OBS_START_SAMPLE=" << obs_start_sample << " ADC_SAMPLES_PER_SAMPLE=" << adc_samples_per_sample << endl;
+#endif
+
   // observation should begin on first heap after UTC_START, add offset in picoseconds to header
   int64_t modulus = obs_start_sample % adc_samples_per_heap;
   if (modulus > 0)
@@ -129,6 +137,7 @@ void spip::UDPFormatMeerKATSPEAD::prepare (spip::AsciiHeader& header, const char
     uint64_t offset_picoseconds = uint64_t(rintf(offset_seconds * 1e12));
 #ifdef _DEBUG
     cerr << "obs_start_sample=" << obs_start_sample << " modulus=" << modulus << " adc_samples_to_add=" << adc_samples_to_add << " offset_picoseconds=" << offset_picoseconds << endl;
+    cerr << "MODULUS=" << modulus << " PICOSECONDS=" << offset_picoseconds << endl;
 #endif
     header.set ("PICOSECONDS", "%lu", offset_picoseconds);
   }
@@ -208,6 +217,17 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
       int64_t adc_sample = get_timestamp_fast();
       int64_t obs_sample = adc_sample - obs_start_sample;
 
+      if (!first_packet)
+      {
+        if (offset == 0)
+          cerr << "FIRST PACKET timestamp=" << get_timestamp_fast()
+               << " adc_sample=" << adc_sample << " obs_start_sample=" << obs_start_sample 
+               << " obs_sample=" << obs_sample
+               << " samples_to_byte_offset=" << samples_to_byte_offset
+               << " curr_heap_offset=" << (uint64_t) (obs_sample * samples_to_byte_offset) << endl;
+        first_packet = true;
+      }
+
       // if this packet pre-dates our start time, ignore
       if (obs_sample < 0)
         return -1;
@@ -215,8 +235,9 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
       {
 #ifdef _DEBUG
         if (offset == 0)
-          cerr << "FIRST timestamp= " << get_timestamp_fast() 
-               << " adc_sample=" << adc_sample << " obs_sample=" << obs_sample
+          cerr << "FIRST HEAP timestamp= " << get_timestamp_fast() 
+               << " adc_sample=" << adc_sample << " obs_start_sample=" << obs_start_sample 
+               << " obs_sample=" << obs_sample
                << " samples_to_byte_offset=" << samples_to_byte_offset
                << " curr_heap_offset=" << (uint64_t) (obs_sample * samples_to_byte_offset) << endl;
 #endif

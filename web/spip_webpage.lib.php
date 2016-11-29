@@ -44,6 +44,11 @@ class spip_webpage
 
   }
 
+  function printJavaScriptTail()
+  {
+
+  }
+
   function openBlockHeader($block_title)
   {
     echo "<table class='wrapper'>\n";
@@ -145,6 +150,7 @@ function handleDirect($child_class)
       $nav_items = array ("/spip/timing/" => "Timing", 
                           "/spip/stats/" => "Stats",
                           "/spip/status/" => "Status",
+                          "/spip/results/" => "Results",
                           "/spip/controls/" => "Controls",
                           "/spip/logs/" => "Logs");
 
@@ -201,6 +207,9 @@ function handleDirect($child_class)
     echo "  </div>\n";
 
     echo "</div>\n";  // main
+
+    $obj->printJavaScriptTail();
+
     echo "</body>\n";
     echo "</html>\n";
 

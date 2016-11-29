@@ -7,7 +7,7 @@
 # 
 ###############################################################################
 
-import socket, sys, traceback
+import socket, sys, traceback, re
 from select import select
 from xmltodict import parse
 from xml.parsers.expat import ExpatError
@@ -15,7 +15,7 @@ from xml.parsers.expat import ExpatError
 from spip.config import Config
 from spip.daemons.bases import ServerBased,BeamBased
 from spip.daemons.daemon import Daemon
-from spip.utils import sockets
+from spip.utils import sockets,times
 
 DAEMONIZE = True
 DL     = 1
@@ -24,6 +24,7 @@ class LogsDaemon(Daemon):
 
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
+    self.timestamp_re = re.compile ("^\[\d\d\d\d-\d\d-\d\d-\d\d:\d\d:\d\d\.\d\d\d\d\d\d\]")
 
   # over ride the default log message so that 
   def log (self, level, message):
@@ -130,7 +131,12 @@ class LogsDaemon(Daemon):
     source = header['log_stream']['source']
     dest   = header['log_stream']['dest']
     id     = header['log_stream']['id']['#text']
-    
+   
+    self.log(1, "processLine: " + line)
+    if not self.timestamp_re.match (line):
+      prefix = "[" + times.getCurrentTimeUS() + "] "
+      line = prefix + line
+
     if id == "-1":
       file = self.log_dir + "/spip_" + dest + ".log"
     else:
