@@ -132,7 +132,6 @@ class LogsDaemon(Daemon):
     dest   = header['log_stream']['dest']
     id     = header['log_stream']['id']['#text']
    
-    self.log(1, "processLine: " + line)
     if not self.timestamp_re.match (line):
       prefix = "[" + times.getCurrentTimeUS() + "] "
       line = prefix + line
