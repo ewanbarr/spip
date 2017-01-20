@@ -558,7 +558,8 @@ class RepackDaemon(Daemon):
       self.results[beam]["valid"] = False
 
       # touch and obs.finished file in the archival directory
-      rval2, lines = system ("touch " + arch_dir + "/obs.finished")
+      cmd = "touch " + arch_dir + "/obs.finished"
+      rval, lines = self.system (cmd, 3)
 
     self.results[beam]["lock"].release()
 
