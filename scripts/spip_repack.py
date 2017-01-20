@@ -7,7 +7,7 @@
 # 
 ###############################################################################
 
-import os, sys, socket, select, signal, traceback, time, threading, copy, string
+import os, sys, socket, select, signal, traceback, time, threading, copy, string, shutil
 
 from time import sleep
 
@@ -250,15 +250,22 @@ class RepackDaemon(Daemon):
 
             fin_dir = self.finished_dir + "/" + beam + "/" + utc + "/" + source
             self.log (2, "main: finalise_observation("+obs_dir+")")
-            (rval, response) = self.finalise_observation (beam, obs_dir, fin_dir)
+            (rval, response) = self.finalise_observation (beam, obs_dir, fin_dir, out_dir)
             if rval:
               self.log (-1, "failed to finalise observation: " + response)
             else:
-              for subband in self.subbands: 
-                os.rename (fin_dir + "/" + subband["cfreq"] + "/obs.header",
-                           fin_dir + "/" + "obs.header." + subband["cfreq"])
+
+              # merge the headers from each sub-band
+              header = Config.readCFGFileIntoDict (fin_dir + "/" + self.subbands[0]["cfreq"] + "/obs.header")
+              for i in range(1,len(self.subbands)):
+                header_sub = Config.readCFGFileIntoDict (fin_dir + "/" + self.subbands[i]["cfreq"] + "/obs.header")
+                header = Config.mergerHeaderFreq (header, header_sub)
+                os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.header")
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
+
+              writeDictToCFGFile (header, fin_dir + "/" + "obs.header")
+              shutil.copyfile (fin_dir + "/obs.header", out_dir + "/obs.header")
 
       if processed_this_loop == 0:
         self.log (3, "time.sleep(1)")
@@ -510,7 +517,7 @@ class RepackDaemon(Daemon):
 
     return (0, "")
 
-  def finalise_observation (self, beam, obs_dir, fin_dir):
+  def finalise_observation (self, beam, obs_dir, fin_dir, arch_dir):
 
     # write the most recent images disk for long term storage
     timestamp = times.getCurrentTime()
@@ -549,6 +556,9 @@ class RepackDaemon(Daemon):
       # indicate that the beam is no longer valid now that the 
       # observation has finished
       self.results[beam]["valid"] = False
+
+      # touch and obs.finished file in the archival directory
+      rval2, lines = system ("touch " + arch_dir + "/obs.finished")
 
     self.results[beam]["lock"].release()
 
