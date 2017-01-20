@@ -219,12 +219,14 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
 
       if (!first_packet)
       {
+#ifdef DEBUG
         if (offset == 0)
           cerr << "FIRST PACKET timestamp=" << get_timestamp_fast()
                << " adc_sample=" << adc_sample << " obs_start_sample=" << obs_start_sample 
                << " obs_sample=" << obs_sample
                << " samples_to_byte_offset=" << samples_to_byte_offset
-               << " curr_heap_offset=" << (uint64_t) (obs_sample * samples_to_byte_offset) << endl;
+               << " curr_heap_offset=" << (int64_t) (obs_sample * samples_to_byte_offset) << endl;
+#endif
         first_packet = true;
       }
 
@@ -239,7 +241,7 @@ inline int64_t spip::UDPFormatMeerKATSPEAD::decode_packet (char* buf, unsigned *
                << " adc_sample=" << adc_sample << " obs_start_sample=" << obs_start_sample 
                << " obs_sample=" << obs_sample
                << " samples_to_byte_offset=" << samples_to_byte_offset
-               << " curr_heap_offset=" << (uint64_t) (obs_sample * samples_to_byte_offset) << endl;
+               << " curr_heap_offset=" << (int64_t) (obs_sample * samples_to_byte_offset) << endl;
 #endif
       }
 
