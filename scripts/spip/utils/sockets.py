@@ -44,7 +44,7 @@ def openSocket(dl, host, port, attempts=10):
       else:
         raise
     else:
-      logMsg(3, dl, "openSocket: conncected")
+      logMsg(3, dl, "openSocket: connected")
       connected = True
   
   if connected:
