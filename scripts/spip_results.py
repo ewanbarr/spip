@@ -105,36 +105,10 @@ class ResultsReportingThread(ReportingThread):
       return True, xml + "\r\n"
 
     elif req["type"] == "obs_info":
+      return self.getObsInfo (req["utc_start"], req["source"])
 
-      xml = "<results_obs>"
-      xml +=  "<error>observation not found</error>"
-      xml += "</results_obs>"
-
-      if req["utc_start"] in rs.keys():
-        if req["source"] in rs[req["utc_start"]].keys():
-          s = rs[req["utc_start"]][req["source"]]
-          xml = "<results_obs_info>"
-          xml += "<utc_start>" + req["utc_start"] + "</utc_start>"
-          xml += "<source>" + req["source"] +"</source>"
-          xml += "<beam>" + s["beam"] + "</beam>"
-          xml += "<ra>" + s["ra"] + "</ra>"
-          xml += "<dec>" + s["dec"] + "</dec>"
-          xml += "<centre_frequency>" + s["centre_frequency"] + "</centre_frequency>"
-          xml += "<bandwidth>" + s["bandwidth"] + "</bandwidth>"
-          xml += "<nchannels>" + s["nchannels"] + "</nchannels>"
-          xml += "<length>" + s["length"] + "</length>"
-          xml += "<snr>" + s["snr"] + "</snr>"
-          xml += "<subarray_id>" + s["subarray_id"] + "</subarray_id>"
-          xml += "<project_id>" + s["project_id"] + "</project_id>"
-
-          xml += "<plot type='flux_vs_phase'/>"
-          xml += "<plot type='freq_vs_phase'/>"
-          xml += "<plot type='time_vs_phase'/>"
-          xml += "<plot type='bandpass'/>"
-
-          xml += "</results_obs_info>"
-
-      return True, xml + "\r\n"
+    elif req["type"] == "obs_header":
+      return self.getASCIIHeader (req["utc_start"], req["source"])
 
     elif req["type"] == "plot":
 
@@ -169,6 +143,55 @@ class ResultsReportingThread(ReportingThread):
       xml += "</results_state>\r\n"
 
       return True, xml
+
+  #############################################################################
+  # return XML containing obs info
+  def getObsInfo (self, utc_start, source):
+
+    xml = "<results_obs_info>"
+    xml +=  "<error>observation not found</error>"
+    xml += "</results_obs_info>"
+
+    if utc_start in  self.script.results.keys():
+      if source in self.script.results[utc_start].keys():
+        s = self.script.results[utc_start][source]
+        xml = "<results_obs_info>"
+        xml += "<utc_start>" + utc_start + "</utc_start>"
+        xml += "<source>" + source +"</source>"
+        xml += "<beam>" + s["beam"] + "</beam>"
+        xml += "<ra>" + s["ra"] + "</ra>"
+        xml += "<dec>" + s["dec"] + "</dec>"
+        xml += "<centre_frequency>" + s["centre_frequency"] + "</centre_frequency>"
+        xml += "<bandwidth>" + s["bandwidth"] + "</bandwidth>"
+        xml += "<nchannels>" + s["nchannels"] + "</nchannels>"
+        xml += "<length>" + s["length"] + "</length>"
+        xml += "<snr>" + s["snr"] + "</snr>"
+        xml += "<subarray_id>" + s["subarray_id"] + "</subarray_id>"
+        xml += "<project_id>" + s["project_id"] + "</project_id>"
+
+        xml += "<plot type='flux_vs_phase'/>"
+        xml += "<plot type='freq_vs_phase'/>"
+        xml += "<plot type='time_vs_phase'/>"
+        xml += "<plot type='bandpass'/>"
+
+        xml += "</results_obs_info>"
+
+    return True, xml + "\r\n"
+
+  #############################################################################
+  # return XML containing obs header
+  def getASCIIHeader(self, utc_start, source):
+
+    xml = "<results_obs_header>"
+    xml +=  "<error>observation not found</error>"
+    xml += "</results_obs_header>"
+
+    if utc_start in  self.script.results.keys():
+      if source in self.script.results[utc_start].keys():
+        s = self.script.results[utc_start][source]
+        s = rs[utc_start][source]["header"] 
+        xml += "</results_obs_header>"
+    return True, xml 
 
 class ResultsDaemon(Daemon):
 
@@ -285,6 +308,7 @@ class ResultsDaemon(Daemon):
 
     # read the contents of the header
     header = Config.readCFGFileIntoDict (header_file)
+
     data["centre_frequency"] = header["FREQ"]
     data["bandwidth"] = header["BW"]
     data["nchannels"] = header["NCHAN"]
@@ -296,6 +320,12 @@ class ResultsDaemon(Daemon):
     data["dir"] = dir
     data["length"] = "-1"
     data["snr"] = "-1"
+
+    # convert entire header into XML
+    keys = header.keys()
+    keys.sort()
+    for key in keys:
+      data["header"] = "<" + key + ">" + header[key] + "</" + key + ">"
 
     psrplot_opts = "-c x:view='(0.0,1.0)' -c y:view='(0.0,1.0)' -g 160x120 -D -/png"
 
@@ -411,7 +441,8 @@ class ResultsDaemon(Daemon):
 
     return ("ok", "collected")
 
-
+  #############################################################################
+  # produce a PSR plot with the specified dimensions
   def custom_plot (self, beam, utc_start, source, plot, xres, yres):
     bin_data = []
     rval = -1
