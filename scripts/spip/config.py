@@ -68,6 +68,17 @@ class Config(object):
       fptr.close()
 
   @staticmethod
+  def writeDictToColonSVFile (cfg, filename):
+    try:
+      fptr = open(filename, 'w')
+    except IOError:
+      print "ERROR: cannot open " + filename + " for writing"
+    else:
+      for key in sorted(cfg.keys()):
+        fptr.write(key + ";" + cfg[key] + "\n")
+      fptr.close()
+
+  @staticmethod
   def updateKeyValueCFGFile(key, value, filename):
     try:
       iptr = open(filename, 'r')
@@ -108,6 +119,26 @@ class Config(object):
         if (len(parts) == 2):
           cfg[parts[0]] = parts[1].strip()
     return cfg
+
+  @staticmethod
+  def mergeHeaderFreq (h1, h2):
+
+    header = h1
+
+    header["BYTES_PER_SECOND"] = str (int(h1["BYTES_PER_SECOND"]) + int(h2["BYTES_PER_SECOND"]))
+    header["NCHAN"] = str (int(h1["NCHAN"]) + int(h2["NCHAN"]))
+    header["START_CHANNEL"] = str (min(int(h1["START_CHANNEL"]), int(h2["START_CHANNEL"])))
+    header["END_CHANNEL"] = str (max(int(h1["END_CHANNEL"]), int(h2["END_CHANNEL"])))
+
+    bw1 = float(h1["BW"])
+    bw2 = float(h2["BW"])
+    freq1 = float(h1["FREQ"])
+    freq2 = float(h2["FREQ"])
+
+    header["BW"] = str (bw1 + bw2)
+    header["FREQ"] = str ((freq1 - bw1/2) + ((bw1+bw2)/2))
+
+    return header
 
   def getStreamConfigFixed (self, id):
 
