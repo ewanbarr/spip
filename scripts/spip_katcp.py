@@ -60,15 +60,26 @@ class PubSubThread (threading.Thread):
     self.subs.append ('script.target')
     self.subs.append ('product')
 
-    self.adc_start_re = re.compile ("data_1_cbf_synchronisation_epoch")
-    self.bandwidth_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_bandwidth")
-    self.centerfreq_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_centerfrequency")
-    self.channels_re = re.compile ("data_1_cbf_[a-zA-Z0-9]*_channels")
-    self.target_re = re.compile ("subarray_1_script_target")
-    self.ra_re = re.compile ("subarray_1_script_ra")
-    self.dec_re = re.compile ("subarray_1_script_dec")
-    self.observer_re = re.compile ("subarray_1_script_observer")
-    self.tsubint_re = re.compile ("subarray_1_script_tsubint")
+    self.adc_start_re = re.compile ("data_[0-9]+_cbf_synchronisation_epoch")
+    self.bandwidth_re = re.compile ("data_[0-9]+_cbf_[a-zA-Z0-9]*_bandwidth")
+    self.centerfreq_re = re.compile ("data_[0-9]+_cbf_[a-zA-Z0-9]*_centerfrequency")
+    self.channels_re = re.compile ("data_[0-9]+_cbf_[a-zA-Z0-9]*_channels")
+    self.target_re = re.compile ("subarray_[0-9]+_script_target")
+    self.ra_re = re.compile ("subarray_[0-9]+_script_ra")
+    self.dec_re = re.compile ("subarray_[0-9]+_script_dec")
+    self.ants_re = re.compile ("subarray_[0-9]+_script_ants")
+    self.state_re = re.compile ("subarray_[0-9]+_state")
+    self.observer_re = re.compile ("subarray_[0-9]+_script_observer")
+    self.tsubint_re = re.compile ("subarray_[0-9]+_script_tsubint")
+    self.expid_re = re.compile ("subarray_[0-9]+_script_experiment_id")
+    self.sbsid_re = re.compile ("subarray_[0-9]+_active_sbs")
+    self.description_re = re.compile ("subarray_[0-9]+_script_description")
+
+    self.subarrays_res = []
+    self.subarrays_res.append(re.compile ("[a-zA-Z]+_1_[a-zA-Z]+"))
+    self.subarrays_res.append(re.compile ("[a-zA-Z]+_2_[a-zA-Z]+"))
+    self.subarrays_res.append(re.compile ("[a-zA-Z]+_3_[a-zA-Z]+"))
+    self.subarrays_res.append(re.compile ("[a-zA-Z]+_4_[a-zA-Z]+"))
 
   def run (self):
     self.script.log(2, "PubSubThread.run()")
@@ -86,44 +97,50 @@ class PubSubThread (threading.Thread):
 
   @tornado.gen.coroutine
   def connect (self, logger):
-    self.script.log(2, "PubSubThread.connect()")
+    self.script.log(2, "PubSubThread::connect()")
     self.ws_client = KATPortalClient(self.metadata_server, self.on_update_callback, logger=logger)
     yield self.ws_client.connect()
     result = yield self.ws_client.subscribe('ptuse_test')
 
     list = ['cbf.*.bandwidth', 'cbf.*.centerfrequency', 'cbf.*.channels']
     list.append ('cbf.synchronisation.epoch')
-    list.append ('subarray_1')
-    list.append ('script.observer')
-    list.append ('script.target')
-    list.append ('product')
+    list.append ('subarray.*.active.sbs')
+    list.append ('subarray.*.pool.resources')
+    list.append ('subarray.*.script.observer')
+    list.append ('subarray.*.script.target')
+    list.append ('subarray.*.script.ants')
+    list.append ('subarray.*.state')
+    list.append ('subarray.*.product')
 
-    result = yield self.ws_client.set_sampling_strategies(
-        'ptuse_test', list, 'period 10.0')
+    results = yield self.ws_client.set_sampling_strategies(
+        'ptuse_test', list, 'event-rate 1.0 300.0')
+
+    for result in results:
+      self.script.log(2, "PubSubThread::connect subscribed to " + str(result))
 
   def on_update_callback (self, msg):
-
-    # determine how to know which beam this corresponds to!
-    ibeam = 0
-    beam_name = self.script.cfg["BEAM_" + str(ibeam)]
 
     self.curr_utc = times.getUTCTime()
 
     if times.diffUTCTimes(self.prev_utc, self.curr_utc) > 60:
-      self.script.log(1, "PubSubThread::on_update_callback: heartbeat msg="+str(msg))
+      self.script.log(2, "PubSubThread::on_update_callback: heartbeat msg="+str(msg))
       self.prev_utc = self.curr_utc
 
-    self.script.beam_configs[beam_name]["lock"].acquire()
+    self.update_config (msg)
 
-    self.update_config (self.script.beam_configs[beam_name],  msg)
+  def update_subarray_config (self, isub, key, name, value):
+    if self.script.subarray_configs[isub][key] != value:
+      self.script.log(1, "PubSubThread::update_subarray_config " + key + "=" + value + " from " + name)
+      self.script.subarray_configs[isub][key] = value
 
-    self.script.beam_configs[beam_name]["lock"].release()
+  def update_subarrays_config (self, nsubarray, key, name, value):
+    for isubarray in range(nsubarray):
+      self.script.log(2, "PubSubThread::update_subarrays_config isubarray=" + str(isubarray) +" nsubarray=" + str(nsubarray) + " key=" + str(key) + " name=" + str(name))
+      if self.subarrays_res[isubarray].match(name):
+        self.update_subarray_config (isubarray, key, name, value)
+        return
 
-    if self.script.quit_event.isSet():
-      self.script.log(1, "PubSubThread::on_update_callback: self.stop()")
-      self.stop()
-
-  def update_config (self, bcfg, msg):
+  def update_config (self, msg):
 
     # ignore empty messages
     if msg == []: 
@@ -134,45 +151,42 @@ class PubSubThread (threading.Thread):
     name = msg["msg_data"]["name"]
 
     self.script.log(2, "PubSubThread::update_config " + name + "=" + str(value))
+    
+    if self.target_re.match (name):
+      self.update_subarrays_config(4, "SOURCE", name, str(value))
 
-    # get the ADC_SYNC_TIME
-    if self.adc_start_re.match (name):
-      if bcfg["ADC_SYNC_TIME"] != str(int(value)):
-        self.script.log(1, "PubSubThread::update_config ADC_SYNC_TIME=" + str(value) + " from " + name)
-      bcfg["ADC_SYNC_TIME"] = str(int(value))
-
-    elif self.target_re.match (name):
-      if bcfg["SOURCE"] != value:
-        self.script.log(1, "PubSubThread::update_config SOURCE=" + str(value) + " from " + name)
-      bcfg["SOURCE"] = value
-
-    # TODO check if exists already
     elif self.ra_re.match (name):
-      if bcfg["RA"] != value:
-        self.script.log(1, "PubSubThread::update_config RA=" + str(value) + " from " + name)
-      bcfg["RA"] = value
+      self.update_subarrays_config(4, "RA", name, str(value))
 
-    # TODO check if exists already
     elif self.dec_re.match (name):
-      if bcfg["DEC"] != value:
-        self.script.log(1, "PubSubThread::update_config DEC=" + str(value) + " from " + name)
-      bcfg["DEC"] = value
+      self.update_subarrays_config(4, "DEC", name, str(value))
+
+    elif self.adc_start_re.match (name):
+      self.update_subarrays_config(4, "ADC_SYNC_TIME", name, str(value))
 
     elif self.observer_re.match (name):
-      if bcfg["OBSERVER"] != value:
-        self.script.log(1, "PubSubThread::update_config OBSERVER=" + str(value) + " from " + name)
-      bcfg["OBSERVER"] = value
+      self.update_subarrays_config(4, "OBSERVER", name, str(value))
 
     elif self.bandwidth_re.match (name):
-      self.script.log(2, "PubSubThread::update_config BANDWIDTH=" + str(value) + " from " + name)
+      self.update_subarrays_config(4, "BANDWIDTH", name, str(value))
 
     elif self.centerfreq_re.match (name):
-      self.script.log(2, "PubSubThread::update_config CFREQ=" + str(value) + " from " + name)
+      self.update_subarrays_config(4, "CFREQ", name, str(value))
 
     elif self.tsubint_re.match (name):
-      if bcfg["TSUBINT"] != value:
-        self.script.log(1, "PubSubThread::update_config TSUBINT=" + str(value) + " from " + name)
-      bcfg["TSUBINT"] = value
+      self.update_subarrays_config(4, "TSUBINT", name, str(value))
+
+    elif self.ants_re.match (name):
+      self.update_subarrays_config(4, "ANTENNAE", name, str(value))
+
+    elif self.sbsid_re.match (name):
+      self.update_subarrays_config(4, "SCHEDULE_BLOCK_ID", name, str(value))
+
+    elif self.expid_re.match (name):
+      self.update_subarrays_config(4, "EXPERIMENT_ID", name, str(value))
+
+    else:
+      self.script.log(2, "PubSubThread::update_config no match on " + name)
 
     self.script.log(3, "PubSubThread::update_config done")
 
@@ -268,6 +282,7 @@ class KATCPDaemon(Daemon):
   def __init__ (self, name, id):
     Daemon.__init__(self, name, str(id))
     self.beam_states = {}
+    self.subarray_configs = {}
     self.beam_configs = {}
     self.tcs_hosts = {}
     self.tcs_ports = {}
@@ -276,6 +291,16 @@ class KATCPDaemon(Daemon):
     self.katcp = []
     self.snr = 0
     self.stddev = 0
+
+    self.data_product_res = []
+    self.data_product_res.append(re.compile ("[a-zA-Z]+_1_"))
+    self.data_product_res.append(re.compile ("[a-zA-Z]+_2_"))
+    self.data_product_res.append(re.compile ("[a-zA-Z]+_3_"))
+    self.data_product_res.append(re.compile ("[a-zA-Z]+_4_"))
+
+    for i  in range(4):
+      self.subarray_configs[i] = {}
+      self.reset_subarry_configs(i)
 
     # get a list of all LMCs
     self.lmcs = []
@@ -315,6 +340,21 @@ class KATCPDaemon(Daemon):
                       "<type>state</type>" + \
                       "</repack_request>"
 
+  def reset_subarry_configs(self, isub):
+    scfg = self.subarray_configs[isub]
+    scfg["ADC_SYNC_TIME"] = "0"
+    scfg["RA"] = "None"
+    scfg["DEC"] = "None"
+    scfg["OBSERVER"] = "None"
+    scfg["BANDWIDTH"] = "0"
+    scfg["CFREQ"] = "0"
+    scfg["TSUBINT"] = "10"
+    scfg["ANTENNAE"] = "None"
+    scfg["SCHEDULE_BLOCK_ID"] = "None"
+    scfg["EXPERIMENT_ID"] = "None"
+    scfg["PROPOSAL_ID"] = "None"
+    scfg["DESCRIPTION"] = "None"
+
   # reset the sepcified beam configuration
   def reset_beam_config (self, bcfg):
     bcfg["lock"].acquire()
@@ -331,6 +371,11 @@ class KATCPDaemon(Daemon):
     bcfg["PERFORM_FOLD"] = "1"
     bcfg["PERFORM_SEARCH"] = "0"
     bcfg["PERFORM_TRANS"] = "0"
+    bcfg["ANTENNAE"] = "0"
+    bcfg["SCHEDULE_BLOCK_ID"] = "None"
+    bcfg["EXPERIMENT_ID"] = "None"
+    bcfg["PROPOSAL_ID"] = "None"
+    bcfg["DESCRIPTION"] = "None"
     bcfg["lock"].release()
 
 
@@ -943,12 +988,23 @@ class KATCPServer (DeviceServer):
       if result == "fail":
         return (result, message)
 
+      for i in range(4):
+        if self.script.data_product_res[i].match(data_product_id):
+          self.script.beam_configs[beam_id]["lock"].acquire()
+          self.script.beam_configs[beam_id]["ADC_SYNC_TIME"] = self.script.subarray_configs[i]["ADC_SYNC_TIME"]
+          self.script.beam_configs[beam_id]["OBSERVER"] = self.script.subarray_configs[i]["OBSERVER"]
+          self.script.beam_configs[beam_id]["ANTENNAE"] = self.script.subarray_configs[i]["ANTENNAE"]
+          self.script.beam_configs[beam_id]["SCHEDULE_BLOCK_ID"] = self.script.subarray_configs[i]["SCHEDULE_BLOCK_ID"]
+          self.script.beam_configs[beam_id]["EXPERIMENT_ID"] = self.script.subarray_configs[i]["EXPERIMENT_ID"]
+          self.script.beam_configs[beam_id]["DESCRIPTION"] = self.script.subarray_configs[i]["DESCRIPTION"]
+          self.script.beam_configs[beam_id]["lock"].release()
+
       # check the pulsar specified is listed in the catalog
       (result, message) = self.test_pulsar_valid (target_name)
       if result != "ok":
         return (result, message)
 
-      # check the ADC_SYCN_TIME is valid for this beam
+      # check the ADC_SYNC_TIME is valid for this beam
       if self.script.beam_configs[beam_id]["ADC_SYNC_TIME"] == "0":
         return ("fail", "ADC Synchronisation Time was not valid")
     
@@ -1008,7 +1064,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_capture_init (self, req, data_product_id):
       """Prepare the ingest process for data capture."""
-      self.script.log (1, "request_capture_init()")
+      self.script.log (1, "request_capture_init: " + str(data_product_id) )
       if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
       return ("ok", "")
@@ -1017,6 +1073,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_capture_done(self, req, data_product_id):
       """Terminte the ingest process for the specified data_product_id."""
+      self.script.log (1, "request_capture_done: " + str(data_product_id))
       if not data_product_id in self._data_products.keys():
         return ("fail", "data product " + str (data_product_id) + " was not configured")
       return ("ok", "")
@@ -1024,23 +1081,27 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_data_product_configure(self, req, msg):
       """Prepare and configure for the reception of the data_product_id."""
-      self.script.log (1, "request_data_product_configure() msg=" + str(msg))
+      self.script.log (1, "request_data_product_configure: nargs= " + str(len(msg.arguments)) + " msg=" + str(msg))
       if len(msg.arguments) == 0:
+        self.script.log (-1, "request_data_product_configure: no arguments provided")
         return ("ok", "configured data products: TBD")
 
       # the sub-array identifier
       data_product_id = msg.arguments[0]
 
       if len(msg.arguments) == 1:
-        if data_product_id in self._data_products:
+        self.script.log (1, "request_data_product_configure: request for configuration of " + str(data_product_id))
+        if data_product_id in self._data_products.keys():
           configuration = str(data_product_id) + " " + \
                           str(self._data_products[data_product_id]['antennas']) + " " + \
                           str(self._data_products[data_product_id]['n_channels']) + " " + \
                           str(self._data_products[data_product_id]['dump_rate']) + " " + \
                           str(self._data_products[data_product_id]['n_beams']) + " " + \
                           str(self._data_products[data_product_id]['cbf_source'])
+          self.script.log (1, "request_data_product_configure: configuration of " + str(data_product_id) + "=" + configuration)
           return ("ok", configuration)
         else:
+          self.script.log (-1, "request_data_product_configure: no configuration existed for " + str(data_product_id))
           return ("fail", "no configuration existed for " + str(data_product_id))
 
       # The data product is deconfigured, and beams released
@@ -1048,11 +1109,15 @@ class KATCPServer (DeviceServer):
         self.script.log (1, "data_product_configure: deconfiguring " + str(data_product_id))
 
         if not data_product_id in self._data_products.keys():
-          return ("fail", data_product_id + " was not a configured data product")
+          response = str(data_product_id) + " was not a configured data product"
+          self.script.log (-1, "data_product_configure: " + response)
+          return ("fail", response)
 
         # check if the data_product was configured
         if len(self._data_products[data_product_id]['beams']) == 0:
-          return ("fail", data_product_id + " had 0 beams configured")
+          response = str(data_product_id) + " had 0 beams configured"
+          self.script.log (-1, "data_product_configure: " + response)
+          return ("fail", response)
 
         # update config file for beams to match the cbf_source
         for ibeam in self._data_products[data_product_id]['beams']:
@@ -1088,25 +1153,30 @@ class KATCPServer (DeviceServer):
           self._data_products.pop(data_product_id, None)
           self.script.log (1, "data_product_configure: keys=" + str(self._data_products))
 
-        return ("ok", "data product " + str (data_product_id) + " deconfigured")
+        response = "data product " + str(data_product_id) + " deconfigured"
+        self.script.log (1, "data_product_configure: " + response)
+        return ("ok", response)
 
       if len(msg.arguments) == 6:
         # if the configuration for the specified data product matches extactly the 
         # previous specification for that data product, then no action is required
+        self.script.log (1, "data_product_configure: configuring " + str(data_product_id))
 
-        if data_product_id in self._data_products and \
+        if data_product_id in self._data_products.keys() and \
             self._data_products[data_product_id]['antennas'] == msg.arguments[1] and \
             self._data_products[data_product_id]['n_channels'] == msg.arguments[2] and \
             self._data_products[data_product_id]['dump_rate'] == msg.arguments[3] and \
             self._data_products[data_product_id]['n_beams'] == msg.arguments[4] and \
             self._data_products[data_product_id]['cbf_source'] == msg.arguments[5]:
-          return ("ok", "data_product configuration for " + str(data_product_id) + " matched previous")
+          response = "configuration for " + str(data_product_id) + " matched previous"
+          self.script.log (1, "data_product_configure: " + response)
+          return ("ok", response)
 
         # the data product requires configuration
         else:
           self._data_products[data_product_id] = {}
 
-          self.script.log (1, "data_product_configure: configuring " + data_product_id)
+          self.script.log (1, "data_product_configure: new data product " + data_product_id)
 
           antennas = msg.arguments[1]
           n_channels = msg.arguments[2]
@@ -1117,12 +1187,16 @@ class KATCPServer (DeviceServer):
           # check if the number of existing + new beams > available
           if self.configured_beams + n_beams > self.available_beams:
             self._data_products.pop(data_product_id, None)
-            return ("fail", "requested more beams than were available")
+            response = "requested more beams than were available"
+            self.script.log (-1, "data_product_configure: " + response)
+            return ("fail", response)
 
           (cfreq, bwd, nchan) = self.script.cfg["SUBBAND_CONFIG_0"].split(":")
           if nchan != n_channels:
             self._data_products.pop(data_product_id, None)
-            return ("fail", "PTUSE configured for " + nchan + " channels")
+            response = "PTUSE configured for " + nchan + " channels"
+            self.script.log (-1, "data_product_configure: " + response)
+            return ("fail", response)
 
           # assign the ibeam to the list of beams for this data_product
           self._data_products[data_product_id]['beams'] = []
@@ -1147,7 +1221,9 @@ class KATCPServer (DeviceServer):
 
             self.script.log (2, "data_product_configure: parsed " + mcast + "+" + count + ":" + port)
             if not count == "1":
-              return ("fail", "CBF source did not match ip_address+1:port")
+              response = "CBF source did not match ip_address+1:port"
+              self.script.log (-1, "data_product_configure: " + response)
+              return ("fail", response)
 
             mcasts = ["",""]
             ports = [0, 0]
@@ -1204,7 +1280,9 @@ class KATCPServer (DeviceServer):
           return ("ok", "data product " + str (data_product_id) + " configured")
 
       else:
-        return ("fail", "expected 0, 1, 5 or 6 arguments") 
+        response = "expected 0, 1, 5 or 6 arguments"
+        self.script.log (-1, "data_product_configure: " + response)
+        return ("fail", response)
 
     @request(Str(), Str(), Int())
     @return_reply(Str())
