@@ -264,7 +264,7 @@ class RepackDaemon(Daemon):
                 os.remove (fin_dir + "/" + subband["cfreq"] + "/obs.finished")
                 os.removedirs (fin_dir + "/" + subband["cfreq"])
 
-              writeDictToCFGFile (header, fin_dir + "/" + "obs.header")
+              Config.writeDictToCFGFile (header, fin_dir + "/" + "obs.header")
               shutil.copyfile (fin_dir + "/obs.header", out_dir + "/obs.header")
 
       if processed_this_loop == 0:
