@@ -25,6 +25,7 @@ class result extends spip_webpage
     $this->beam = isset($_GET["beam"]) ? $_GET["beam"] : "Error";
     $this->utc_start = isset($_GET["utc_start"]) ? $_GET["utc_start"] : "Error";
     $this->source = isset($_GET["source"]) ? $_GET["source"] : "Error";
+    $this->source = str_replace("%2B", "+", $this->source);
 
     $this->host = "Error";
     $this->port = -1;
@@ -39,7 +40,7 @@ class result extends spip_webpage
         $this->port =  $this->config["STREAM_RESULTS_PORT"] + $istream;
       }
     }
-    $this->update_url = "?update=true&beam=".$this->beam."&utc_start=".$this->utc_start."&source=".$this->source;
+    $this->update_url = "result.php?update=true&beam=".$this->beam."&utc_start=".$this->utc_start."&source=".str_replace("+", "%2B", $this->source);
   }
 
   function printJavaScriptHead()
@@ -175,7 +176,7 @@ class result extends spip_webpage
     echo "        <tr>\n";
     echo "          <td>\n";
     echo "            <div style='text-align:center;'>".$name."</div>\n";
-    echo "            <img id='".$id."' src='' width='".$this->plot_width."px' height='".$this->plot_height."px'/><br/>\n";
+    echo "            <img id='".$id."' src='' width='".($this->plot_width+1)."px' height='".($this->plot_height+1)."px'/><br/>\n";
     echo "          </td>\n";
     echo "        </tr>\n";
   }
