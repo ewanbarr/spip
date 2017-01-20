@@ -645,6 +645,8 @@ bool spip::UDPReceiveMergeDB::receive_thread (int p)
           }
           while (!have_packet && keep_receiving)
           {
+            if (control_cmd == Stop || control_cmd == Quit)
+              keep_receiving = false;
             flags = 0;
             got = (int) vma_api->recvfrom_zcopy(fd, buf, sock_bufsz, &flags, addr, &addr_size);
             if (got  > 32)
