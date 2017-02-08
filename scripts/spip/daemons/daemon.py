@@ -162,13 +162,29 @@ class Daemon(object):
         self.log_sock.connect(1)
       self.log_sock.log (level, message)
 
+
+  def tryKill (self, signal):
+    existed = False
+    for binary in self.binary_list:
+      cmd = "pgrep -f '^" + binary + "'"
+      rval, lines = self.system (cmd, 3, quiet=True)
+      self.log (2, "tryKill: cmd="+cmd+ " rval=" + str(rval) + " lines=" + str(lines))
+      if not rval:
+        existed = True
+        cmd = "pkill -SIG" + signal + " -f '^" + binary + "'"
+        rval, lines = self.system (cmd, 1)
+    return existed 
+
+    
   def conclude (self):
 
     self.quit_event.set()
 
-    for binary in self.binary_list:
-      cmd = "pkill -f '^" + binary + "'"
-      rval, lines = self.system (cmd, 1)
+    if self.tryKill ("INT"):
+      time.sleep(2)
+      if self.tryKill ("TERM"):
+        time.sleep(2)
+        self.tryKill ("KILL")
 
     if self.control_thread:
       self.control_thread.join()
@@ -176,7 +192,7 @@ class Daemon(object):
     if self.log_sock: 
       self.log_sock.close ()
 
-  def system (self, command, dl=2):
+  def system (self, command, dl=2, quiet=False):
     lines = []
     return_code = 0
 
@@ -199,7 +215,7 @@ class Daemon(object):
 
     return_code = proc.returncode
 
-    if return_code:
+    if return_code and not quiet:
       self.log (0, "spip.system: " + command + " failed")
 
     # Once you have a valid response, split the return output    
