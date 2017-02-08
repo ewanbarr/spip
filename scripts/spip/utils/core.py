@@ -68,7 +68,7 @@ def system (command, log=False):
 
   return return_code, lines
 
-def system_piped (command, pipe, log):
+def system_piped (command, pipe, log, work_dir=None):
 
   return_code = 0
 
@@ -80,7 +80,8 @@ def system_piped (command, pipe, log):
                           shell=True,
                           stdin=None,
                           stdout=pipe,
-                          stderr=subprocess.STDOUT)
+                          stderr=subprocess.STDOUT,
+                          cwd=work_dir)
 
   # now wait for the process to complete
   proc.wait ()
