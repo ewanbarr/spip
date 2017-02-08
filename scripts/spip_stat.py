@@ -47,7 +47,7 @@ class StatReportingThread(ReportingThread):
       xml = "<stat_state>"
 
       self.script.results["lock"].acquire()
-      xml += "<stream id='" + str(self.script.id) + "' beam_name='" + self.script.beam + "' active='" + str(self.script.results["valid"]) + "'>"
+      xml += "<stream id='" + str(self.script.id) + "' beam_name='" + self.script.beam_name + "' active='" + str(self.script.results["valid"]) + "'>"
 
       self.script.log (3, "StatReportingThread::parse_message: keys="+str(self.script.results.keys()))
 
@@ -153,8 +153,8 @@ class dbstatsThread (threading.Thread):
     self.dl = dl
 
   def run (self):
-    cmd = "cd " + self.dir + "; " + self.cmd
-    rval = system_piped (cmd, self.pipe, self.dl <= DL)
+    cmd = self.cmd
+    rval = system_piped (cmd, self.pipe, self.dl <= DL, work_dir=self.dir)
     return rval
 
 class StatDaemon(Daemon,StreamBased):
@@ -171,7 +171,7 @@ class StatDaemon(Daemon,StreamBased):
     self.results["valid"] = False;
 
     (host, beam_id, subband_id) = self.cfg["STREAM_" + id].split(":")
-    self.beam = self.cfg["BEAM_" + beam_id] 
+    self.beam_name = self.cfg["BEAM_" + beam_id] 
 
     self.hg_plot = HistogramPlot()
     self.ft_plot = FreqTimePlot()
@@ -203,7 +203,7 @@ class StatDaemon(Daemon,StreamBased):
     self.log (2, "StatDaemon::main db_key=" + db_key)
 
     # start dbstats in a separate thread
-    stat_dir   = self.cfg["CLIENT_STATS_DIR"]   + "/processing/" + str(self.id)
+    stat_dir   = self.cfg["CLIENT_STATS_DIR"]   + "/processing/" + self.beam_name
 
     if not os.path.exists(stat_dir):
       os.makedirs(stat_dir, 0755)
@@ -226,6 +226,7 @@ class StatDaemon(Daemon,StreamBased):
       self.log (2, "StatDaemon::main waiting for stream_config file [" + stream_config_file +"] to be created by recv")
       time.sleep(1)    
 
+    self.log(2, "main: self.waitForSMRB()")
     smrb_exists = self.waitForSMRB()
 
     if not smrb_exists:

@@ -26,7 +26,7 @@ def get_psrcat_param (target, param):
     return ("fail", "could not use psrcat")
 
   if lines[0].startswith("WARNING"):
-    return ("fail", "pulsar " + target_name + " did not exist in catalog")
+    return ("fail", "pulsar " + target + " did not exist in catalog " + lines[0])
 
   parts = lines[0].split()
   if len(parts) == 2 and parts[0] == "1":

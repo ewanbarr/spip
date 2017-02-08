@@ -59,6 +59,8 @@ class PubSubThread (threading.Thread):
     self.subs.append ('script.observer')
     self.subs.append ('script.target')
     self.subs.append ('product')
+    self.subs.append ('subarray')
+    self.subs.append ('data')
 
     self.adc_start_re = re.compile ("data_[0-9]+_cbf_synchronisation_epoch")
     self.bandwidth_re = re.compile ("data_[0-9]+_cbf_[a-zA-Z0-9]*_bandwidth")
@@ -87,11 +89,11 @@ class PubSubThread (threading.Thread):
     self.io_loop.start()
 
   def join (self):
-    self.script.log(2, "PubSubThread.join()")
+    self.script.log(1, "PubSubThread.join()")
     self.stop()
 
   def stop (self):
-    self.script.log(2, "PubSubThread.stop()")
+    self.script.log(1, "PubSubThread.stop()")
     self.io_loop.stop()
     return
 
@@ -109,6 +111,8 @@ class PubSubThread (threading.Thread):
     list.append ('subarray.*.script.observer')
     list.append ('subarray.*.script.target')
     list.append ('subarray.*.script.ants')
+    list.append ('subarray.*.script.description')
+    list.append ('subarray.*.script.experiment_id')
     list.append ('subarray.*.state')
     list.append ('subarray.*.product')
 
@@ -139,6 +143,8 @@ class PubSubThread (threading.Thread):
       if self.subarrays_res[isubarray].match(name):
         self.update_subarray_config (isubarray, key, name, value)
         return
+    self.script.log(2, "PubSubThread::update_subarrays_config no match on " + name)
+    return
 
   def update_config (self, msg):
 
@@ -185,8 +191,11 @@ class PubSubThread (threading.Thread):
     elif self.expid_re.match (name):
       self.update_subarrays_config(4, "EXPERIMENT_ID", name, str(value))
 
+    elif self.desc_re.match (name):
+      self.update_subarrays_config(4, "DESCRIPTION", name, str(value))
+
     else:
-      self.script.log(2, "PubSubThread::update_config no match on " + name)
+      self.script.log(1, "PubSubThread::update_config no match on " + name)
 
     self.script.log(3, "PubSubThread::update_config done")
 
@@ -251,7 +260,7 @@ class PubSubSimThread(SocketedThread):
           self.script.beam_configs[beam_name]["OBS_OFFSET"] = "0"
           self.script.beam_configs[beam_name]["TOBS"] = xml['obs_cmd']['observation_parameters']['tobs']
 
-          self.script.beam_configs[beam_name]["ADC_SYNC_TIME"] =  xml['obs_cmd']['instrument_parameters']['adc_sync_time']
+          self.script.beam_configs[beam_name]["ADC_SYNC_TIME"] =  xml['obs_cmd']['custom_parameters']['adc_sync_time']
           self.script.beam_configs[beam_name]["PERFORM_FOLD"] = "1"
           self.script.beam_configs[beam_name]["PERFORM_SEARCH"] = "0"
           self.script.beam_configs[beam_name]["PERFORM_TRANS"] = "0"
@@ -293,12 +302,12 @@ class KATCPDaemon(Daemon):
     self.stddev = 0
 
     self.data_product_res = []
-    self.data_product_res.append(re.compile ("[a-zA-Z]+_1_"))
-    self.data_product_res.append(re.compile ("[a-zA-Z]+_2_"))
-    self.data_product_res.append(re.compile ("[a-zA-Z]+_3_"))
-    self.data_product_res.append(re.compile ("[a-zA-Z]+_4_"))
+    self.data_product_res.append(re.compile ("^[a-zA-Z]+_1"))
+    self.data_product_res.append(re.compile ("^[a-zA-Z]+_2"))
+    self.data_product_res.append(re.compile ("^[a-zA-Z]+_3"))
+    self.data_product_res.append(re.compile ("^[a-zA-Z]+_4"))
 
-    for i  in range(4):
+    for i in range(4):
       self.subarray_configs[i] = {}
       self.reset_subarry_configs(i)
 
@@ -371,7 +380,7 @@ class KATCPDaemon(Daemon):
     bcfg["PERFORM_FOLD"] = "1"
     bcfg["PERFORM_SEARCH"] = "0"
     bcfg["PERFORM_TRANS"] = "0"
-    bcfg["ANTENNAE"] = "0"
+    bcfg["ANTENNAE"] = "None"
     bcfg["SCHEDULE_BLOCK_ID"] = "None"
     bcfg["EXPERIMENT_ID"] = "None"
     bcfg["PROPOSAL_ID"] = "None"
@@ -495,13 +504,13 @@ class KATCPDaemon(Daemon):
     xml +=     "<name epoch='J2000'>" + self.beam_configs[b]["SOURCE"] + "</name>"
 
     ra = self.beam_configs[b]["RA"]
-    if ra == "None":
+    if ra == "None" and self.beam_configs[b]["MODE"] == "PSR":
       (reply, message) = catalog.get_psrcat_param (self.beam_configs[b]["SOURCE"], "raj")
       if reply == "ok":
         ra = message
 
     dec = self.beam_configs[b]["DEC"]
-    if dec == "None":
+    if dec == "None" and self.beam_configs[b]["MODE"] == "PSR":
       (reply, message) = catalog.get_psrcat_param (self.beam_configs[b]["SOURCE"], "decj")
       if reply == "ok":
         dec = message
@@ -521,9 +530,16 @@ class KATCPDaemon(Daemon):
     xml +=     "<utc_stop></utc_stop>"
     xml +=   "</observation_parameters>"
 
-    xml +=   "<instrument_parameters>"
+    xml +=   "<custom_parameters>"
+    xml +=     "<fields>adc_sync_time antennae description experiment_id proposal_id program_block_id schedule_block_id</fields>"
     xml +=     "<adc_sync_time>" + self.beam_configs[b]["ADC_SYNC_TIME"] + "</adc_sync_time>"
-    xml +=   "</instrument_parameters>"
+    xml +=     "<antennae>" + self.beam_configs[b]["ANTENNAE"] + "</antennae>"
+    xml +=     "<schedule_block_id>" + self.beam_configs[b]["SCHEDULE_BLOCK_ID"] + "</schedule_block_id>"
+    xml +=     "<experiment_id>" + self.beam_configs[b]["EXPERIMENT_ID"] + "</experiment_id>"
+    xml +=     "<proposal_id>" + self.beam_configs[b]["PROPOSAL_ID"] + "</proposal_id>"
+    xml +=     "<program_block_id>" + "TBD" + "</program_block_id>"
+    xml +=     "<description>" + self.beam_configs[b]["DESCRIPTION"] + "</description>"
+    xml +=   "</custom_parameters>"
 
     xml += "</obs_cmd>"
 
@@ -981,6 +997,23 @@ class KATCPServer (DeviceServer):
 
     @request(Str(), Str(), Str())
     @return_reply(Str())
+    def request_proposal_id(self, req, data_product_id, beam_id, proposal_id):
+      """Set the PROPOSAL_ID for the specified data product and beam."""
+
+      self.script.log (1, "request_proposal_id (" + data_product_id + "," + beam_id + "," + proposal_id + ")")
+      (result, message) = self.test_beam_valid (data_product_id, beam_id)
+      if result == "fail":
+        return (result, message)
+
+      self.script.beam_configs[beam_id]["lock"].acquire()
+      self.script.beam_configs[beam_id]["PROPOSAL_ID"] = proposal_id
+      self.script.beam_configs[beam_id]["lock"].release()
+
+      return ("ok", "")
+
+
+    @request(Str(), Str(), Str())
+    @return_reply(Str())
     def request_target_start (self, req, data_product_id, beam_id, target_name):
       """Commence data processing on specific data product and beam using target."""
       self.script.log (1, "request_target_start(" + data_product_id + "," + beam_id + "," + target_name+")")
@@ -1000,6 +1033,7 @@ class KATCPServer (DeviceServer):
           self.script.beam_configs[beam_id]["lock"].release()
 
       # check the pulsar specified is listed in the catalog
+      self.script.log (1, "request_target_start: target_name=[" + target_name + "]")
       (result, message) = self.test_pulsar_valid (target_name)
       if result != "ok":
         return (result, message)
@@ -1340,6 +1374,7 @@ class KATCPServer (DeviceServer):
     @return_reply(Str())
     def request_cal_freq(self, req, data_product_id, beam_id, cal_freq):
       """Set the value of noise diode firing frequecny in Hz."""
+      self.script.log (1, "request_cal_freq: data_product_id="+data_product_id+" beam_id="+beam_id+" cal_freq="+str(cal_freq))
       (result, message) = self.test_beam_valid (data_product_id, beam_id)
       if result == "fail":
         return (result, message)
@@ -1450,13 +1485,15 @@ if __name__ == "__main__":
     script.main (beam_id)
     script.log(2, "__main__: script.main() returned")
 
-    script.log(2, "__main__: stopping server")
+    script.log(1, "__main__: stopping katcp server thread")
     if server.running():
       server.stop()
     server.join()
 
-    script.log(2, "__main__: stopping pubsub_thread")
+    script.log(1, "__main__: stopping pubsub server thread")
     pubsub_thread.join()
+
+    script.log(1, "__main__: all stopped")
 
   except:
 
