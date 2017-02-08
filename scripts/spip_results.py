@@ -186,10 +186,10 @@ class ResultsReportingThread(ReportingThread):
     xml +=  "<error>observation not found</error>"
     xml += "</results_obs_header>"
 
-    if utc_start in  self.script.results.keys():
+    if utc_start in self.script.results.keys():
       if source in self.script.results[utc_start].keys():
-        s = self.script.results[utc_start][source]
-        s = rs[utc_start][source]["header"] 
+        xml = "<results_obs_header>"
+        xml += rs[utc_start][source]["header"] 
         xml += "</results_obs_header>"
     return True, xml 
 
@@ -298,7 +298,7 @@ class ResultsDaemon(Daemon):
     self.source_number += 1
 
     # find the header filename
-    cmd = "find " + dir + " -mindepth 1 -maxdepth 1 -type f -name 'obs.header.*' | head -n 1"
+    cmd = "find " + dir + " -mindepth 1 -maxdepth 1 -type f -name 'obs.header*' | head -n 1"
     rval, lines = self.system (cmd, 3)
     if rval:
       return ("fail", data)
