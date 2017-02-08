@@ -89,6 +89,7 @@ class RecvDaemon(Daemon,StreamBased):
 
   def main (self):
 
+    self.log(2, "main: self.waitForSMRB()")
     smrb_exists = self.waitForSMRB()
 
     if not smrb_exists:
