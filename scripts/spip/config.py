@@ -64,7 +64,7 @@ class Config(object):
       print "ERROR: cannot open " + filename + " for writing"
     else:
       for key in sorted(cfg.keys()):
-        fptr.write(key.ljust(20) + cfg[key] + "\n")
+        fptr.write(key.ljust(19) + " " + cfg[key] + "\n")
       fptr.close()
 
   @staticmethod
@@ -92,7 +92,7 @@ class Config(object):
       else:
         for line in iptr:
           if line.startswith(key + " "):
-            optr.write(key.ljust(20) + value + "\n")
+            optr.write(key.ljust(19) + " " + value + "\n")
           else:
             optr.write(line)
         os.close(iptr)
@@ -104,7 +104,7 @@ class Config(object):
   def writeDictToString (cfg):
     string = ""
     for key in sorted(cfg.keys()):
-      string += (key.ljust(16) + str(cfg[key]) + "\n")
+      string += (key.ljust(19) + " " + str(cfg[key]) + "\n")
     return string
 
   @staticmethod
